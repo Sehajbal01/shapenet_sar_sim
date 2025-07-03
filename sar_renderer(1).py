@@ -33,7 +33,7 @@ def generate_ray_grid(c, azimuth, elevation, side_len, r):
     ray_origins = c[None, None, :] + offsets
 
     # All rays go forward in the same direction
-    ray_directions = w[None, None, :].expand(r, r, 3)
+    ray_directions = w[None, None, :].tile(r, r, 1) # (r,r,3)
 
     return ray_origins.view(-1, 3), ray_directions.view(-1, 3)
 
@@ -61,14 +61,14 @@ def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0
 
 
 # For each camera view, simulate sending radar pulses and collecting returns
-def sar_render(target_poses, z_near, z_far, object_filename,
+def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=4):
     device = target_poses.device
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
     # Pull out camera positions
-    cam_center = target_poses[:, :3, 3]
+    cam_center = target_poses[:, :3, 3] # (T,3)
 
     # Figure out where each camera is pointing
     cam_distance = torch.norm(cam_center, dim=-1, keepdim=True)
@@ -85,8 +85,12 @@ def sar_render(target_poses, z_near, z_far, object_filename,
     # Store results here
     all_ranges, all_energies = [], []
 
+    view_directions = torch.zeros(T,P,3)
+
     for t in range(T):
         pulse_ranges, pulse_energies = [], []
+
+        ray_directions.append([])
 
         for p in range(P):
             # Set azimuth and elevation for this pulse
@@ -95,6 +99,8 @@ def sar_render(target_poses, z_near, z_far, object_filename,
 
             # Making grid of rays for this pulse
             origins, directions = generate_ray_grid(cam_center[t], a, e, side_len, n_rays_per_side)
+            # (R,3) (R,3)
+            view_direction[t,p] = directions[0]
 
             # See where they hit the mesh and how much energy they return
             ray_range, energy = get_range_and_energy(origins, directions, object_filename)
@@ -106,9 +112,35 @@ def sar_render(target_poses, z_near, z_far, object_filename,
         all_ranges.append(torch.stack(pulse_ranges))       # shape (P, R)
         all_energies.append(torch.stack(pulse_energies))   # shape (P, R)
 
-    # Final shape: (T, P, R)
-    return torch.stack(all_ranges), torch.stack(all_energies)
 
+
+    # Final shape: (T, P, R)
+    return torch.stack(all_ranges), torch.stack(all_energies), cam_center, view_directions
+    #          (T,P,R)                    (T,P,R)                 (T,P,3)      (T,P,3)
+
+def interpolate_signals(all_ranges,all_energy,sensor_position,view_dir,radar_bw,radar_fs,near_range,far_range):
+    # calculate the center of each spatial sample
+    first_z = int(math.ceil(near_range*radar_fs))
+    last_z =  int(math.floor(far_range*radar_fs))
+    sample_z = torch.arange(first_z, last_z+1, device=device, dtype=target_poses.dtype)/radar_fs # (N,)
+    N = len(sample_z)
+
+    #interpolate the signal
+    # signal shape will be (T,P,N), but we need to sum over all R rays, so lets go for (T,P,N,R) within the sum
+    received_signal = torch.sum(
+                all_energy.reshape(T,P,R,1) * \
+                torch.sinc( radar_bw * \
+                            (all_ranges.reshape(T,P,R,1) - sample_z.reshape(1,1,1,N))
+                          ),
+                dim=-1
+            ) # (T,P,N)
+
+    #Calculate sample positions
+    sensor_position = sensor_position.reshape(T,P,1,3) + sampel_z.reshape(1,1,N,3) * view_directions.reshape(T,P,1,3) # (T,P,N,3)
+
+
+  return signals, sample_positions
+        #(T,P,N)         (T,P,N,3)
 
 # Take all the ranges and energies and generate a radar-like echo signal
 def simulate_echo_signal(ray_ranges, ray_energies, z_near, z_far, spatial_fs):
