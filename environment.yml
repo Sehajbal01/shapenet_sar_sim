@@ -18,3 +18,5 @@ dependencies:
   - pip:
       - imageio
       - imageio-ffmpeg
+      - --find-links https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py3.8_cu121_pyt241/download.html
+      - pytorch3d
