@@ -1,22 +1,23 @@
 # run: conda env create -f environment.yml
 name: sarrender
 channels:
-  - pytorch
+  - defaults
   - nvidia
-dependencies:
-  - python>=3.8
-  - pip
+  - conda-forge
   - pytorch
-  - torchvision=0.7.0
-  - pytorch-cuda=12.1
+  - iopath
+  - pytorch3d
+dependencies:
+  - python=3.8
+  - pip
   - matplotlib
   - tqdm
-  - numpy>=1.20
-  - click>=8.0
-  - pillow>=8.3.1
-  - scipy>=1.7.1
+  - numpy
+  - click
+  - pillow
+  - scipy
+  - iopath
+  - pytorch3d
   - pip:
       - imageio
       - imageio-ffmpeg
-      - --find-links https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py3.8_cu121_pyt241/download.html
-      - pytorch3d
