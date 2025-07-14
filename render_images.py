@@ -1,7 +1,7 @@
 import torch
-from pytorch3d.io import load_objs_as_meshes
-from pytorch3d.ops import ray_mesh_intersect
+import numpy as np
 from matplotlib import pyplot as plt
+from sar_render import accumulate_scatters
 
 
 def camera_to_world_matrix(azimuth_deg, elevation_deg, distance, device='cpu', debug=False):
@@ -69,11 +69,14 @@ def camera_to_world_matrix(azimuth_deg, elevation_deg, distance, device='cpu', d
     return torch.tensor(pose, device=device).reshape(4, 4)  # (4, 4)
 
 
-def sar_render_image(file_name, num_pulses, az_angle, ele_angle, az_spread):
+def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
+                      z_near = 0.8,
+                      z_far  = 1.8,
+    ):
 
     # set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = 'cpu'
+    device = 'cpu' # only cpu for now
 
     #cpu call
     target_pose = camera_to_world_matrix(az_angle, ele_angle, (z_near + z_far) / 2, device=device, debug=False)
@@ -91,7 +94,7 @@ def sar_render_image(file_name, num_pulses, az_angle, ele_angle, az_spread):
     plt.save_fig('scatter_plot.png')
 
     # Generate signal
-    z_vals, signal = simulate_echo_signal(all_ranges, all_energies, z_near, z_far, radar_fs)
+    # z_vals, signal = simulate_echo_signal(all_ranges, all_energies, z_near, z_far, radar_fs)
 
     # plot the signal
 
@@ -99,7 +102,7 @@ def sar_render_image(file_name, num_pulses, az_angle, ele_angle, az_spread):
 if __name__ == '__main__':
     
     sar_render_image( '/workspace/data/srncars/02958343/7dac31838b627748eb631ba05bd8dfe/models/model_normalized.obj',
-                      5,
+                      50,
                       0,
                       45,
                       180
