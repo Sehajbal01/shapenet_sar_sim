@@ -2,6 +2,7 @@ import torch
 from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.ops import ray_mesh_intersect
 
+
 # Create a grid of rays on a square plane facing a given direction
 def generate_ray_grid(c, azimuth, elevation, side_len, r):
     # Figure out which way the camera is facing
@@ -139,8 +140,8 @@ def interpolate_signals(all_ranges,all_energy,sensor_position,view_dir,radar_bw,
     sensor_position = sensor_position.reshape(T,P,1,3) + sampel_z.reshape(1,1,N,3) * view_directions.reshape(T,P,1,3) # (T,P,N,3)
 
 
-  return signals, sample_positions
-        #(T,P,N)         (T,P,N,3)
+    return signals, sample_positions
+           #(T,P,N)         (T,P,N,3)
 
 # Take all the ranges and energies and generate a radar-like echo signal
 def simulate_echo_signal(ray_ranges, ray_energies, z_near, z_far, spatial_fs):
