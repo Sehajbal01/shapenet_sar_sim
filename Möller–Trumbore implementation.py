@@ -79,11 +79,11 @@ def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0
         ray_directions (R, 3): Direction of each ray.
         object_filename (str): Path to .obj mesh file.
         alpha_1 (float): Multiplier for cosine-weighted return energy.
-        alpha_2 (float): Additive energy floor.
+        alpha_2 (float): Addititional energy.
 
     Returns:
         ray_range (R,): Distance from origin to hit point.
-        energy (R,): Returned energy per ray.
+        energy (R,): Returned energy.
     '''
     device = ray_origins.device
     v0, v1, v2 = load_obj_vertices_faces(object_filename, device)
