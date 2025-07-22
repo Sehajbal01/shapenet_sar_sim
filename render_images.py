@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-from sar_render import accumulate_scatters
+from ray_tracing import accumulate_scatters
 
 
 def camera_to_world_matrix(azimuth_deg, elevation_deg, distance, device='cpu', debug=False):
@@ -75,15 +75,15 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     ):
 
     # set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = 'cpu' # only cpu for now
+    device = 'cpu' # everything but the rendering happens on CPU
 
     #cpu call
     target_pose = camera_to_world_matrix(az_angle, ele_angle, (z_near + z_far) / 2, device=device, debug=False)
+    target_poses = target_pose.reshape(1,4,4)
 
     # SAR raycasting 
     all_ranges, all_energies, cam_centers, view_dirs = accumulate_scatters(
-        target_pose, z_near, z_far, file_name,
+        target_poses, z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=32
