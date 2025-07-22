@@ -3,7 +3,7 @@ from pytorch3d.io import load_objs_as_meshes
 
 # Load vertex positions and face indices from .obj file
 def load_obj_vertices_faces(obj_filename, device):
-     """
+     '''
     Loads triangle vertex positions from a .obj file using PyTorch3D.
 
     Args:
@@ -12,7 +12,7 @@ def load_obj_vertices_faces(obj_filename, device):
 
     Returns:
         v0, v1, v2 (F, 3): Vertices of each triangle face in the mesh.
-    """
+    '''
     mesh = load_objs_as_meshes([obj_filename], device=device)
     verts = mesh.verts_padded()[0]  # (V, 3)
     faces = mesh.faces_padded()[0]  # (F, 3)
@@ -23,7 +23,7 @@ def load_obj_vertices_faces(obj_filename, device):
 
 # Batch ray-triangle intersection using Möller–Trumbore
 def ray_triangle_intersect(ray_origins, ray_directions, v0, v1, v2, eps=1e-8):
-     """
+     '''
     Determines where rays intersect triangles defined by the given vertices.
 
     Args:
@@ -36,7 +36,7 @@ def ray_triangle_intersect(ray_origins, ray_directions, v0, v1, v2, eps=1e-8):
         hit (R,): Boolean mask indicating whether each ray hit a triangle.
         hit_pos (R, 3): The 3D point where each ray hit.
         normals (R, 3): The surface normal at the hit point.
-    """
+    '''
     ray_origins = ray_origins[:, None, :]        # (R, 1, 3)
     ray_directions = ray_directions[:, None, :]  # (R, 1, 3)
 
@@ -71,7 +71,7 @@ def ray_triangle_intersect(ray_origins, ray_directions, v0, v1, v2, eps=1e-8):
 
 # Wrapper function for computing ray-mesh returns
 def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0.9, alpha_2=0.1):
-    """
+    '''
     Computes range and returned energy for rays intersecting a mesh.
 
     Args:
@@ -84,7 +84,7 @@ def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0
     Returns:
         ray_range (R,): Distance from origin to hit point.
         energy (R,): Returned energy per ray.
-    """
+    '''
     device = ray_origins.device
     v0, v1, v2 = load_obj_vertices_faces(object_filename, device)
 
