@@ -13,7 +13,7 @@ def load_obj_vertices_faces(obj_filename, device):
     return v0, v1, v2
 
 # Batch ray-triangle intersection using Möller–Trumbore
-def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, batch_size=2**25):
+def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, batch_size=2**25, progress_bar=True):
     '''
     PyTorch implementation of the Möller–Trumbore algorithm to find where rays intersect with triangles.
     Only returns the first intersection for each ray.
@@ -27,6 +27,8 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
         ray_origins (R, 3): origins of the rays
         ray_directions (R, 3): unit vector directions of the rays
         v0, v1, v2 (F, 3): vertices of the triangles
+        batch_size (int): number of rays to process at once, to avoid memory issues
+        progress_bar (bool): whether to show a progress bar
 
     outputs:
         hit (R): boolean mask indicating which rays hit the triangles
@@ -43,48 +45,98 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
 
     # normal vector
     n = torch.cross(e1, e2, dim=-1)  # (F,3)
+    n = n / torch.norm(n, dim=-1, keepdim=True)  # normalize the normal vector
+    n = torch.tile(n.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
 
     # set up the system of equations
-    arg_mat = torch.stack([ torch.tile(ray_directions.reshape(R,1,3),(1,F,1)), 
-                            torch.tile(e1.reshape(1,F,3),            (R,1,1)), 
-                            torch.tile(e2.reshape(1,F,3),            (R,1,1)) ], dim=2) # (R,F,3,3) # might need to be dim=3
-    arg_vec = ray_origins.reshape(R,1,3,1) - v1.reshape(1,F,3,1)  # (R,F,3,1)
+    ray_direction = torch.tile(ray_directions.reshape(R, 1, 3), (1, F, 1))  # (R,F,3)
+    e1 = torch.tile(e1.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
+    e2 = torch.tile(e2.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
+    arg_mat = torch.stack([ ray_direction, e1, e2 ], dim=2) # (R,F,3,3)
+    arg_vec = ray_origins.reshape(R, 1, 3) - v1.reshape(1, F, 3) # (R,F,3)
 
-    # solve the system of equations in batches to avoid memory issues
+    # set up the tensors for batch processing
     N = R * F
     if batch_size is None:
         batch_size = N
     batch_size = min(int(batch_size), N)
     arg_mat = arg_mat.reshape(N,3,3)  # (N,3,3)
     arg_vec = arg_vec.reshape(N,3,1)  # (N,3,1)
-
+    n       =       n.reshape(N,3  )  # (N,3)
 
     # init tqdm progress bar
     pbar = tqdm.tqdm(total=N, desc='Ray-triangle intersection')
 
     start = 0
-    t_u_v = []
+
+    dist, hit, hit_pos = [], []
+
     while start < N:
+
         end = min(start + batch_size, N)
-        batch_mat = arg_mat[start:end] # (batch_size,3,3)
-        batch_vec = arg_vec[start:end] # (batch_size,3,1)
+
+        # sequester batch
+        batch_mat = arg_mat[start:end] # (B,3,3)
+        batch_vec = arg_vec[start:end] # (B,3,1)
+        batch_n   =       n[start:end] # (B,3) 
+        batch_d   = ray_directions[start:end] # (B,3)
+        batch_o   = ray_origins[start:end]   # (B,3)
+
+        # move batch to gpu
         batch_mat = batch_mat.to('cuda')
         batch_vec = batch_vec.to('cuda')
-        batch_mat = batch_mat.inverse()  # (batch_size,3,3)
-        batch_t_u_v = batch_mat @ batch_vec  # (batch_size,3,1)
-        t_u_v.append(batch_t_u_v.to('cpu'))
+        batch_n   = batch_n.to(  'cuda')
+        batch_d   = batch_d.to(  'cuda')
+
+        # solve the system of equations
+        batch_t_u_v = torch.linalg.solve(batch_mat, batch_vec)  # (B,3,1)
+        del batch_mat, batch_vec  # free memory
+
+        # seperate t, u, v
+        t = batch_t_u_v[:, 0, 0] # (B,)
+        u = batch_t_u_v[:, 1, 0] # (B,)
+        v = batch_t_u_v[:, 2, 0] # (B,)
+        del batch_t_u_v  # free memory
+
+        # determine hit/miss
+        parallel = torch.sum(batch_d * batch_n, dim=-1).abs() < eps  # (B,)
+        hit_batch = (t > 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & ~parallel # (B,)
+        del u, v, parallel  # free memory
+        hit_pos_batch = batch_o + t.reshape(-1, 1) * batch_d  # (B,3)
+
+        # save results
+        dist.append(t)  # (B,)
+        hit.append(hit_batch)  # (B,)
+        hit_pos.append(hit_pos_batch)  # (B,3)
+
+        # free memory
+        del batch_d, batch_o, t, hit_batch, hit_pos_batch, batch_n
+
         start = end
 
         # update progress bar
         pbar.update(batch_size)
+
     pbar.close()
 
     # concatenate results
-    t_u_v = torch.cat(t_u_v, dim=0)  # (N,3,1)
-    t_u_v = t_u_v.reshape(R, F, 3)  # (R,F,3)
+    dist = torch.cat(dist, dim=0)  # (N,)
+    hit = torch.cat(hit, dim=0)    # (N,)
+    hit_pos = torch.cat(hit_pos, dim=0)  # (N,3)
 
-    # seperate the results
-    dist = t_u_v[:, :, 0, 0] # (R,F)
+    # reshape results to original shape
+    dist = dist.reshape(R, F)  # (R,F)
+    hit = hit.reshape(R, F)      # (R,F)
+    hit_pos = hit_pos.reshape(R, F, 3)  # (R,F,3)
+
+    dist,min_idx = torch.min(dist, dim=1) # (R,)
+    hit = torch.any(hit, dim=1)  # (R,)
+    
+    # TODO: im here
+
+    # hit_pos = hit_pos[torch.arange(R), idx]  # (R,3)
+
+    # normals = torch.zeros_like(hit_pos)  # (R,3)
 
     return hit, min_t, hit_pos, normals
 
