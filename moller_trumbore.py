@@ -131,9 +131,11 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     hit = torch.any(hit, dim=1)  # (R,)
 
     # get the normals of the first triangle hit for each ray
-    normals = torch.gather(n, 1, min_idx.unsqueeze(-1).expand(-1, -1, 3))  # (R,3)
+    n = n.reshape(R,F,3).to('cuda')
+    normals = n[torch.arange(R), min_idx, :]  # (R,3)
+    normals = normals / torch.norm(normals, dim=-1, keepdim=True)  # normalize the normals
 
-    return hit, dist, normals
+    return hit.to('cpu'), dist.to('cpu'), normals.to('cpu')
 
 
 # Wrapper function for computing ray-mesh returns
