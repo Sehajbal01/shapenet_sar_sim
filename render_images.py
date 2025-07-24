@@ -82,7 +82,7 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     target_poses = target_pose.reshape(1,4,4)
 
     # SAR raycasting 
-    all_ranges, all_energies, cam_centers, view_dirs = accumulate_scatters(
+    all_ranges, all_energies, azimuth, elevation = accumulate_scatters(
         target_poses, z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
@@ -90,7 +90,7 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     )  
 
     # plot the scatters
-    plt.scatter(all_ranges[0,0],all_energies[0,0])
+    plt.scatter(all_ranges[0],all_energies[0])
     plt.save_fig('scatter_plot.png')
 
     # Generate signal

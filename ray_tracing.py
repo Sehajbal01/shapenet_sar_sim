@@ -89,8 +89,7 @@ def generate_ray_grid(azimuth, elevation, side_len, distance, num_ray_side):
 def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0.9, alpha_2=0.1):
     '''
     finds where each ray hits the object and returns the range and energy of each ray
-    only returns rays that hit the object
-    There are R rays and R' rays that hit the object, so the output is (...,R').
+    only returns the rays that hit the object
 
     inputs:
         ray_origins (...,R,3): the origin of each ray
@@ -99,28 +98,41 @@ def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
     outputs:
+        TODO: this is wrong
         dist (...,R'): the distance of each ray that hit the object
         energy (...,R'): the energy of each ray that hit the object
     '''
-    device = ray_origins.device
     assert(ray_origins.shape == ray_directions.shape), 'Incompatible shapes, got {} and {}'.format(ray_origins.shape, ray_directions.shape)
+    shape_prefix = ray_origins.shape[:-2]  # (...,)
+    R = ray_origins.shape[-2]  # number of rays
+    ray_origins = ray_origins.reshape(-1, 3)  # (N*R,3)
+    ray_directions = ray_directions.reshape(-1, 3)  # (N*R,3)
+    N = int(ray_origins.shape[0]//R) # number of elements in the shape prefix
 
     # find where/how rays hit the object
-    mesh = load_obj_vertices_faces(object_filename, device) # (F,3), (F,3), (F,3)
-    hit, dist, hit_pos, normals = ray_triangle_intersect(ray_origins.reshape(-1,3), ray_directions.reshape(-1,3), *mesh) # (N*R,) (N*R,), (N*R,3), (N*R,3)
+    mesh = load_obj_vertices_faces(object_filename, 'cpu') # (F,3), (F,3), (F,3)
+    hit, dist, normals = ray_triangle_intersect(ray_origins.reshape(-1,3), ray_directions.reshape(-1,3), *mesh) # (N*R,) (N*R,), (N*R,3), (N*R,3)
+    hit = hit.reshape(N, R)  # (N,R)
+    dist = dist.reshape(N, R)  # (N,R)
+    normals = normals.reshape(N, R, 3)  # (N,R,3)
 
-    # eliminate rays that didn't hit
-    dist = dist[hit] # (...,R')
-    hit_pos = hit_pos[hit] # (...,R',3)
-    normals = normals[hit] # (...,R',3)
-    ray_directions = ray_directions[hit] # (...,R',3)
-    ray_origins = ray_origins[hit] # (...,R',3)
+    # TODO instead of doing list of different size tensors, just set range and energy to 0 for the rays that miss
 
     # Use cosine(angle) between ray and surface normal to get returned energy
-    cosine_similarity = torch.abs(torch.sum(-ray_directions * normals, dim=-1)) # (...,R')
+    cosine_similarity = torch.abs(torch.sum(ray_directions.to('cuda') * normals.to('cuda'), dim=-1)).to('cpu')  # (N*R,)
     energy = cosine_similarity * alpha_1 + alpha_2 # (...,R')
 
-    return dist, energy
+    # create a seperate tensor for dist/energy for each element in the shape prefix
+    hit_dist = []
+    hit_energy = []
+    for n in range(N):
+        batch_hit = hit[n]  # (R,)
+        batch_dist = dist[n][batch_hit]  # (R',)
+        batch_energy = energy[n][batch_hit]  # (R',)
+        hit_dist.append(batch_dist.to('cpu'))
+        hit_energy.append(batch_energy.to('cpu'))
+
+    return hit_dist, hit_energy
 
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
@@ -161,12 +173,16 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
     # Generate rays for all pulses at once
     ray_origins, ray_directions = generate_ray_grid(
-        azimuth, elevation, side_len, cam_distance,
+        azimuth.to('cuda'), elevation.to('cuda'), side_len, cam_distance.to('cuda'),
         n_rays_per_side
     )  # (T,P,R,3), (T,P,R,3)
+
+    # move back to cpu to save memory in rendering
+    ray_origins = ray_origins.to('cpu')
+    ray_directions = ray_directions.to('cpu')
     
     # compute the range and energy for all rays, ommitting the ones that miss
-    scatter_ranges, scatter_energies = get_range_and_energy( ray_origins, ray_directions, object_filename) # (T,P,R'), (T,P,R')
+    scatter_ranges, scatter_energies = get_range_and_energy( ray_origins, ray_directions, object_filename) # (T*P,R'), (T*P,R')
 
     return scatter_ranges, scatter_energies, azimuth, elevation
 

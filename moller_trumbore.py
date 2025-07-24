@@ -44,9 +44,9 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     e2 = v3 - v1 # (F,3)
 
     # normal vector
-    n = torch.cross(e1, e2, dim=-1)  # (F,3)
+    n = torch.cross(e1.to('cuda'), e2.to('cuda'), dim=-1)  # (F,3)
     n = n / torch.norm(n, dim=-1, keepdim=True)  # normalize the normal vector
-    n = torch.tile(n.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
+    n = torch.tile(n.reshape(1, F, 3), (R, 1, 1)).to('cpu')  # (R,F,3)
 
     # set up the system of equations
     ray_directions = torch.tile(ray_directions.reshape(R, 1, 3), (1, F, 1))  # (R,F,3)
@@ -127,13 +127,13 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     hit = hit.reshape(R, F)      # (R,F)
 
     # find the minimum distance and corresponding hit position
+    print('dist.device: ', dist.device)
     dist,min_idx = torch.min(dist, dim=1) # (R,)
     hit = torch.any(hit, dim=1)  # (R,)
 
     # get the normals of the first triangle hit for each ray
     n = n.reshape(R,F,3).to('cuda')
     normals = n[torch.arange(R), min_idx, :]  # (R,3)
-    normals = normals / torch.norm(normals, dim=-1, keepdim=True)  # normalize the normals
 
     return hit.to('cpu'), dist.to('cpu'), normals.to('cpu')
 
