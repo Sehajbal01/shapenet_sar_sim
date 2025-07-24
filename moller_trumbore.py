@@ -33,11 +33,11 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     outputs:
         hit (R): boolean mask indicating which rays hit the triangles
         dist (R): distance of each ray that hit the triangle, inf if it missed
-        hit_pos (R, 3): coordinates of the intersection points
         normals (R, 3): surface normals at the intersection points
     '''
     R = ray_origins.shape[0]  # number of rays
     F = v1.shape[0]           # number of triangles
+    N = R * F
 
     # edge vectors
     e1 = v2 - v1 # (F,3)
@@ -49,27 +49,28 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     n = torch.tile(n.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
 
     # set up the system of equations
-    ray_direction = torch.tile(ray_directions.reshape(R, 1, 3), (1, F, 1))  # (R,F,3)
+    ray_directions = torch.tile(ray_directions.reshape(R, 1, 3), (1, F, 1))  # (R,F,3)
     e1 = torch.tile(e1.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
     e2 = torch.tile(e2.reshape(1, F, 3), (R, 1, 1))  # (R,F,3)
-    arg_mat = torch.stack([ ray_direction, e1, e2 ], dim=2) # (R,F,3,3)
+    arg_mat = torch.stack([ ray_directions, e1, e2 ], dim=2) # (R,F,3,3)
     arg_vec = ray_origins.reshape(R, 1, 3) - v1.reshape(1, F, 3) # (R,F,3)
 
     # set up the tensors for batch processing
-    N = R * F
     if batch_size is None:
         batch_size = N
     batch_size = min(int(batch_size), N)
     arg_mat = arg_mat.reshape(N,3,3)  # (N,3,3)
     arg_vec = arg_vec.reshape(N,3,1)  # (N,3,1)
     n       =       n.reshape(N,3  )  # (N,3)
+    ray_directions = ray_directions.reshape(N,3)  # (N,3)
+    ray_origins = torch.tile(ray_origins.reshape(R, 1, 3), (1, F, 1)).reshape(N, 3)  # (N,3)
 
     # init tqdm progress bar
     pbar = tqdm.tqdm(total=N, desc='Ray-triangle intersection')
 
     start = 0
 
-    dist, hit, hit_pos = [], []
+    dist, hit = [], []
 
     while start < N:
 
@@ -102,15 +103,13 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
         parallel = torch.sum(batch_d * batch_n, dim=-1).abs() < eps  # (B,)
         hit_batch = (t > 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & ~parallel # (B,)
         del u, v, parallel  # free memory
-        hit_pos_batch = batch_o + t.reshape(-1, 1) * batch_d  # (B,3)
 
         # save results
         dist.append(t)  # (B,)
         hit.append(hit_batch)  # (B,)
-        hit_pos.append(hit_pos_batch)  # (B,3)
 
         # free memory
-        del batch_d, batch_o, t, hit_batch, hit_pos_batch, batch_n
+        del batch_d, batch_o, t, hit_batch, batch_n
 
         start = end
 
@@ -122,23 +121,20 @@ def ray_triangle_intersect(ray_origins, ray_directions, v1, v2, v3, eps=1e-8, ba
     # concatenate results
     dist = torch.cat(dist, dim=0)  # (N,)
     hit = torch.cat(hit, dim=0)    # (N,)
-    hit_pos = torch.cat(hit_pos, dim=0)  # (N,3)
 
     # reshape results to original shape
     dist = dist.reshape(R, F)  # (R,F)
     hit = hit.reshape(R, F)      # (R,F)
-    hit_pos = hit_pos.reshape(R, F, 3)  # (R,F,3)
 
+    # find the minimum distance and corresponding hit position
     dist,min_idx = torch.min(dist, dim=1) # (R,)
     hit = torch.any(hit, dim=1)  # (R,)
-    
-    # TODO: im here
 
-    # hit_pos = hit_pos[torch.arange(R), idx]  # (R,3)
+    # get the normals of the first triangle hit for each ray
+    normals = torch.gather(n, 1, min_idx.unsqueeze(-1).expand(-1, -1, 3))  # (R,3)
 
-    # normals = torch.zeros_like(hit_pos)  # (R,3)
+    return hit, dist, normals
 
-    return hit, min_t, hit_pos, normals
 
 # Wrapper function for computing ray-mesh returns
 def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0.9, alpha_2=0.1):
