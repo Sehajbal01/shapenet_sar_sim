@@ -19,7 +19,11 @@ device = 'cuda'
 mesh = load_objs_as_meshes([obj_filename], device=device)
 
 # Set up the camera
-R, T = look_at_view_transform(1.8, 45, 45) # distance, elevation, azimuth
+azimuths = torch.tensor([0, 30, 60])  # in degrees
+elevations = torch.tensor([15, 45, 60])  # in degrees
+R, T = look_at_view_transform(1.8, elevations, azimuths) # distance, elevation, azimuth
+print('R: ', R)
+print('T: ', T)
 cameras = FoVOrthographicCameras(device=device, R=R, T=T, 
                                  min_x = -0.9, max_x = 0.9,
                                  min_y = -0.9, max_y = 0.9,)
