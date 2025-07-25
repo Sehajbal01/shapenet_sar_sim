@@ -112,27 +112,20 @@ def get_range_and_energy(ray_origins, ray_directions, object_filename, alpha_1=0
     # find where/how rays hit the object
     mesh = load_obj_vertices_faces(object_filename, 'cpu') # (F,3), (F,3), (F,3)
     hit, dist, normals = ray_triangle_intersect(ray_origins.reshape(-1,3), ray_directions.reshape(-1,3), *mesh) # (N*R,) (N*R,), (N*R,3), (N*R,3)
-    hit = hit.reshape(N, R)  # (N,R)
-    dist = dist.reshape(N, R)  # (N,R)
-    normals = normals.reshape(N, R, 3)  # (N,R,3)
-
-    # TODO instead of doing list of different size tensors, just set range and energy to 0 for the rays that miss
+    hit = hit.reshape(*shape_prefix, R)  # (...,R)
+    dist = dist.reshape(*shape_prefix, R)  # (...,R)
+    normals = normals.reshape(*shape_prefix, R, 3)  # (...,R,3)
 
     # Use cosine(angle) between ray and surface normal to get returned energy
-    cosine_similarity = torch.abs(torch.sum(ray_directions.to('cuda') * normals.to('cuda'), dim=-1)).to('cpu')  # (N*R,)
-    energy = cosine_similarity * alpha_1 + alpha_2 # (...,R')
+    cosine_similarity = torch.abs(torch.sum(ray_directions.reshape(*shape_prefix,R,3).to('cuda') * normals.to('cuda'), dim=-1)).to('cpu')  # (...,R)
+    energy = cosine_similarity * alpha_1 + alpha_2 # (...,R)
 
-    # create a seperate tensor for dist/energy for each element in the shape prefix
-    hit_dist = []
-    hit_energy = []
-    for n in range(N):
-        batch_hit = hit[n]  # (R,)
-        batch_dist = dist[n][batch_hit]  # (R',)
-        batch_energy = energy[n][batch_hit]  # (R',)
-        hit_dist.append(batch_dist.to('cpu'))
-        hit_energy.append(batch_energy.to('cpu'))
+    # set all rays that missed to 0 for distance and energy
+    missed = ~hit
+    dist[missed] = 0.0
+    energy[missed] = 0.0
 
-    return hit_dist, hit_energy
+    return dist, energy
 
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
@@ -182,9 +175,10 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     ray_directions = ray_directions.to('cpu')
     
     # compute the range and energy for all rays, ommitting the ones that miss
-    scatter_ranges, scatter_energies = get_range_and_energy( ray_origins, ray_directions, object_filename) # (T*P,R'), (T*P,R')
+    scatter_ranges, scatter_energies = get_range_and_energy( ray_origins, ray_directions, object_filename) # (T,P,R), (T,P,R)
 
     return scatter_ranges, scatter_energies, azimuth, elevation
+    #          (T,P,R)         (T,P,R)       (T,P)      (T,P)
 
 
 
