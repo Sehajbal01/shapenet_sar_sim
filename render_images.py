@@ -75,9 +75,9 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     ):
 
     # set device
-    device = 'cuda' # everything but the rendering happens on CPU
+    device = 'cuda'
 
-    #cpu call
+    # get target pose
     target_pose = camera_to_world_matrix(az_angle, ele_angle, (z_near + z_far) / 2, device=device, debug=False)
     target_poses = target_pose.reshape(1,4,4)
 
@@ -89,13 +89,6 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=128,
     )
-    # print('all_ranges.shape  : ', all_ranges.shape)
-    # print('all_energies.shape: ', all_energies.shape)
-    # print('azimuth.shape     : ', azimuth.shape)
-    # print('elevation.shape   : ', elevation.shape)
-    # print('distance.shape    : ', distance.shape)
-    # print('all_ranges: ', all_ranges[0,0]   )
-    # print('all_energies: ', all_energies[0,0] )
 
     # plot the scatters
     plt.scatter(all_ranges[0,0].cpu().numpy(),all_energies[0,0].cpu().numpy())
@@ -110,9 +103,9 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
 
 if __name__ == '__main__':
     
-    sar_render_image( '/workspace/data/srncars/02958343/7dac31838b627748eb631ba05bd8dfe/models/model_normalized.obj',
-                      50,
-                      0,
-                      45,
-                      180
+    sar_render_image( '/workspace/data/srncars/02958343/7dac31838b627748eb631ba05bd8dfe/models/model_normalized.obj', # fname
+                      1, # num_pulses
+                      0, # azimuth angle
+                      45, # elevation angle
+                      0 # azimuth spread
     )

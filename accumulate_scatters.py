@@ -137,7 +137,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
             masked_e = energy_map[hit]
             masked_e = masked_e - masked_e.min()  # shift to start from 0
-            masked_e = masked_e / masked_e.max()  # normalize to [0,
+            masked_e = masked_e / masked_e.max()  # normalize to [0,1]
             e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
             e_im[hit] = masked_e  # apply the mask
 
