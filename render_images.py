@@ -87,11 +87,18 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
         target_poses, z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
-        n_rays_per_side=32
-    )  
+        n_rays_per_side=128,
+    )
+    # print('all_ranges.shape  : ', all_ranges.shape)
+    # print('all_energies.shape: ', all_energies.shape)
+    # print('azimuth.shape     : ', azimuth.shape)
+    # print('elevation.shape   : ', elevation.shape)
+    # print('distance.shape    : ', distance.shape)
+    # print('all_ranges: ', all_ranges[0,0]   )
+    # print('all_energies: ', all_energies[0,0] )
 
     # plot the scatters
-    plt.scatter(all_ranges[0,0],all_energies[0,0])
+    plt.scatter(all_ranges[0,0].cpu().numpy(),all_energies[0,0].cpu().numpy())
     plt.savefig('figures/scatter_plot.png')
     plt.close()
 
