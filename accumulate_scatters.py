@@ -1,3 +1,4 @@
+import imageio
 import sys
 import torch
 from PIL import Image
@@ -31,7 +32,7 @@ def extract_pose_info(target_poses):
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
-               alpha_1=1.0, alpha_2=0.0):
+               alpha_1=1.0, alpha_2=0.0, debug_gif=False):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -45,6 +46,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         n_rays_per_side (int): the number of rays on each side of the triangle, yielding num_ray_side**2 total rays
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
+        debug_gif (bool): whether to save a gif of the depth and energy images
 
     outputs:
         range (T,P,R'): the range of all the rays that hit the object
@@ -77,13 +79,16 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
     scatter_energies = []
+    forward_vectors = []
+    dm_e_images = []  # to store depth and energy images
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
+        forward_vectors.append([])
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
-            rotation, translation = look_at_view_transform(cam_distance[t], cam_elevation[t], azimuth[t, p]) # distance, elevation, azimuth
+            rotation, translation = look_at_view_transform(cam_distance[t], cam_elevation[t], azimuth[t, p],device=device) # distance, elevation, azimuth
             cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
                                          min_x = -half_side_len, max_x = half_side_len,
                                          min_y = -half_side_len, max_y = half_side_len,
@@ -115,60 +120,59 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             valid_face_ids = face_ids[hit] # (R',)
 
             # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-            az_rad = azimuth[t, p] * np.pi / 180.0  # convert to radians
-            el_rad = cam_elevation[t] * np.pi / 180.0  # convert to radians
-            ray_directions = -torch.stack([
-                torch.cos(az_rad) * torch.cos(el_rad),
-                torch.sin(az_rad) * torch.cos(el_rad),
-                                    torch.sin(el_rad),
-            ], dim=-1).to(device) # (3,)
+            # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
+            forward_vector = rotation[0,:,2] # (3,)
             energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * ray_directions, dim=-1)) * alpha_1 + alpha_2 # (r, r)
-            
+            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
 
+            # produce a frame of the depth and energy maps
+            if debug_gif:
+                masked_dm = depth_map[hit]
+                masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
+                masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
+                masked_dm = 1 - masked_dm  # invert the depth map
+                dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
+                dm_im[hit] = masked_dm  # apply the mask
 
-            ################################################################################
-            masked_dm = depth_map[hit]
-            masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-            masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-            masked_dm = 1 - masked_dm  # invert the depth map
-            dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-            dm_im[hit] = masked_dm  # apply the mask
+                masked_e = energy_map[hit]
+                masked_e = masked_e - masked_e.min()  # shift to start from 0
+                masked_e = masked_e / masked_e.max()  # normalize to [0,1]
+                e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
+                e_im[hit] = masked_e  # apply the mask
 
-            masked_e = energy_map[hit]
-            masked_e = masked_e - masked_e.min()  # shift to start from 0
-            masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-            e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-            e_im[hit] = masked_e  # apply the mask
+                e_im = e_im.cpu().numpy()  # convert to numpy for saving
+                dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
+                dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
+                dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
 
-            e_im = e_im.cpu().numpy()  # convert to numpy for saving
-            dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-            dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-
-            im = Image.fromarray((dm_e_im * 255).astype(np.uint8))
-            im.save('figures/depth_energy_image.png')
-            sys.exit()
-
-            ################################################################################
+                dm_e_images.append(dm_e_im)  # store the depth and energy image
 
             # finalize the range and energy
             depth_map[~hit]  = 0.0  # set missed rays to 0
-            energy_map[~hit] = 0.0  # set missed rays to 0
             scatter_ranges[t].append(depth_map.reshape(-1))  # (R,)
             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
+            forward_vectors[t].append(forward_vector)
 
 
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
+        forward_vectors[t] = torch.stack(forward_vectors[t], dim=0)  # (P, 3)
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
+    forward_vectors = torch.stack(forward_vectors, dim=0)  # (T, P, 3)
 
     # tile elevation and distance to match the shape of azimuth
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance
-    #           (T, P, R)   (T, P, R)        (T, P)    (T, P)      (T, P)
+    # make a gif of the dm_e images lasts 5 seconds
+    if debug_gif and len(dm_e_images) > 0:
+        dm_e_images = np.stack(dm_e_images, axis=0)  # (N, H, W)
+        fps = dm_e_images.shape[0]/4.0
+        imageio.mimsave('figures/depth_energy_images.gif', dm_e_images, fps=fps, format='GIF', loop=0)
+
+    return scatter_ranges, scatter_energies, azimuth, elevation, distance, forward_vectors
+    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)
 
 

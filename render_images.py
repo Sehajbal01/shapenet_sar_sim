@@ -82,12 +82,13 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     target_poses = target_pose.reshape(1,4,4)
 
     # SAR raycasting 
-    # (T,P,R)      (T,P,R)      (T,P)    (T,P)      (T,P)
-    all_ranges, all_energies, azimuth, elevation, distance = accumulate_scatters(
+    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,P,3)
+    all_ranges, all_energies, azimuth, elevation, distance, forward_vectors = accumulate_scatters(
         target_poses, z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=128,
+        debug_gif=True,
     )
 
     # plot the scatters
@@ -104,8 +105,8 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
 if __name__ == '__main__':
     
     sar_render_image( '/workspace/data/srncars/02958343/7dac31838b627748eb631ba05bd8dfe/models/model_normalized.obj', # fname
-                      1, # num_pulses
-                      0, # azimuth angle
+                      50, # num_pulses
+                      90, # azimuth angle
                       45, # elevation angle
-                      0 # azimuth spread
+                      360 # azimuth spread
     )
