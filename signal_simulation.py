@@ -10,6 +10,7 @@ from pytorch3d.renderer import (
     RasterizationSettings, 
     MeshRasterizer,  
 )
+import math
 
 def extract_pose_info(target_poses):
     '''
@@ -29,6 +30,7 @@ def extract_pose_info(target_poses):
     cam_azimuth   = torch.where(torch.isnan(cam_azimuth), torch.zeros_like(cam_azimuth), cam_azimuth)  # handle NaN values
     cam_azimuth   = torch.where(cam_center[:, 1] < 0, 2 * torch.pi - cam_azimuth, cam_azimuth) # (T,)
     return cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation, cam_azimuth
+
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
@@ -58,7 +60,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     P = n_pulses               # no. of pulses per view
     half_side_len = abs(z_far - z_near) / 2
 
-    # Pull out camera positions info
+    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #                 (T,)         (T,)           (T,)
     cam_elevation = cam_elevation * 180 / np.pi
@@ -176,3 +178,113 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)
 
 
+
+def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
+        spatial_bw = 20, spatial_fs = 20,
+        batch_size = None,
+):
+    """
+    Simulates the received signal for the SAR algorithm given energy-range scatter.
+    z is range. Z is the number of samples in the output signal.
+
+    Inputs:
+        scatter_z (...,R): the range of each scatter point
+        scatter_e (...,R): the energy of each scatter point
+        z_near (float): z near to use when rendering
+        z_far (float): z far to use when rendering
+        batch_size (int): number of signals to process in a batch, None means no batching
+
+    Returns:
+        received_signal (tensor): simulated received signal .shape=(..., Z)
+    """
+
+    # reshaping
+    R = scatter_z.shape[-1]  # number of scatter points
+    shape_prefix = scatter_z.shape[:-1]  # shape before the last dimension
+    N = np.prod(shape_prefix)
+    assert(len(scatter_z.shape) > 1), "scatter_z should have at least 2 dimensions, but got %d" % len(scatter_z.shape)
+    assert(scatter_z.shape == scatter_e.shape), "scatter_z and scatter_e should have the same shape, but got %s and %s" % (scatter_z.shape, scatter_e.shape)
+
+    # calculate the center of each spatial sample
+    device = scatter_z.device
+    first_z = int(math.ceil(z_near*spatial_fs))
+    last_z =  int(math.floor(z_far*spatial_fs))
+    sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
+    Z = len(sample_z)
+
+    # calculate the received signal for each pulse
+    # received_signal = sum_over_R_scatters( scatter_e * torch.sinc( spatial_bw * (scatter_z - sample_z) ) )
+    # When we do the broadcasting we want the shape to be (N,R,Z) before the sum, then sum over the R dimension
+    if batch_size is None:
+        received_signal = torch.sum(
+            scatter_e.reshape(N,R,1) * \
+            torch.sinc( spatial_bw * \
+                        (scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z))
+                      ),
+            dim=1
+        ) # (N, Z)
+
+    # calculate the received signal in batches to save memory
+    else:
+        received_signal = []
+
+        reshaped_scatter_e = scatter_e.reshape(N,R,1)
+        reshaped_scatter_z = scatter_z.reshape(N,R,1)
+        reshapes_sample_z  = sample_z.reshape(1,1,Z)
+
+        start = 0
+        while start < N:
+            end = min(start + batch_size, N)
+            received_signal.append(
+                torch.sum( reshaped_scatter_e[start:end] * \
+                           torch.sinc( spatial_bw * \
+                                       (reshaped_scatter_z[start:end] - reshapes_sample_z)
+                                     ),
+                           dim=2
+            ))  # (N', Z)
+            start = end
+
+        received_signal = torch.cat(received_signal, dim=1) # (N, Z)
+
+    # return stuff
+    received_signal = received_signal.reshape(*shape_prefix, Z)  # (..., Z)
+    return received_signal, sample_z
+
+
+
+def resample_signal(self, signal, out_samples, dim = -1):
+    """
+    Resample the signal to the specified number of output samples.
+    Uses linear interpolation to resample the signal.
+    
+    Args:
+        signal (tensor): input signal to resample .shape=(..., in_samples, ...)
+        out_samples (int): number of output samples to resample to
+        dim (int): dimension along which to resample the signal
+    
+    Returns:
+        resampled_signal (tensor): resampled signal .shape=(..., out_samples, ...)
+    """
+    # get shape information
+    in_samples = signal.shape[dim]
+    if in_samples == out_samples: # no need to resample when the number of samples is the same
+        return signal
+    assert(out_samples > 1), "out_samples should be greater than 1, but got %d" % out_samples
+    in_sample_z = torch.arange(in_samples, device=signal.device, dtype=signal.dtype)  # (in_samples,)
+    out_sample_z = torch.linspace(0, in_samples-1, out_samples, device=signal.device, dtype=signal.dtype)  # (out_samples,)
+    shape_prefix = list(signal.shape[:dim])  # shape before the resampling dimension
+    shape_suffix = list(signal.shape[dim+1:])  # shape after the resampling dimension
+    n_prefix = np.prod(shape_prefix) if shape_prefix else 1  # number of elements before the resampling dimension
+    n_suffix = np.prod(shape_suffix) if shape_suffix else 1  # number of elements after the resampling dimension
+    # resample the signal using sinc interpolation
+    # equation: resampled_signal = sum_over_inputs(torch.sinc(in_sample_z - out_sample_z) * signal)
+    resampled_signal = torch.sum(
+        #          (1, in_samples)                     (out_samples, 1)
+        torch.sinc(in_sample_z.reshape(1,-1) - out_sample_z.reshape(-1, 1)).reshape(1,out_samples, in_samples, 1) * \
+        signal.reshape(n_prefix, 1, in_samples, n_suffix),
+        dim=2
+    ) # (n_prefix, out_samples, n_suffix)
+    
+    # reshape and return
+    resampled_signal = resampled_signal.reshape(shape_prefix + [out_samples] + shape_suffix)  # (shape_prefix, out_samples, shape_suffix)
+    return resampled_signal  # (shape_prefix, out_samples, shape_suffix)
