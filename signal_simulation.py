@@ -1,3 +1,4 @@
+import os
 import imageio
 import sys
 import torch
@@ -11,6 +12,7 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
+from utils import get_next_path
 
 def extract_pose_info(target_poses):
     '''
@@ -65,6 +67,9 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     #                 (T,)         (T,)           (T,)
     cam_elevation = cam_elevation * 180 / np.pi
     cam_azimuth   = cam_azimuth   * 180 / np.pi
+    print('extracted az: ', cam_azimuth)
+    print('extracted el: ', cam_elevation)
+    print()
 
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
@@ -148,6 +153,12 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                 dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
 
                 dm_e_images.append(dm_e_im)  # store the depth and energy image
+
+                # save current image to a file in a tmp folder in figures
+                if not os.path.exists('figures/tmp'):
+                    os.makedirs('figures/tmp')
+                path = get_next_path(f'figures/tmp/depth_energy.png')
+                imageio.imwrite(path, dm_e_im)
 
             # finalize the range and energy
             depth_map[~hit]  = 0.0  # set missed rays to 0
