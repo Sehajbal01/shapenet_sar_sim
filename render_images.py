@@ -1,3 +1,4 @@
+import tqdm
 import PIL
 import imageio
 import cv2
@@ -7,21 +8,9 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from signal_simulation import accumulate_scatters, interpolate_signal
-from pytorch3d.renderer import look_at_view_transform
+from utils import camera_to_world_matrix
 
 
-def camera_to_world_matrix(azimuth, elevation, distance, device='cuda', debug=False):
-    rotation, translation = look_at_view_transform(distance, elevation, azimuth,device=device)
-    pose = torch.eye(4, device=device)
-    pose[:3, :3] = rotation[0]
-    pose[:3, 3] = translation[0]
-    pose = pose.inverse()
-    w = pose[2,:3]
-    c = pose[3,:3]
-    print('c / torch.norm(c): ', c / torch.norm(c))
-    print('w: ', w)
-
-    return pose.inverse()
 
 def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
                       z_near = 0.8,
@@ -34,9 +23,6 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     device = 'cuda'
 
     # get target pose
-    print('input az: ', az_angle)
-    print('input el: ', ele_angle)
-    print()
     target_pose = camera_to_world_matrix(az_angle, ele_angle, (z_near + z_far) / 2, device=device, debug=False)
     target_poses = target_pose.reshape(1,4,4)
 
@@ -57,8 +43,13 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
             batch_size = None,
     )
 
+    signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far)
+
+
+def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
+
     # plot the signal and scatters for every pulse
-    for p in range(signals.shape[1]):
+    for p in tqdm.tqdm(range(signals.shape[1]), desc='Plotting scatters and signals'):
         plt.figure(figsize=(12, 6))
         plt.subplot(1, 2, 1)
         plt.scatter(all_ranges[0,p].cpu().numpy(),all_energies[0,p].cpu().numpy())
@@ -80,7 +71,7 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
     # [ [depth, energy],
     #   [scatter, signal] ]
     images = []
-    for p in range(signals.shape[1]):
+    for p in tqdm.tqdm(range(signals.shape[1]), desc='Creating GIF'):
 
         # load the depth energy image file
         depth_energy_path = f'figures/tmp/depth_energy_{p:02d}.png'
@@ -109,8 +100,14 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
         # save image to list
         images.append(combined_im)
 
+    # make a boomerang gif
+    images = np.stack(images, axis=0) # (N, H, W, C)
+    time_reversed = np.flip(images, axis=0)  # reverse the time dimension
+    images = np.concatenate((images, time_reversed), axis=0)  # concatenate original and reversed
+
     # create gif from the images
     fps = signals.shape[1]/4.0
+    print('Saving GIF with %.1f fps...'% fps)
     imageio.mimsave('figures/dm_em_sc_si.gif', images, fps=fps, format='GIF', loop=0)
 
 if __name__ == '__main__':
@@ -119,5 +116,5 @@ if __name__ == '__main__':
                       50, # num_pulses
                       90, # azimuth angle
                       45, # elevation angle
-                      360 # azimuth spread
+                      30 # azimuth spread
     )

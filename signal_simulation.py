@@ -12,26 +12,8 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path
+from utils import get_next_path, extract_pose_info
 
-def extract_pose_info(target_poses):
-    '''
-    Extracts camera position and orientation from the target poses.
-    inputs:
-        target_poses (T,4,4): the camera poses in world coordinates
-    outputs:
-        see the return statement below
-    '''
-    cam_center    = target_poses[:, :3, 3] # (T,3)
-    cam_right     = target_poses[:, :3, 0]  # (T,3)
-    cam_up        = target_poses[:, :3, 1]     # (T,3)
-    cam_forward   = target_poses[:, :3, 2] # (T,3)
-    cam_distance  = torch.norm(cam_center, dim=-1) # (T,)
-    cam_elevation = torch.asin(cam_center[:, 2] / cam_distance) # (T,)
-    cam_azimuth   = torch.acos(cam_center[:, 0] / (cam_distance * torch.cos(cam_elevation))) # (T,)
-    cam_azimuth   = torch.where(torch.isnan(cam_azimuth), torch.zeros_like(cam_azimuth), cam_azimuth)  # handle NaN values
-    cam_azimuth   = torch.where(cam_center[:, 1] < 0, 2 * torch.pi - cam_azimuth, cam_azimuth) # (T,)
-    return cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation, cam_azimuth
 
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
@@ -67,9 +49,6 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     #                 (T,)         (T,)           (T,)
     cam_elevation = cam_elevation * 180 / np.pi
     cam_azimuth   = cam_azimuth   * 180 / np.pi
-    print('extracted az: ', cam_azimuth)
-    print('extracted el: ', cam_elevation)
-    print()
 
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
