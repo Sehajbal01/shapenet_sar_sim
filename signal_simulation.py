@@ -235,7 +235,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
 
     # return stuff
     received_signal = received_signal.reshape(*shape_prefix, Z)  # (..., Z)
-    return received_signal, sample_z
+    return received_signal/R, sample_z # normalize by the number of rays
 
 
 

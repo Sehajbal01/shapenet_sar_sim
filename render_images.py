@@ -17,6 +17,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         spatial_bw = 64,
                         spatial_fs = 64,
                         debug_gif = False,
+                        debug_gif_suffix = None,
                         image_size = 128,
                         n_rays_per_side = 128,
     ):
@@ -46,7 +47,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far)
+        signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix =debug_gif_suffix)
 
     return sar_image
 
@@ -110,9 +111,13 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     # return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
 
 
-def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
+def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
 
     # plot the signal and scatters for every pulse
+    sig_max = signals.max().item()
+    sig_min = signals.min().item()
+    energy_max = all_energies.max().item()
+    energy_min = all_energies.min().item()
     for p in tqdm.tqdm(range(signals.shape[1]), desc='Plotting scatters and signals'):
         plt.figure(figsize=(12, 6))
         plt.subplot(1, 2, 1)
@@ -121,12 +126,16 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
         plt.xlabel('Range')
         plt.ylabel('Energy')
         plt.xlim(z_near, z_far)
+        plt.ylim(energy_min, energy_max)
         plt.subplot(1, 2, 2)
         plt.plot(sample_z.cpu().numpy(), signals[0,p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
         plt.ylabel('Amplitude')
+        plt.xlim(z_near, z_far)
+        plt.ylim(sig_min, sig_max)
         plt.tight_layout()
+
         path = get_next_path('figures/tmp/scatters_signal.png')
         plt.savefig(path)
         plt.close()
@@ -172,7 +181,12 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
     # create gif from the images
     fps = signals.shape[1]/4.0
     print('Saving GIF with %.1f fps...'% fps)
-    imageio.mimsave(get_next_path('figures/dm_em_sc_si.gif'), images, fps=fps, format='GIF', loop=0)
+    if suffix is not None:
+        path = f'figures/dm_em_sc_si_{suffix}.gif'
+    else:
+        path = get_next_path('figures/dm_em_sc_si.gif')
+    imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
+    print('GIF saved to: ', path)
 
 
 if __name__ == '__main__':
@@ -202,6 +216,7 @@ if __name__ == '__main__':
                       target_poses, # poses
                       180, # azimuth spread
                       debug_gif=True, # debug gif
+                      debug_gif_suffix = '%s_%s'%(pose_num,obj_id)
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -210,6 +225,8 @@ if __name__ == '__main__':
     sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
     image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
     image = PIL.Image.fromarray(image)  # convert to PIL image
-    image.save(get_next_path('figures/sar_rendered_image.png'))  # save the image
+    path = 'figures/sar_rgb_image_%s_%s.png'%(pose_num, obj_id)
+    image.save(path)  # save the image
+    print('Saved SAR and RGB image to: ', path)
 
     
