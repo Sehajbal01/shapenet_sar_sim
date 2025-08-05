@@ -3,7 +3,7 @@ import PIL
 import imageio
 import cv2
 import os
-from utils import get_next_path
+from utils import get_next_path, generate_pose_mat
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
@@ -26,24 +26,37 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     device = 'cuda'
 
     # SAR raytracing 
-    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,P,3)          (T,)         (T,)
-    all_ranges, all_energies, azimuth, elevation, distance, forward_vectors, cam_azimuth, cam_distance = accumulate_scatters(
+    print('Accumulating scatters...')
+    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
+    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters(
         poses.to(device), z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=n_rays_per_side,
         debug_gif=debug_gif,
     )
+    print('done.')
 
     # Generate signal
     # (T,P,Z) (Z,)
+    print('Interpolating signal...')
     signals, sample_z = interpolate_signal(all_ranges, all_energies, z_near, z_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
             batch_size = None,
     )
+    print('done.')
+
+    # compute forward vectors from azimuth and elevation angles
+    forward_vectors = -torch.stack([
+        torch.cos(azimuth) * torch.cos(elevation),
+        torch.sin(azimuth) * torch.cos(elevation),
+        torch.sin(elevation),
+    ], dim=-1)  # (T, P, 3)
 
     # Compute sar image
+    print('Computing SAR image...')
     sar_image = convolutional_back_projection(signals, sample_z, forward_vectors, cam_azimuth, cam_distance, z_near-z_far, spatial_fs, image_size, image_size)
+    print('done.')
 
     # make a gif if desired
     if debug_gif:
@@ -209,14 +222,23 @@ if __name__ == '__main__':
 
     # get azimuth, elevation, and distance from the pose
     target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
+    # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
     
     # render the SAR images for each pose
     sar = sar_render_image( mesh_path, # fname
-                      30, # num_pulses
-                      target_poses, # poses
-                      180, # azimuth spread
-                      debug_gif=True, # debug gif
-                      debug_gif_suffix = '%s_%s'%(pose_num,obj_id)
+                            30, # num_pulses
+                            target_poses, # poses
+                            180, # azimuth spread
+
+                            z_near = 0.8,
+                            z_far  = 1.8,
+                            spatial_bw = 64,
+                            spatial_fs = 64,
+                            image_size = 128,
+                            n_rays_per_side = 500,
+
+                            debug_gif=True, # debug gif
+                            debug_gif_suffix = '%s_%s'%(pose_num,obj_id),
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image

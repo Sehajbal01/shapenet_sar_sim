@@ -39,6 +39,7 @@ def get_next_path(path):
 def extract_pose_info(target_poses, format='srn_cars'):
     '''
     Extracts camera position and orientation from the target poses.
+    Angles are in degrees.
 
     inputs:
         target_poses (...,4,4): the camera poses in world coordinates
@@ -47,21 +48,81 @@ def extract_pose_info(target_poses, format='srn_cars'):
     '''
     if format == 'srn_cars':
         # extract vectors
-        cam_center    = target_poses[..., :3, 3] # (...,3)
         cam_right     = target_poses[..., :3, 0] # (...,3)
         cam_up        = target_poses[..., :3, 1] # (...,3)
         cam_forward   = target_poses[..., :3, 2] # (...,3)
+        cam_center    = target_poses[..., :3, 3] # (...,3)
 
         # calculate distance, azimuth, and elevation
-        cam_distance = torch.norm(cam_center, dim=-1)  # (...,)
+        cam_distance  = torch.norm(cam_center, dim=-1)  # (...,)
+        cam_azimuth   = torch.where(cam_right[...,0] < 0, torch.acos(cam_right[...,1]), 2*np.pi - torch.acos(cam_right[...,1]))  # (...)
         cam_elevation = torch.asin(cam_center[..., 2] / cam_distance)  # (...)
-        cam_azimuth = torch.acos(cam_center[..., 0] / cam_distance / torch.cos(cam_elevation))  # (...)
-        cam_azimuth = torch.where(cam_center[..., 1] < 0, 2 * np.pi - cam_azimuth, cam_azimuth)  # (...)
+        
 
     else:
         raise NotImplementedError("Unknown format for extract_pose_info(): %s" % format)
 
-    return cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation, cam_azimuth
+    return cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation*180/np.pi, cam_azimuth*180/np.pi
+
+
+def generate_pose_mat(azimuth,elevation,distance,device='cpu',format='srn_cars'):
+    '''
+    Generates a camera pose matrix from azimuth, elevation, and distance.
+
+    inputs:
+        azimuth   float or (...,): azimuth angle in radians
+        elevation float or (...,): elevation angle in radians
+        distance  float or (...,): distance from the origin
+        device    (str): device to use for the tensors, e.g., 'cpu'
+    outputs:
+        pose_mat  (...,4,4): the camera pose matrix in world coordinates
+    '''
+    type_conv = lambda x: torch.tensor(x, device=device, dtype=torch.float32) if type(x) is not torch.Tensor else x
+    azimuth   = 3.14159/180 * type_conv(azimuth)
+    elevation = 3.14159/180 * type_conv(elevation)
+    distance  = type_conv(distance)
+
+    if format == 'srn_cars':
+
+        # compute right, up, and forward vectors
+        u = torch.stack([
+            -torch.sin(azimuth),
+            torch.cos(azimuth),
+            torch.zeros_like(azimuth),
+        ], dim = -1) # (...,3)
+        v = torch.stack([
+            -torch.cos(azimuth) * torch.sin(elevation),
+            -torch.sin(azimuth) * torch.sin(elevation),
+             torch.cos(elevation)
+        ],dim = -1) # (...,3)
+        w = -torch.stack([
+            torch.cos(azimuth) * torch.cos(elevation),
+            torch.sin(azimuth) * torch.cos(elevation),
+            torch.sin(elevation),
+        ], 
+        dim = -1) # (...,3)
+
+        # Normalize all directions
+        u = torch.nn.functional.normalize(u, dim=-1)
+        v = torch.nn.functional.normalize(v, dim=-1)
+        w = torch.nn.functional.normalize(w, dim=-1)
+
+
+        # Create the pose matrix 
+        # [[u, v, w, c]
+        #  [0, 0, 0, 1]]
+        c = -distance * w  # (...,3) # camera center
+        pose_mat = torch.zeros((*w.shape[:-1], 4, 4), device=device)  # (...,4,4)
+        pose_mat[..., :3, 0] = u  
+        pose_mat[..., :3, 1] = v  
+        pose_mat[..., :3, 2] = w  
+        pose_mat[..., :3, 3] = c  
+        pose_mat[...,  3, 3] = 1.0
+
+        return pose_mat
+
+    else:
+        raise NotImplementedError("Unknown format for generate_pose_mat(): %s" % format)
 
 
 if __name__ == '__main__':
@@ -95,8 +156,6 @@ if __name__ == '__main__':
     # get azimuth, elevation, and distance from the pose
     target_poses = torch.tensor(pose, device=device) # (1, 4, 4)
     cam_center, cam_right, cam_up, cam_forward, distance, elevation, azimuth = extract_pose_info(target_poses, format='srn_cars')
-    azimuth *= 180 / np.pi  # convert to degrees
-    elevation *= 180 / np.pi  # convert to degrees
     # (1,3)     (1,3)      (1,3)   (1,3)        (1,)      (1,)       (1,)
 
 

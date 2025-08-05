@@ -47,8 +47,9 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #                 (T,)         (T,)           (T,)
-    cam_elevation = cam_elevation * 180 / np.pi
-    cam_azimuth   = cam_azimuth   * 180 / np.pi
+    print('Camera azimuth:   ', cam_azimuth)
+    print('Camera elevation: ', cam_elevation)
+    print('Camera distance:  ', cam_distance)
 
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
@@ -68,12 +69,10 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
     scatter_energies = []
-    forward_vectors = []
     dm_e_images = []  # to store depth and energy images
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
-        forward_vectors.append([])
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
@@ -146,23 +145,20 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             depth_map[~hit]  = 0.0  # set missed rays to 0
             scatter_ranges[t].append(depth_map.reshape(-1))  # (R,)
             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
-            forward_vectors[t].append(forward_vector)
 
 
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
-        forward_vectors[t] = torch.stack(forward_vectors[t], dim=0)  # (P, 3)
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
-    forward_vectors = torch.stack(forward_vectors, dim=0)  # (T, P, 3)
 
     # tile elevation and distance to match the shape of azimuth
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance, forward_vectors, cam_azimuth, cam_distance
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)        (T,)         (T,)
+    return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
+    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
 
 
 
