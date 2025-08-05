@@ -8,32 +8,30 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from signal_simulation import accumulate_scatters, interpolate_signal
-from utils import camera_to_world_matrix
 
 
 
-def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
-                      z_near = 0.8,
-                      z_far  = 1.8,
-                      spatial_bw = 64,
-                      spatial_fs = 64,
+def sar_render_image(   file_name, num_pulses, poses, az_spread,
+                        z_near = 0.8,
+                        z_far  = 1.8,
+                        spatial_bw = 64,
+                        spatial_fs = 64,
+                        debug_gif = False,
+                        image_size = 128,
+                        n_rays_per_side = 128,
     ):
 
     # set device
     device = 'cuda'
 
-    # get target pose
-    target_pose = camera_to_world_matrix(az_angle, ele_angle, (z_near + z_far) / 2, device=device, debug=False)
-    target_poses = target_pose.reshape(1,4,4)
-
-    # SAR raycasting 
-    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,P,3)
-    all_ranges, all_energies, azimuth, elevation, distance, forward_vectors = accumulate_scatters(
-        target_poses, z_near, z_far, file_name,
+    # SAR raytracing 
+    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,P,3)          (T,)         (T,)
+    all_ranges, all_energies, azimuth, elevation, distance, forward_vectors, cam_azimuth, cam_distance = accumulate_scatters(
+        poses.to(device), z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
-        n_rays_per_side=128,
-        debug_gif=True,
+        n_rays_per_side=n_rays_per_side,
+        debug_gif=debug_gif,
     )
 
     # Generate signal
@@ -43,7 +41,73 @@ def sar_render_image( file_name, num_pulses, az_angle, ele_angle, az_spread,
             batch_size = None,
     )
 
-    signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far)
+    # Compute sar image
+    sar_image = convolutional_back_projection(signals, sample_z, forward_vectors, cam_azimuth, cam_distance, z_near-z_far, spatial_fs, image_size, image_size)
+
+    # make a gif if desired
+    if debug_gif:
+        signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far)
+
+    return sar_image
+
+
+def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, side_len, spatial_fs, H, W):
+    '''
+    Convolutional back projection for SAR imaging.
+
+    inputs:
+        signal: (T,P,Z) - the signal to be back projected
+        sample_z: (Z,) - the range samples
+        forward_vector: (T,P,3) - the forward vector for each ray
+        cam_azimuth: (T,) - the azimuth angle of the camera
+        cam_distance: (T,) - the distance of the camera from the origin
+        side_len: float - the length of the side of the image plane
+        spatial_fs: float - the spatial frequency sampling rate
+        H: int - the height of the target image
+        W: int - the width of the target image
+
+    outputs:
+        image: (T,H,W) - the computed image
+    '''
+    # Get shapes
+    T,P,Z = signal.shape
+    device = signal.device
+
+    # filter with |r| in frequency domain (equation 2.30)
+    sample_r = sample_z - cam_distance.reshape(T,1)  # (T,Z)
+    signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (T,P,Z)
+    filtered_signal_freq = signal_freq * torch.abs(sample_r.reshape(T,1,Z)) # (T,P,Z)
+    filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
+
+    # create grid of target image cooordinates on the ground plane
+    h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=signal.dtype),
+                                        torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=signal.dtype),
+                                        indexing='ij')  # (H,W)
+    h_coord = h_coord.float()  # (H,W)
+    w_coord = w_coord.float()  # (H,W)
+    coord_grid = torch.stack((w_coord, -h_coord), dim=-1) # (H,W,2)
+    I = H * W
+
+    # rotate the image plane according to the azimuth angle of the target pose
+    rotation_matrix = torch.stack([
+        torch.cos(cam_azimuth), -torch.sin(cam_azimuth), torch.sin(cam_azimuth), torch.cos(cam_azimuth)
+    ], dim=-1) # (T,4)
+    coord_grid = rotation_matrix.reshape(T,1,1,2,2) @ coord_grid.reshape(1,H,W,2,1)  # (T,H,W,2,1)
+
+    # interpolate pixel coordinated projected onto the filtered signal
+    r_coord = torch.sum(forward_vector[...,:2].reshape(T,P,1,2) * coord_grid.reshape(T,1,I,2), dim=-1)  # (T,P,I,2)
+    interpolated_r_points = torch.sum( filtered_signal.reshape(T,P,1,Z) * \
+                                    torch.sinc( spatial_fs * (r_coord.reshape(T,P,I,1) - sample_r.reshape(1,1,1,Z)) ), # (T,P,I,Z)
+                                    dim=-1
+                                    ) # (T,P,I)
+    
+    # integrate over theta (eqation 2.31)
+    image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (T,I)
+
+    # reshape and convert to real-valued images
+    image = image.reshape(T,H,W)
+    return image.real
+    # return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
@@ -108,13 +172,44 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far):
     # create gif from the images
     fps = signals.shape[1]/4.0
     print('Saving GIF with %.1f fps...'% fps)
-    imageio.mimsave('figures/dm_em_sc_si.gif', images, fps=fps, format='GIF', loop=0)
+    imageio.mimsave(get_next_path('figures/dm_em_sc_si.gif'), images, fps=fps, format='GIF', loop=0)
+
 
 if __name__ == '__main__':
+
+    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
+    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+    print('Selected object ID: ', obj_id)
+
+    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
+    all_pose_nums  = os.listdir(all_pose_paths)
+    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+    print('Selected pose number: ', pose_num)
+
+    # load image, pose, and mesh
+    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
+    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
+    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+    rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
+    pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+
+    # get azimuth, elevation, and distance from the pose
+    target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
     
-    sar_render_image( '/workspace/data/srncars/02958343/7dac31838b627748eb631ba05bd8dfe/models/model_normalized.obj', # fname
-                      50, # num_pulses
-                      90, # azimuth angle
-                      45, # elevation angle
-                      30 # azimuth spread
-    )
+    # render the SAR images for each pose
+    sar = sar_render_image( mesh_path, # fname
+                      30, # num_pulses
+                      target_poses, # poses
+                      180, # azimuth spread
+                      debug_gif=True, # debug gif
+    ) # (1,H,W)
+
+    # plot the SAR image next to the RGB image
+    sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
+    sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
+    sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
+    image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
+    image = PIL.Image.fromarray(image)  # convert to PIL image
+    image.save(get_next_path('figures/sar_rendered_image.png'))  # save the image
+
+    

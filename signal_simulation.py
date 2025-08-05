@@ -60,6 +60,9 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         image_size=n_rays_per_side, 
         blur_radius=0.0, 
         faces_per_pixel=1, 
+
+        bin_size=0,  # or set to a small value
+        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
     )
 
     # loop over each pulse and compute the depth map and surface normal
@@ -164,8 +167,8 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         fps = dm_e_images.shape[0]/4.0
         imageio.mimsave('figures/depth_energy_images.gif', dm_e_images, fps=fps, format='GIF', loop=0)
 
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance, forward_vectors
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)
+    return scatter_ranges, scatter_energies, azimuth, elevation, distance, forward_vectors, cam_azimuth, cam_distance
+    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)        (T,)         (T,)
 
 
 
