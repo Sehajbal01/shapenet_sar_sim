@@ -47,7 +47,6 @@ def extract_pose_info(target_poses, format='srn_cars'):
     '''
     if format == 'srn_cars':
         # extract vectors
-        print('target_poses.shape: ', target_poses.shape)
         cam_center    = target_poses[..., :3, 3] # (...,3)
         cam_right     = target_poses[..., :3, 0] # (...,3)
         cam_up        = target_poses[..., :3, 1] # (...,3)

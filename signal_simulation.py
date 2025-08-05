@@ -136,7 +136,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
                 dm_e_images.append(dm_e_im)  # store the depth and energy image
 
-                # save current image to a file in a tmp folder in figures
+                # save current image to a file in a tmp folder in figures to be made into a gif later
                 if not os.path.exists('figures/tmp'):
                     os.makedirs('figures/tmp')
                 path = get_next_path(f'figures/tmp/depth_energy.png')
@@ -160,12 +160,6 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # tile elevation and distance to match the shape of azimuth
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
-
-    # make a gif of the dm_e images lasts 5 seconds
-    if debug_gif and len(dm_e_images) > 0:
-        dm_e_images = np.stack(dm_e_images, axis=0)  # (N, H, W)
-        fps = dm_e_images.shape[0]/4.0
-        imageio.mimsave('figures/depth_energy_images.gif', dm_e_images, fps=fps, format='GIF', loop=0)
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, forward_vectors, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T, P, 3)        (T,)         (T,)
