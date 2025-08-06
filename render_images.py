@@ -48,9 +48,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # compute forward vectors from azimuth and elevation angles
     forward_vectors = -torch.stack([
-        torch.cos(azimuth) * torch.cos(elevation),
-        torch.sin(azimuth) * torch.cos(elevation),
-        torch.sin(elevation),
+        torch.cos(3.14159/180*azimuth) * torch.cos(3.14159/180*elevation),
+        torch.sin(3.14159/180*azimuth) * torch.cos(3.14159/180*elevation),
+        torch.sin(3.14159/180*elevation),
     ], dim=-1)  # (T, P, 3)
 
     # Compute sar image
@@ -89,9 +89,25 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
 
     # filter with |r| in frequency domain (equation 2.30)
     sample_r = sample_z - cam_distance.reshape(T,1)  # (T,Z)
+    print('samples_z: ', sample_z)
+    print('samples_r: ', sample_r)
+    print('signal.shape: ', signal.shape)
     signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (T,P,Z)
     filtered_signal_freq = signal_freq * torch.abs(sample_r.reshape(T,1,Z)) # (T,P,Z)
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
+
+    ###################################################################
+    scatter_r = forward_vector.reshape(T,P,1,3) * sample_r.reshape(T,1,Z,1)  # (T,P,Z,3)
+    scatter_r = scatter_r.reshape(-1,3).cpu().numpy()  # (T*P*Z,3)
+    plt.scatter(scatter_r[:,0], scatter_r[:,1], c=scatter_r[:,2], cmap='jet')
+    plt.colorbar()
+    plt.title('Scatter plot of reflected points')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.axis('equal')
+    plt.savefig(get_next_path('figures/scatter_plot.png'))
+    print('Saved scatter plot to figures/scatter_plot.png')
+    ###################################################################
 
     # create grid of target image cooordinates on the ground plane
     h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=signal.dtype),
@@ -100,6 +116,8 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
     coord_grid = torch.stack((w_coord, -h_coord), dim=-1) # (H,W,2)
+    print('coord_grid: ', coord_grid)
+    print('coord_grid.shape: ', coord_grid.shape)
     I = H * W
 
     # rotate the image plane according to the azimuth angle of the target pose
@@ -226,7 +244,7 @@ if __name__ == '__main__':
     
     # render the SAR images for each pose
     sar = sar_render_image( mesh_path, # fname
-                            30, # num_pulses
+                            60, # num_pulses
                             target_poses, # poses
                             180, # azimuth spread
 
@@ -234,8 +252,8 @@ if __name__ == '__main__':
                             z_far  = 1.8,
                             spatial_bw = 64,
                             spatial_fs = 64,
-                            image_size = 128,
-                            n_rays_per_side = 500,
+                            image_size = 64,
+                            n_rays_per_side = 128,
 
                             debug_gif=True, # debug gif
                             debug_gif_suffix = '%s_%s'%(pose_num,obj_id),
@@ -245,6 +263,8 @@ if __name__ == '__main__':
     sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
     sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
     sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
+    # resize the SAR image to match the RGB image
+    sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
     image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
     image = PIL.Image.fromarray(image)  # convert to PIL image
     path = 'figures/sar_rgb_image_%s_%s.png'%(pose_num, obj_id)
