@@ -1,9 +1,10 @@
 import tqdm
 import PIL
+from PIL import ImageDraw
 import imageio
 import cv2
 import os
-from utils import get_next_path, generate_pose_mat
+from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
@@ -89,9 +90,6 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
 
     # filter with |r| in frequency domain (equation 2.30)
     sample_r = sample_z - cam_distance.reshape(T,1)  # (T,Z)
-    print('samples_z: ', sample_z)
-    print('samples_r: ', sample_r)
-    print('signal.shape: ', signal.shape)
     signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (T,P,Z)
     filtered_signal_freq = signal_freq * torch.abs(sample_r.reshape(T,1,Z)) # (T,P,Z)
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
@@ -105,7 +103,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     plt.xlabel('X')
     plt.ylabel('Y')
     plt.axis('equal')
-    plt.savefig(get_next_path('figures/scatter_plot.png'))
+    savefig(get_next_path('figures/scatter_plot.png'))
     print('Saved scatter plot to figures/scatter_plot.png')
     ###################################################################
 
@@ -116,8 +114,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
     coord_grid = torch.stack((w_coord, -h_coord), dim=-1) # (H,W,2)
-    print('coord_grid: ', coord_grid)
-    print('coord_grid.shape: ', coord_grid.shape)
+    coord_grid = torch.flip(coord_grid, dims=(2,))
     I = H * W
 
     # rotate the image plane according to the azimuth angle of the target pose
@@ -165,11 +162,9 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         plt.ylabel('Amplitude')
         plt.xlim(z_near, z_far)
         plt.ylim(sig_min, sig_max)
-        plt.tight_layout()
 
         path = get_next_path('figures/tmp/scatters_signal.png')
-        plt.savefig(path)
-        plt.close()
+        savefig(path)
 
     # make a gif of the depth map, energy map, scatter plot, and signal plot
     # [ [depth, energy],
@@ -222,53 +217,65 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
 
 if __name__ == '__main__':
 
-    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
-    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
-    print('Selected object ID: ', obj_id)
+    for i in range(10):
 
-    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
-    all_pose_nums  = os.listdir(all_pose_paths)
-    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
-    print('Selected pose number: ', pose_num)
+        all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
+        obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+        print('Selected object ID: ', obj_id)
 
-    # load image, pose, and mesh
-    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
-    rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
-    pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+        all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
+        all_pose_nums  = os.listdir(all_pose_paths)
+        pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+        print('Selected pose number: ', pose_num)
 
-    # get azimuth, elevation, and distance from the pose
-    target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
-    # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
+        suffix = '%s_%s'%(pose_num, obj_id)
+
+        # load image, pose, and mesh
+        rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
+        pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
+        mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+        rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
+        pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+
+        # get azimuth, elevation, and distance from the pose
+        target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
+        # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
     
-    # render the SAR images for each pose
-    sar = sar_render_image( mesh_path, # fname
-                            60, # num_pulses
-                            target_poses, # poses
-                            180, # azimuth spread
+        # render the SAR images for each pose
+        sar = sar_render_image( mesh_path, # fname
+                                60, # num_pulses
+                                target_poses, # poses
+                                180, # azimuth spread
 
-                            z_near = 0.8,
-                            z_far  = 1.8,
-                            spatial_bw = 64,
-                            spatial_fs = 64,
-                            image_size = 64,
-                            n_rays_per_side = 128,
+                                z_near = 0.8,
+                                z_far  = 1.8,
+                                spatial_bw = 64,
+                                spatial_fs = 64,
+                                image_size = 64,
+                                n_rays_per_side = 128,
 
-                            debug_gif=True, # debug gif
-                            debug_gif_suffix = '%s_%s'%(pose_num,obj_id),
-    ) # (1,H,W)
+                                debug_gif=False, # debug gif
+                                debug_gif_suffix = suffix,
+        ) # (1,H,W)
 
-    # plot the SAR image next to the RGB image
-    sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
-    sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
-    sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
-    # resize the SAR image to match the RGB image
-    sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
-    image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
-    image = PIL.Image.fromarray(image)  # convert to PIL image
-    path = 'figures/sar_rgb_image_%s_%s.png'%(pose_num, obj_id)
-    image.save(path)  # save the image
-    print('Saved SAR and RGB image to: ', path)
+        # plot the SAR image next to the RGB image
+        sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
+        sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
+        sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
+        sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
+        image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
+
+        # write azimuth and elevation at thee top left of the image
+        image = PIL.Image.fromarray(image)  # convert to PIL image
+        draw = ImageDraw.Draw(image)
+        pose_info = extract_pose_info(torch.tensor(pose))  # extract pose info
+        az, el = pose_info[6].item(), pose_info[5].item()
+        draw_str = 'Az: %.1f, El: %.1f' % (az, el)
+        draw.text((10, 10), draw_str, fill=(0, 0, 0))
+
+        # path = 'figures/sar_rgb_image_%s.png'%(suffix)
+        path = get_next_path('figures/sar_rgb_image.png')
+        image.save(path)  # save the image
+        print('Saved SAR and RGB image to: ', path)
 
     

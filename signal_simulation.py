@@ -54,6 +54,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
     azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+    pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
 
     # prepare pytorch3d
     mesh = load_objs_as_meshes([object_filename], device=device)
@@ -76,11 +77,16 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
-            rotation, translation = look_at_view_transform(cam_distance[t], cam_elevation[t], azimuth[t, p],device=device) # distance, elevation, azimuth
-            cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
-                                         min_x = -half_side_len, max_x = half_side_len,
-                                         min_y = -half_side_len, max_y = half_side_len,
-                                         )
+            rotation, translation = look_at_view_transform(
+                cam_distance[t],
+                cam_elevation[t],
+                pytorch3d_azimuth[t, p],
+                device=device)
+            cameras = FoVOrthographicCameras(
+                device = device, R = rotation, T = translation, 
+                min_x = -half_side_len, max_x = half_side_len,
+                min_y = -half_side_len, max_y = half_side_len,
+            )
             rasterizer = MeshRasterizer(
                 cameras=cameras,
                 raster_settings=raster_settings

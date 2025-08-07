@@ -14,6 +14,11 @@ from pytorch3d.renderer import (
 )
 
 
+def savefig(path):
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()
+
 
 def get_next_path(path):
     """
