@@ -96,19 +96,6 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     filtered_signal_freq = signal_freq * torch.abs(sample_r.reshape(T,1,Z)) # (T,P,Z)
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
 
-    ###################################################################
-    scatter_r = forward_vector.reshape(T,P,1,3) * sample_r.reshape(T,1,Z,1)  # (T,P,Z,3)
-    scatter_r = scatter_r.reshape(-1,3).cpu().numpy()  # (T*P*Z,3)
-    plt.scatter(scatter_r[:,0], scatter_r[:,1], c=scatter_r[:,2], cmap='jet')
-    plt.colorbar()
-    plt.title('Scatter plot of center of range samples')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.axis('equal')
-    savefig(get_next_path('figures/scatter_plot.png'))
-    print('Saved scatter plot to figures/scatter_plot.png')
-    ###################################################################
-
     # create grid of target image cooordinates on the ground plane
     h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=signal.dtype),
                                         torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=signal.dtype),
@@ -138,8 +125,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
 
     # reshape and convert to real-valued images
     image = image.reshape(T,H,W)
-    return image.real
-    # return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
+    return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
