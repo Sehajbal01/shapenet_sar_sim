@@ -1,3 +1,4 @@
+import sys
 import tqdm
 import PIL
 from PIL import ImageDraw
@@ -86,6 +87,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     '''
     # Get shapes
     T,P,Z = signal.shape
+    I = H * W
     device = signal.device
 
     # filter with |r| in frequency domain (equation 2.30)
@@ -99,7 +101,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     scatter_r = scatter_r.reshape(-1,3).cpu().numpy()  # (T*P*Z,3)
     plt.scatter(scatter_r[:,0], scatter_r[:,1], c=scatter_r[:,2], cmap='jet')
     plt.colorbar()
-    plt.title('Scatter plot of reflected points')
+    plt.title('Scatter plot of center of range samples')
     plt.xlabel('X')
     plt.ylabel('Y')
     plt.axis('equal')
@@ -113,15 +115,16 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
                                         indexing='ij')  # (H,W)
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
-    coord_grid = torch.stack((w_coord, -h_coord), dim=-1) # (H,W,2)
-    coord_grid = torch.flip(coord_grid, dims=(2,))
-    I = H * W
 
     # rotate the image plane according to the azimuth angle of the target pose
+    # we want the SAR image to look as if we took the current camera position and moved up in elevation
+    # so the top pixel should be in the up vector direction projected onto the ground plane
+    coord_grid = torch.stack((-h_coord, -w_coord), dim=-1) # (H,W,2)
+    cam_azimuth_rad = cam_azimuth * (np.pi / 180.0)  # convert to radians
     rotation_matrix = torch.stack([
-        torch.cos(cam_azimuth), -torch.sin(cam_azimuth), torch.sin(cam_azimuth), torch.cos(cam_azimuth)
+        torch.cos(cam_azimuth_rad), -torch.sin(cam_azimuth_rad), torch.sin(cam_azimuth_rad), torch.cos(cam_azimuth_rad)
     ], dim=-1) # (T,4)
-    coord_grid = rotation_matrix.reshape(T,1,1,2,2) @ coord_grid.reshape(1,H,W,2,1)  # (T,H,W,2,1)
+    coord_grid = rotation_matrix.reshape(T,1,2,2) @ coord_grid.reshape(1,I,2,1)  # (T,I,2,1)
 
     # interpolate pixel coordinated projected onto the filtered signal
     r_coord = torch.sum(forward_vector[...,:2].reshape(T,P,1,2) * coord_grid.reshape(T,1,I,2), dim=-1)  # (T,P,I,2)
@@ -215,67 +218,67 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
+def render_random_image(debug_gif=False):
+    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
+    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+    print('Selected object ID: ', obj_id)
+
+    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
+    all_pose_nums  = os.listdir(all_pose_paths)
+    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+    print('Selected pose number: ', pose_num)
+
+    suffix = '%s_%s'%(pose_num, obj_id)
+
+    # load image, pose, and mesh
+    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
+    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
+    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+    rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
+    pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+
+    # get azimuth, elevation, and distance from the pose
+    target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
+    # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
+    
+    # render the SAR images for each pose
+    sar = sar_render_image( mesh_path, # fname
+                            60, # num_pulses
+                            target_poses, # poses
+                            180, # azimuth spread
+
+                            z_near = 0.8,
+                            z_far  = 1.8,
+                            spatial_bw = 64,
+                            spatial_fs = 64,
+                            image_size = 64,
+                            n_rays_per_side = 128,
+
+                            debug_gif=debug_gif, # debug gif
+                            debug_gif_suffix = suffix,
+    ) # (1,H,W)
+
+    # plot the SAR image next to the RGB image
+    sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
+    sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
+    sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
+    sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
+    image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
+
+    # write azimuth and elevation at thee top left of the image
+    image = PIL.Image.fromarray(image)  # convert to PIL image
+    draw = ImageDraw.Draw(image)
+    pose_info = extract_pose_info(torch.tensor(pose))  # extract pose info
+    az, el = pose_info[6].item(), pose_info[5].item()
+    draw_str = 'Az: %.1f, El: %.1f' % (az, el)
+    draw.text((10, 10), draw_str, fill=(0, 0, 0))
+
+    # path = 'figures/sar_rgb_image_%s.png'%(suffix)
+    path = get_next_path('figures/sar_rgb_image.png')
+    image.save(path)  # save the image
+    print('Saved SAR and RGB image to: ', path)
+
+    
+
 if __name__ == '__main__':
-
-    for i in range(10):
-
-        all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
-        obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
-        print('Selected object ID: ', obj_id)
-
-        all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
-        all_pose_nums  = os.listdir(all_pose_paths)
-        pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
-        print('Selected pose number: ', pose_num)
-
-        suffix = '%s_%s'%(pose_num, obj_id)
-
-        # load image, pose, and mesh
-        rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-        pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-        mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
-        rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
-        pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-
-        # get azimuth, elevation, and distance from the pose
-        target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
-        # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
-    
-        # render the SAR images for each pose
-        sar = sar_render_image( mesh_path, # fname
-                                60, # num_pulses
-                                target_poses, # poses
-                                180, # azimuth spread
-
-                                z_near = 0.8,
-                                z_far  = 1.8,
-                                spatial_bw = 64,
-                                spatial_fs = 64,
-                                image_size = 64,
-                                n_rays_per_side = 128,
-
-                                debug_gif=False, # debug gif
-                                debug_gif_suffix = suffix,
-        ) # (1,H,W)
-
-        # plot the SAR image next to the RGB image
-        sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
-        sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
-        sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
-        sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
-        image = np.concatenate((rgb, sar), axis=1)  # concatenate RGB and SAR images
-
-        # write azimuth and elevation at thee top left of the image
-        image = PIL.Image.fromarray(image)  # convert to PIL image
-        draw = ImageDraw.Draw(image)
-        pose_info = extract_pose_info(torch.tensor(pose))  # extract pose info
-        az, el = pose_info[6].item(), pose_info[5].item()
-        draw_str = 'Az: %.1f, El: %.1f' % (az, el)
-        draw.text((10, 10), draw_str, fill=(0, 0, 0))
-
-        # path = 'figures/sar_rgb_image_%s.png'%(suffix)
-        path = get_next_path('figures/sar_rgb_image.png')
-        image.save(path)  # save the image
-        print('Saved SAR and RGB image to: ', path)
-
-    
+    render_random_image(debug_gif=True)
