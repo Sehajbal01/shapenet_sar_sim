@@ -170,6 +170,9 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         depth_energy_im = np.array(depth_energy_im)
         depth_energy_im = np.tile(depth_energy_im[..., np.newaxis], (1, 1, 3))
 
+        # delete the image
+        os.remove(depth_energy_path)
+
         # load the scatter signal image file
         scatter_signal_path = f'figures/tmp/scatters_signal_{p:02d}.png'
         if not os.path.exists(scatter_signal_path):
@@ -177,6 +180,9 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
             continue
         scatter_signal_im = PIL.Image.open(scatter_signal_path)
         scatter_signal_im = np.array(scatter_signal_im)[..., :3]
+
+        # delete the image
+        os.remove(scatter_signal_path)
 
         # resize the depth energy image to match the scatter signal image
         new_rows = scatter_signal_im.shape[1] // 2
@@ -241,7 +247,7 @@ def render_random_image(debug_gif=False):
                             n_rays_per_side = 128,
 
                             debug_gif=debug_gif, # debug gif
-                            debug_gif_suffix = suffix,
+                            # debug_gif_suffix = suffix,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -267,4 +273,5 @@ def render_random_image(debug_gif=False):
     
 
 if __name__ == '__main__':
-    render_random_image(debug_gif=True)
+    for i in range(10):
+        render_random_image(debug_gif=True)

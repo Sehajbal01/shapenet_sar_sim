@@ -18,7 +18,7 @@ from utils import get_next_path, extract_pose_info
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
-               alpha_1=1.0, alpha_2=0.0, debug_gif=False):
+               alpha_1=1.0, alpha_2=0.0, use_ground=True, debug_gif=False):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -32,11 +32,12 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         n_rays_per_side (int): the number of rays on each side of the triangle, yielding num_ray_side**2 total rays
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
+        use_ground (bool): whether to use the ground plane for rendering
         debug_gif (bool): whether to save a gif of the depth and energy images
 
     outputs:
-        range (T,P,R'): the range of all the rays that hit the object
-        energy (T,P,R'): the simulated energy of all the rays that hit the object
+        range (T,P,R): the range of all the rays
+        energy (T,P,R): the simulated energy of all the rays
 
     '''
     device = target_poses.device
@@ -46,7 +47,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #                 (T,)         (T,)           (T,)
+    #           (T,)          (T,)           (T,)
     print('Camera azimuth:   ', cam_azimuth)
     print('Camera elevation: ', cam_elevation)
     print('Camera distance:  ', cam_distance)
@@ -56,8 +57,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
     pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
 
-    # prepare pytorch3d
-    mesh = load_objs_as_meshes([object_filename], device=device)
+    # prepare rasterization settings
     raster_settings = RasterizationSettings(
         image_size=n_rays_per_side, 
         blur_radius=0.0, 
@@ -66,6 +66,36 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         bin_size=0,  # or set to a small value
         max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
     )
+
+    # get mesh and compute face normals
+    mesh = load_objs_as_meshes([object_filename], device=device)
+    verts = mesh.verts_packed()  # (V, 3)
+    faces = mesh.faces_packed()  # (F, 3)
+    face_verts = verts[faces]  # (F, 3, 3)
+    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
+    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+
+    # if we want ag round, it will be at the lowest point of the mesh
+    # if the elevation is negative, it's at the highest point of the mesh
+    if use_ground:
+        low_y = verts[:, 1].min().item()
+        high_y = verts[:, 1].max().item()
+        ground_y = torch.full((T,), low_y, device=device) # (T,)
+        ground_y[cam_elevation < 0] = high_y # (T,)
+        
+        # calculate depth/energy of the rays that will hit the ground
+        r = torch.arange(n_rays_per_side, device=device, dtype=torch.float32)  # (r,) for ray origin y-coordinates
+        sin_e = torch.sin(torch.deg2rad(cam_elevation))  # (T,) sine of elevation angles
+        cos_e = torch.cos(torch.deg2rad(cam_elevation))  # (T,)
+
+        energy_miss = 2*torch.abs(sin_e) * alpha_1 + alpha_2  # (T,) energy of the rays that miss the object
+        depth_miss =    cam_distance.reshape(T,1) + \
+                        (half_side_len - half_side_len*2 * r.reshape(1,n_rays_per_side) / (n_rays_per_side - 1)) * \
+                        cos_e.reshape(T,1)/sin_e.reshape(T,1) # (T, r)
+
+        # tile such that all values in a row on the image are the same, they have the same depth
+        depth_miss = torch.tile(depth_miss.reshape(T, n_rays_per_side, 1), (1, 1, n_rays_per_side))  # (T, r, r)
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -100,16 +130,6 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
             hit = (depth_map >= 0) # (r, r) valid hits
             
-            # get vertices and faces from mesh
-            verts = mesh.verts_packed()  # (V, 3)
-            faces = mesh.faces_packed()  # (F, 3)
-            
-            # compute face normals for all faces
-            face_verts = verts[faces]  # (F, 3, 3)
-            v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
-            face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-            face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
-            
             # create normal map by indexing face normals with face IDs
             valid_face_ids = face_ids[hit] # (R',)
 
@@ -118,6 +138,12 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             forward_vector = rotation[0,:,2] # (3,)
             energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
             energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
+
+            # rays that missed we will say actually hit the ground plane
+            if use_ground:
+                depth_map[~hit] = depth_miss[t, ~hit]  # set missed rays to the ground depth
+                energy_map[~hit] = energy_miss[t]  # set missed rays to the ground energy
+                hit = torch.logical_or(hit, ~hit)  # ensure hit mask is True for all rays
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -277,3 +303,19 @@ def resample_signal(self, signal, out_samples, dim = -1):
     # reshape and return
     resampled_signal = resampled_signal.reshape(shape_prefix + [out_samples] + shape_suffix)  # (shape_prefix, out_samples, shape_suffix)
     return resampled_signal  # (shape_prefix, out_samples, shape_suffix)
+
+def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.1, device = 'cpu' ):
+    """
+    Make a big ground plane with the specified size and ground level.
+    
+    Inputs:
+        size (int): size of the ground plane
+        ground_dim (int): dimension of the ground plane
+        ground_level (float): level of the ground plane
+        max_triangle_len (float): maximum length of a side in the triangle mesh
+        device (str): device to use for the mesh
+    Returns:
+        mesh (Mesh): the generated ground mesh
+    """
+    n = int(math.floor(size/max_triangle_len))
+    grid = torch.linspace()
