@@ -9,8 +9,8 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-# from signal_simulation_bigground import accumulate_scatters, interpolate_signal
-from signal_simulation import accumulate_scatters, interpolate_signal
+from signal_simulation_bigground import accumulate_scatters, interpolate_signal
+# from signal_simulation import accumulate_scatters, interpolate_signal
 
 
 
@@ -274,5 +274,5 @@ def render_random_image(debug_gif=False):
     
 
 if __name__ == '__main__':
-    for i in range(10):
-        render_random_image(debug_gif=True)
+    # for i in range(10):
+    render_random_image(debug_gif=True)
