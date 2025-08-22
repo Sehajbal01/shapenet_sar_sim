@@ -76,15 +76,17 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # add a ground if desired to the mesh
     # if False:
     if use_ground:
-        low_y  = verts[:, 1].min().item()
-        high_y = verts[:, 1].max().item()
+        ground_buffer = 0.001
+        low_y  = verts[:, 1].min().item() - ground_buffer
+        high_y = verts[:, 1].max().item() + ground_buffer
         ground_y = torch.full((T,), low_y, device=device) # (T,)
         ground_y[cam_elevation < 0] = high_y # (T,)
         # TODO: don;'t use ground_y[0]
-        ground_size = 10
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/4.0, device = device )
+        ground_size = 100
+        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/100.0, device = device )
+        num_verts_before = verts.shape[0]
         verts = torch.cat([verts, ground_verts], dim=0)
-        faces = torch.cat([faces, ground_faces + verts.shape[0]], dim=0)  # adjust face indices to account for new verts
+        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
         mesh = Meshes(verts=[verts], faces=[faces])
 
     face_verts = verts[faces]  # (F, 3, 3)
@@ -184,7 +186,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
-        spatial_bw = 20, spatial_fs = 20,
+        spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
         batch_size = None,
 ):
     """
@@ -196,6 +198,9 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         scatter_e (...,R): the energy of each scatter point
         z_near (float): z near to use when rendering
         z_far (float): z far to use when rendering
+        spatial_bw (float): spatial bandwidth of the radar
+        spatial_fs (float): spatial sampling frequency of the radar
+        wavelength (float): wavelength of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
 
     Returns:
