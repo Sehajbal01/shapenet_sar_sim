@@ -9,6 +9,7 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
+# from signal_simulation_bigground import accumulate_scatters, interpolate_signal
 from signal_simulation import accumulate_scatters, interpolate_signal
 
 
