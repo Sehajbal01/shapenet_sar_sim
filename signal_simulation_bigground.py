@@ -83,19 +83,8 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         # TODO: don;'t use ground_y[0]
         ground_size = 10
         ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/4.0, device = device )
-        print('verts.dtype: ',verts.dtype)
-        print('faces.dtype: ',faces.dtype)
-        print('verts.shape: ',verts.shape)
-        print('faces.shape: ',faces.shape)
-        print('ground_verts.dtype: ',ground_verts.dtype)
-        print('ground_faces.dtype: ',ground_faces.dtype)
-        print('ground_verts.shape: ',ground_verts.shape)
-        print('ground_faces.shape: ',ground_faces.shape)
         verts = torch.cat([verts, ground_verts], dim=0)
         faces = torch.cat([faces, ground_faces + verts.shape[0]], dim=0)  # adjust face indices to account for new verts
-        print()
-        print('verts.shape after concatenation: ',verts.shape)
-        print('faces.shape after concatenation: ',faces.shape)
         mesh = Meshes(verts=[verts], faces=[faces])
 
     face_verts = verts[faces]  # (F, 3, 3)
