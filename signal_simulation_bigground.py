@@ -187,7 +187,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
-        batch_size = None,
+        batch_size = None, want_complex = False
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -202,6 +202,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         spatial_fs (float): spatial sampling frequency of the radar
         wavelength (float): wavelength of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
+        want_complex (bool): whether to return complex-valued signal based on range
 
     Returns:
         received_signal (tensor): simulated received signal .shape=(..., Z)
@@ -213,6 +214,10 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     N = np.prod(shape_prefix)
     assert(len(scatter_z.shape) > 1), "scatter_z should have at least 2 dimensions, but got %d" % len(scatter_z.shape)
     assert(scatter_z.shape == scatter_e.shape), "scatter_z and scatter_e should have the same shape, but got %s and %s" % (scatter_z.shape, scatter_e.shape)
+
+    # apply complex exponential
+    if want_complex:
+        scatter_e = scatter_e * torch.exp(1j * 2 * math.pi / wavelength * scatter_z * 2) # multiple range by 2 because we have two-way travel
 
     # calculate the center of each spatial sample
     device = scatter_z.device

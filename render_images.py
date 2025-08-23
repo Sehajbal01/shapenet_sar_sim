@@ -98,8 +98,8 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
 
     # create grid of target image cooordinates on the ground plane
-    h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=signal.dtype),
-                                        torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=signal.dtype),
+    h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=sample_z.dtype),
+                                        torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=sample_z.dtype),
                                         indexing='ij')  # (H,W)
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
@@ -130,6 +130,13 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
+
+
+    # convert to amplitude
+    try:
+        signals = torch.sqrt(signals.real**2 + signals.imag**2)
+    except(RuntimeError):
+        pass
 
     # plot the signal and scatters for every pulse
     sig_max = signals.max().item()
@@ -238,7 +245,7 @@ def render_random_image(debug_gif=False):
     sar = sar_render_image( mesh_path, # fname
                             60, # num_pulses
                             target_poses, # poses
-                            180, # azimuth spread
+                            90, # azimuth spread
 
                             z_near = 0.8,
                             z_far  = 1.8,
