@@ -218,7 +218,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -243,9 +243,9 @@ def render_random_image(debug_gif=False):
     
     # render the SAR images for each pose
     sar = sar_render_image( mesh_path, # fname
-                            60, # num_pulses
+                            num_pulse, # num_pulses
                             target_poses, # poses
-                            90, # azimuth spread
+                            azimuth_spread, # azimuth spread
 
                             z_near = 0.8,
                             z_far  = 1.8,
@@ -274,12 +274,45 @@ def render_random_image(debug_gif=False):
     draw.text((10, 10), draw_str, fill=(0, 0, 0))
 
     # path = 'figures/sar_rgb_image_%s.png'%(suffix)
-    path = get_next_path('figures/sar_rgb_image.png')
+    path = get_next_path('figures/sar_rgb_image_spread%d.png'%(azimuth_spread))
     image.save(path)  # save the image
     print('Saved SAR and RGB image to: ', path)
 
+
+def stitch_spread_images():
+    # find all files in figures that have 'spread in the name' and remove the left 128 columns, and stich them into 1 wide image
+    figure_files = [f for f in os.listdir('figures') if 'spread' in f]
+    figure_num = [int(f.split('spread')[-1].split('_')[0]) for f in figure_files]
+    # Sort files by spread number
+    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
+
+    # Load images, crop left 128 columns, and collect
+    cropped_images = []
+    for fname in sorted_files:
+        img = PIL.Image.open(os.path.join('figures', fname))
+        cropped = img.crop((128, 0, img.width, img.height))
+        cropped_images.append(np.array(cropped))
+
+    # Stitch horizontally
+    stitched = np.hstack(cropped_images)
+    stitched_img = PIL.Image.fromarray(stitched)
+    stitched_img.save('figures/sar_spread_stitched.png')
     
 
 if __name__ == '__main__':
-    # for i in range(10):
-    render_random_image(debug_gif=True)
+    # # select random seed
+    # seed = np.random.randint(0, 10000)
+    # seed = 8134
+    # print('Random seed: ', seed)
+
+    # # for i in range(10):
+    # for azimuth_spread in torch.arange(0, 361, 30):
+
+    #     # set the random seed
+    #     np.random.seed(seed)
+    #     torch.manual_seed(seed)
+
+    #     render_random_image(debug_gif=False, num_pulse=50, azimuth_spread=azimuth_spread.item())
+    stitch_spread_images()
+
+
