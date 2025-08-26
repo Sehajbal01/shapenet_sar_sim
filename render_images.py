@@ -9,7 +9,7 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-from signal_simulation_bigground import accumulate_scatters, interpolate_signal
+from signal_simulation import accumulate_scatters, interpolate_signal
 # from signal_simulation import accumulate_scatters, interpolate_signal
 
 
@@ -218,7 +218,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -228,7 +228,8 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180):
     pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
     print('Selected pose number: ', pose_num)
 
-    suffix = '%s_%s'%(pose_num, obj_id)
+    if suffix is None:
+        suffix = '%s_%s'%(pose_num, obj_id)
 
     # load image, pose, and mesh
     rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
@@ -255,7 +256,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180):
                             n_rays_per_side = 128,
 
                             debug_gif=debug_gif, # debug gif
-                            # debug_gif_suffix = suffix,
+                            debug_gif_suffix = suffix,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -273,16 +274,35 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180):
     draw_str = 'Az: %.1f, El: %.1f' % (az, el)
     draw.text((10, 10), draw_str, fill=(0, 0, 0))
 
-    # path = 'figures/sar_rgb_image_%s.png'%(suffix)
-    path = get_next_path('figures/sar_rgb_image_spread%d.png'%(azimuth_spread))
+    if suffix is None:
+        path = get_next_path('figures/sar_rgb_image.png')
+    else:
+        path = 'figures/sar_rgb_image_%s.png'%(suffix)
     image.save(path)  # save the image
     print('Saved SAR and RGB image to: ', path)
 
 
-def stitch_spread_images():
-    # find all files in figures that have 'spread in the name' and remove the left 128 columns, and stich them into 1 wide image
+def az_spread_experiment():
+
+    seed = 8134
+
+    # remove all files in figures with *spread*
+    for f in os.listdir('figures'):
+        if 'spread' in f:
+            os.remove(os.path.join('figures', f))
+
+    # generate the images for each azspread
+    for azimuth_spread in torch.arange(0, 361, 30).numpy():
+
+        # set the random seed
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        render_random_image(debug_gif=False, num_pulse=50, azimuth_spread=azimuth_spread, suffix='spread%d'%azimuth_spread)
+
+    # find all files in figures that have 'spread' in the name and remove the left 128 columns, and stich them into 1 wide image
     figure_files = [f for f in os.listdir('figures') if 'spread' in f]
-    figure_num = [int(f.split('spread')[-1].split('_')[0]) for f in figure_files]
+    figure_num = [int(f.split('spread')[-1].split('.')[0]) for f in figure_files]
     # Sort files by spread number
     sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
 
@@ -297,7 +317,8 @@ def stitch_spread_images():
     stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
     stitched_img.save('figures/sar_spread_stitched.png')
-    
+
+
 
 if __name__ == '__main__':
     # # select random seed
@@ -306,13 +327,6 @@ if __name__ == '__main__':
     # print('Random seed: ', seed)
 
     # # for i in range(10):
-    # for azimuth_spread in torch.arange(0, 361, 30):
-
-    #     # set the random seed
-    #     np.random.seed(seed)
-    #     torch.manual_seed(seed)
-
-    #     render_random_image(debug_gif=False, num_pulse=50, azimuth_spread=azimuth_spread.item())
-    stitch_spread_images()
+    az_spread_experiment()
 
 

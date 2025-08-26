@@ -4,6 +4,7 @@ import sys
 import torch
 from PIL import Image
 import numpy as np
+from pytorch3d.structures import Meshes
 from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.renderer import (
     look_at_view_transform,
@@ -71,31 +72,27 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     mesh = load_objs_as_meshes([object_filename], device=device)
     verts = mesh.verts_packed()  # (V, 3)
     faces = mesh.faces_packed()  # (F, 3)
+
+    # add a ground if desired to the mesh
+    # if False:
+    if use_ground:
+        ground_buffer = 0.001
+        low_y  = verts[:, 1].min().item() - ground_buffer
+        high_y = verts[:, 1].max().item() + ground_buffer
+        ground_y = torch.full((T,), low_y, device=device) # (T,)
+        ground_y[cam_elevation < 0] = high_y # (T,)
+        # TODO: don;'t use ground_y[0]
+        ground_size = 100
+        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/100.0, device = device )
+        num_verts_before = verts.shape[0]
+        verts = torch.cat([verts, ground_verts], dim=0)
+        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
+        mesh = Meshes(verts=[verts], faces=[faces])
+
     face_verts = verts[faces]  # (F, 3, 3)
     v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
     face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
-
-    # if we want ag round, it will be at the lowest point of the mesh
-    # if the elevation is negative, it's at the highest point of the mesh
-    if use_ground:
-        low_y = verts[:, 1].min().item()
-        high_y = verts[:, 1].max().item()
-        ground_y = torch.full((T,), low_y, device=device) # (T,)
-        ground_y[cam_elevation < 0] = high_y # (T,)
-        
-        # calculate depth/energy of the rays that will hit the ground
-        r = torch.arange(n_rays_per_side, device=device, dtype=torch.float32)  # (r,) for ray origin y-coordinates
-        sin_e = torch.sin(torch.deg2rad(cam_elevation))  # (T,) sine of elevation angles
-        cos_e = torch.cos(torch.deg2rad(cam_elevation))  # (T,)
-
-        energy_miss = 2*torch.abs(sin_e) * alpha_1 + alpha_2  # (T,) energy of the rays that miss the object
-        depth_miss =    cam_distance.reshape(T,1) + \
-                        (half_side_len - half_side_len*2 * r.reshape(1,n_rays_per_side) / (n_rays_per_side - 1)) * \
-                        cos_e.reshape(T,1)/sin_e.reshape(T,1) # (T, r)
-
-        # tile such that all values in a row on the image are the same, they have the same depth
-        depth_miss = torch.tile(depth_miss.reshape(T, n_rays_per_side, 1), (1, 1, n_rays_per_side))  # (T, r, r)
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -138,12 +135,6 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             forward_vector = rotation[0,:,2] # (3,)
             energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
             energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
-
-            # rays that missed we will say actually hit the ground plane
-            if use_ground:
-                depth_map[~hit] = depth_miss[t, ~hit]  # set missed rays to the ground depth
-                energy_map[~hit] = energy_miss[t]  # set missed rays to the ground energy
-                hit = torch.logical_or(hit, ~hit)  # ensure hit mask is True for all rays
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -195,8 +186,8 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
-        spatial_bw = 20, spatial_fs = 20,
-        batch_size = None,
+        spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
+        batch_size = None, want_complex = False
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -207,7 +198,11 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         scatter_e (...,R): the energy of each scatter point
         z_near (float): z near to use when rendering
         z_far (float): z far to use when rendering
+        spatial_bw (float): spatial bandwidth of the radar
+        spatial_fs (float): spatial sampling frequency of the radar
+        wavelength (float): wavelength of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
+        want_complex (bool): whether to return complex-valued signal based on range
 
     Returns:
         received_signal (tensor): simulated received signal .shape=(..., Z)
@@ -219,6 +214,10 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     N = np.prod(shape_prefix)
     assert(len(scatter_z.shape) > 1), "scatter_z should have at least 2 dimensions, but got %d" % len(scatter_z.shape)
     assert(scatter_z.shape == scatter_e.shape), "scatter_z and scatter_e should have the same shape, but got %s and %s" % (scatter_z.shape, scatter_e.shape)
+
+    # apply complex exponential
+    if want_complex:
+        scatter_e = scatter_e * torch.exp(1j * 2 * math.pi / wavelength * scatter_z * 2) # multiple range by 2 because we have two-way travel
 
     # calculate the center of each spatial sample
     device = scatter_z.device
@@ -304,3 +303,47 @@ def resample_signal(self, signal, out_samples, dim = -1):
     resampled_signal = resampled_signal.reshape(shape_prefix + [out_samples] + shape_suffix)  # (shape_prefix, out_samples, shape_suffix)
     return resampled_signal  # (shape_prefix, out_samples, shape_suffix)
 
+
+def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.1, device = 'cpu' ):
+    """
+    Make a big ground plane with the specified size and ground level.
+    
+    Inputs:
+        size (int): size of the ground plane
+        ground_dim (int): dimension of the ground plane
+        ground_level (float): level of the ground plane
+        max_triangle_len (float): maximum length of a side in the triangle mesh
+        device (str): device to use for the mesh
+    Returns:
+        mesh (Mesh): the generated ground mesh
+    """
+    N = int(math.floor(size/max_triangle_len))+1
+    assert(N > 1), "N should be greater than 1, but got %d" % N
+
+    # calculate verticies
+    grid = torch.meshgrid(   torch.linspace(-size/2, size/2, N, device=device, dtype=torch.float32),
+                             torch.linspace(-size/2, size/2, N, device=device, dtype=torch.float32),
+                             indexing='ij')  # (N,N), (N,N)
+    verts = torch.stack(grid, dim=-1)  # (N,N,2)
+    verts = torch.cat((verts, torch.full((N,N,1), ground_level, device=device, dtype=torch.float32)), dim=-1)  # (V,3)
+    verts = verts.reshape(-1, 3)  # (V,3)
+
+    # calculate faces
+    h,w = torch.meshgrid( torch.arange(N-1, device=device, dtype=torch.int64),  # (N-1,)
+                          torch.arange(N-1, device=device, dtype=torch.int64), # (N-1,)
+    indexing='ij') # (N-1,N-1), (N-1,N-1)
+
+    squares = torch.stack((h*N+w, (h+1)*N+w, h*N+w+1, (h+1)*N + w+1), dim=-1).reshape(-1,4)  # (F/2,4)
+    upper_triangles = squares[..., :3] # (F/2,3)
+    lower_triangles = squares[..., 1:] # (F/2,3)
+    faces = torch.cat((upper_triangles, lower_triangles), dim=1)  # (F,3)
+    faces = torch.reshape(faces, (-1, 3))  # (F,3)
+
+    # make sure faces are within the range of vertices
+    assert( torch.all(faces < verts.shape[0]) ), "faces are out of bounds"  # ensure faces are within the range of vertices
+
+    # set the ground dim, currently it's 2
+    verts = torch.roll(verts, shifts=ground_dim+1, dims=1)  # (V,3)
+
+    # return the mesh
+    return verts,faces
