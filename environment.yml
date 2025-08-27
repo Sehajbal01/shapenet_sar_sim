@@ -18,6 +18,7 @@ dependencies:
   - scipy
   - iopath
   - pytorch3d
+  - opencv
   - pip:
       - imageio
       - imageio-ffmpeg
