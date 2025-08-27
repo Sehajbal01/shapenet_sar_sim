@@ -218,7 +218,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, suffix = None):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fsbw = 64, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -250,8 +250,8 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, su
 
                             z_near = 0.8,
                             z_far  = 1.8,
-                            spatial_bw = 64,
-                            spatial_fs = 64,
+                            spatial_bw = fsbw,
+                            spatial_fs = fsbw,
                             image_size = 64,
                             n_rays_per_side = 128,
 
@@ -268,10 +268,10 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, su
 
     # write azimuth and elevation at thee top left of the image
     image = PIL.Image.fromarray(image)  # convert to PIL image
-    draw = ImageDraw.Draw(image)
     pose_info = extract_pose_info(torch.tensor(pose))  # extract pose info
     az, el = pose_info[6].item(), pose_info[5].item()
     draw_str = 'Az: %.1f, El: %.1f' % (az, el)
+    draw = ImageDraw.Draw(image)
     draw.text((10, 10), draw_str, fill=(0, 0, 0))
 
     if suffix is None:
@@ -319,6 +319,88 @@ def az_spread_experiment():
     stitched_img.save('figures/sar_spread_stitched.png')
 
 
+def pulse_experiment():
+
+    seed = 8134
+
+    # remove all files in figures with *spread*
+    for f in os.listdir('figures'):
+        if 'pulses' in f:
+            os.remove(os.path.join('figures', f))
+
+    n_pulse_vals = torch.arange(2, 101, 5).numpy()
+
+    # generate the images for each azspread
+    for n_pulse in n_pulse_vals:
+
+        # set the random seed
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        render_random_image(debug_gif=False, num_pulse=n_pulse, azimuth_spread=100, suffix='pulses%d'%n_pulse)
+
+    # find all files in figures that have 'pulses' in the name and remove the left 128 columns, and stich them into 1 wide image
+    figure_files = [f for f in os.listdir('figures') if 'pulses' in f]
+    figure_num = [int(f.split('pulses')[-1].split('.')[0]) for f in figure_files]
+    # Sort files by pulses number
+    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
+
+    # Load images, crop left 128 columns, and collect
+    cropped_images = []
+    for i,fname in enumerate(sorted_files):
+        img = PIL.Image.open(os.path.join('figures', fname))
+        cropped = img.crop((128, 0, img.width, img.height))
+        draw = ImageDraw.Draw(cropped)
+        draw.text((10, 10), 'Pulses: %d'%n_pulse_vals[i], fill=(255, 255, 255))
+        cropped_images.append(np.array(cropped))
+
+    # Stitch horizontally
+    stitched = np.hstack(cropped_images)
+    stitched_img = PIL.Image.fromarray(stitched)
+    stitched_img.save('figures/sar_pulses_stitched.png')
+
+
+def bw_experiment():
+
+    seed = 8134
+
+    # remove all files in figures with *spread*
+    for f in os.listdir('figures'):
+        if 'bw' in f:
+            os.remove(os.path.join('figures', f))
+
+    bw_vals = 2**np.arange(13)
+
+    # generate the images for each azspread
+    for bw in bw_vals:
+
+        # set the random seed
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
+
+    # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
+    figure_files = [f for f in os.listdir('figures') if 'bw' in f]
+    figure_num = [int(f.split('bw')[-1].split('.')[0]) for f in figure_files]
+    # Sort files by bw number
+    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
+
+    # Load images, crop left 128 columns, and collect
+    cropped_images = []
+    for i,fname in enumerate(sorted_files):
+        img = PIL.Image.open(os.path.join('figures', fname))
+        cropped = img.crop((128, 0, img.width, img.height))
+        draw = ImageDraw.Draw(cropped)
+        draw.text((10, 10), 'BW: %d'%bw_vals[i], fill=(255, 255, 255))
+        cropped_images.append(np.array(cropped))
+
+    # Stitch horizontally
+    stitched = np.hstack(cropped_images)
+    stitched_img = PIL.Image.fromarray(stitched)
+    stitched_img.save('figures/sar_bw_stitched.png')
+
+
 
 if __name__ == '__main__':
     # # select random seed
@@ -327,6 +409,6 @@ if __name__ == '__main__':
     # print('Random seed: ', seed)
 
     # # for i in range(10):
-    az_spread_experiment()
+    bw_experiment()
 
 
