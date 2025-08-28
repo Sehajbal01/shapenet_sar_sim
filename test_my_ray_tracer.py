@@ -8,7 +8,7 @@ import time
 
 tik = time.time()
 
-W, H = 400, 300
+W, H = 800, 600
 DEVICE_ID = 0  # which gpu to use
 
 device = torch.device(f"cuda:{DEVICE_ID}")
@@ -28,7 +28,7 @@ octree = Octree(
 # === hack to add a ground ===
 # add two triangles as ground to all octree leaf elements
 # needs to be done after octree construction because we want octree to be based on scale of the obj file
-ground_size = 1e5
+ground_size = 1e3
 min_pt, _ = obj_trimesh.get_bounds()
 lowest_y = min_pt[1].item()
 # y is lowest point of obj file, x and z are ground_size
