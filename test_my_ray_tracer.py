@@ -3,6 +3,9 @@ from my_ray_tracer.camera.orthographic import OrthographicCamera
 from my_ray_tracer.accelerator.octree import Octree
 import torch
 import imageio
+import time
+
+tik = time.time()
 
 W, H = 400, 300
 
@@ -42,3 +45,6 @@ ray_hit_times = 1 - ray_hit_times  # invert to make further = darker
 # reshape it back to image
 ray_hit_times = ray_hit_times.reshape(H, W)
 imageio.imwrite("output_depth.png", (ray_hit_times.numpy() * 255).astype("uint8"))
+
+tok = time.time()
+print("Total time: ", tok - tik)
