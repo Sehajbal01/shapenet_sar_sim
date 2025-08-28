@@ -160,6 +160,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         plt.xlim(z_near, z_far)
         plt.ylim(sig_min, sig_max)
 
+
         path = get_next_path('figures/tmp/scatters_signal.png')
         savefig(path)
 
@@ -250,7 +251,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
 
                             z_near = 0.8,
                             z_far  = 1.8,
-                            spatial_bw = fsbw,
+                            spatial_bw = fsbw*2,
                             spatial_fs = fsbw,
                             image_size = 64,
                             n_rays_per_side = 128,
@@ -316,7 +317,9 @@ def az_spread_experiment():
     # Stitch horizontally
     stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_spread_stitched.png')
+    path = 'figures/sar_spread_stitched.png'
+    stitched_img.save(path)
+    print('Saved stitched image to: %s' % path)
 
 
 def pulse_experiment():
@@ -357,7 +360,9 @@ def pulse_experiment():
     # Stitch horizontally
     stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_pulses_stitched.png')
+    path = 'figures/sar_pulses_stitched.png'
+    stitched_img.save(path)
+    print('Saved stitched image to: %s' % path)
 
 
 def bw_experiment():
@@ -369,7 +374,8 @@ def bw_experiment():
         if 'bw' in f:
             os.remove(os.path.join('figures', f))
 
-    bw_vals = 2**np.arange(13)
+    bw_vals = np.linspace(75,175,10,endpoint=True)
+    # bw_vals = 2**np.arange(13)
 
     # generate the images for each azspread
     for bw in bw_vals:
@@ -381,7 +387,7 @@ def bw_experiment():
         render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
 
     # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'bw' in f]
+    figure_files = [f for f in os.listdir('figures') if 'sar_rgb_image_bw' in f]
     figure_num = [int(f.split('bw')[-1].split('.')[0]) for f in figure_files]
     # Sort files by bw number
     sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
@@ -398,8 +404,9 @@ def bw_experiment():
     # Stitch horizontally
     stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_bw_stitched.png')
-
+    path = 'figures/sar_bw_stitched.png'
+    stitched_img.save(path)
+    print('Saved stitched image to: %s' % path)
 
 
 if __name__ == '__main__':

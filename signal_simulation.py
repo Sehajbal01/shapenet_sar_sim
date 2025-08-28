@@ -1,3 +1,6 @@
+from utils import savefig
+import matplotlib.pyplot as plt
+import tqdm
 import os
 import imageio
 import sys
@@ -205,7 +208,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         want_complex (bool): whether to return complex-valued signal based on range
 
     Returns:
-        received_signal (tensor): simulated received signal .shape=(..., Z)
+        signal (tensor): simulated received signal .shape=(..., Z)
     """
 
     # reshaping
@@ -227,10 +230,10 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     Z = len(sample_z)
 
     # calculate the received signal for each pulse
-    # received_signal = sum_over_R_scatters( scatter_e * torch.sinc( spatial_bw * (scatter_z - sample_z) ) )
+    # signal = sum_over_R_scatters( scatter_e * torch.sinc( spatial_bw * (scatter_z - sample_z) ) )
     # When we do the broadcasting we want the shape to be (N,R,Z) before the sum, then sum over the R dimension
     if batch_size is None:
-        received_signal = torch.sum(
+        signal = torch.sum(
             scatter_e.reshape(N,R,1) * \
             torch.sinc( spatial_bw * \
                         (scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z))
@@ -240,7 +243,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
 
     # calculate the received signal in batches to save memory
     else:
-        received_signal = []
+        signal = []
 
         reshaped_scatter_e = scatter_e.reshape(N,R,1)
         reshaped_scatter_z = scatter_z.reshape(N,R,1)
@@ -249,7 +252,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         start = 0
         while start < N:
             end = min(start + batch_size, N)
-            received_signal.append(
+            signal.append(
                 torch.sum( reshaped_scatter_e[start:end] * \
                            torch.sinc( spatial_bw * \
                                        (reshaped_scatter_z[start:end] - reshapes_sample_z)
@@ -258,11 +261,63 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
             ))  # (N', Z)
             start = end
 
-        received_signal = torch.cat(received_signal, dim=1) # (N, Z)
+        signal = torch.cat(signal, dim=1) # (N, Z)
+
+    ########################################### debug train ###########################################
+    all_energies = scatter_e.reshape(N,R)
+    all_ranges   = scatter_z.reshape(N,R)
+    signals      = signal.reshape(N,Z)
+
+    # plot the signal and scatters for every pulse
+    sig_max = signals.max().item()
+    sig_min = signals.min().item()
+    energy_max = all_energies.max().item()
+    energy_min = all_energies.min().item()
+    p = N//2
+    plt.figure(figsize=(12, 6))
+
+    # plot the scatters
+    plt.subplot(1, 3, 1)
+    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    plt.title('Scatters')
+    plt.xlabel('Range')
+    plt.ylabel('Energy')
+    plt.xlim(z_near, z_far)
+    plt.ylim(energy_min, energy_max)
+
+    # plot the signal
+    plt.subplot(1, 3, 2)
+    plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
+    plt.title('Signal')
+    plt.xlabel('Range')
+    plt.ylabel('Amplitude')
+    plt.xlim(z_near, z_far)
+    plt.ylim(sig_min, sig_max)
+
+    # plot the interpolating sinc pulse function along with the scatters
+    sinc_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
+    plt.subplot(1, 3, 3)
+    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    for sz in sample_z:
+        sinc_pulse = torch.sinc(spatial_bw * (sinc_range - sz))
+        plt.plot(sinc_range.cpu().numpy(), sinc_pulse.cpu().numpy()*energy_max, color='orange')
+    plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
+    plt.title('Sinc Pulse')
+    plt.xlabel('Range')
+    plt.ylabel('Energy')
+    mid_z = (z_near + z_far) / 2
+    plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
+    plt.ylim(sinc_pulse.min().cpu().numpy(), sinc_pulse.max().cpu().numpy())
+
+
+    path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
+    savefig(path)
+    print('Figure saved to %s' % path)
+    ########################################### choo choo ~ ###########################################
 
     # return stuff
-    received_signal = received_signal.reshape(*shape_prefix, Z)  # (..., Z)
-    return received_signal/R, sample_z # normalize by the number of rays
+    signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
+    return signal/R, sample_z # normalize by the number of rays
 
 
 
