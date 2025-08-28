@@ -5,3 +5,6 @@
 *.swp
 figures/
 .vscode/
+.DS_Store
+
+test_data/
