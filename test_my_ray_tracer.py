@@ -45,6 +45,7 @@ obj_trimesh.triangles_C = torch.cat([obj_trimesh.triangles_C, ground_trig_1[2:3]
 obj_trimesh.triangles_edge1 = obj_trimesh.triangles_B - obj_trimesh.triangles_A  # recompute
 obj_trimesh.triangles_edge2 = obj_trimesh.triangles_C - obj_trimesh.triangles_A
 obj_trimesh.triangles_normal = torch.cross(obj_trimesh.triangles_edge1, obj_trimesh.triangles_edge2)
+obj_trimesh.triangles_normal = obj_trimesh.triangles_normal / torch.norm(obj_trimesh.triangles_normal, dim=1, keepdim=True)
 # add them to octree
 num_trigs = len(obj_trimesh.triangles_A)
 last_two_indices = torch.tensor([num_trigs - 2, num_trigs - 1], device=device)
@@ -121,7 +122,6 @@ normals = obj_trimesh.triangles_normal[ray_hit_triangle_ids[mask]]
 diffuse_image[mask] = torch.sum(-ortho_cam.direction.to(normals.device) * normals, dim=1)
 diffuse_image[mask] = torch.abs(diffuse_image[mask])  # we do not differentiate between front and back side of triangle
 diffuse_image[mask] = torch.clamp(diffuse_image[mask], 0, 1)
-diffuse_image /= torch.max(diffuse_image)
 diffuse_image = diffuse_image.reshape(H, W)
 
 imageio.imwrite("output_diffuse.png", (diffuse_image.cpu().detach().numpy() * 255).astype("uint8"))
