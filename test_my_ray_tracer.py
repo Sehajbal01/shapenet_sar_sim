@@ -7,7 +7,7 @@ import imageio
 W, H = 400, 300
 
 obj_trimesh = TriMesh()
-obj_trimesh.load_obj_file("test_data/fcd90d547fdeb629f200a72c9245aee7/model_normalized.obj")
+obj_trimesh.load_obj_file("/workspace/data/srncars/02958343/fcd90d547fdeb629f200a72c9245aee7/models/model_normalized.obj")
 print("Building Octree from mesh...")
 octree = Octree(
     max_depth=2,
