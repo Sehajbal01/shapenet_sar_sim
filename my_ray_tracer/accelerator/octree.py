@@ -106,9 +106,11 @@ class Octree:
             ray_directions (torch.Tensor): (N, 3) tensor of ray directions.
 
         Returns:
-            torch.Tensor: (N,) tensor of minimum intersection times for each ray. -1 if ray did not hit anything.
+            t_mins torch.Tensor: (N,) tensor of minimum intersection times for each ray. -1 if ray did not hit anything.
+            t_mins_indices torch.Tensor: (N,) tensor of triangle indices / IDs corresponding to the minimum intersection times.
         """
         t_mins = torch.full((ray_origins.shape[0],), float("inf"), dtype=torch.float32, device=self.device)
+        t_mins_indices = torch.full((ray_origins.shape[0],), -1, dtype=torch.long, device=self.device)
 
         # quite hard to parallelize with pytorch because each ray intersects with different bboxs, also different number of them
         # instead, parallelize over octree nodes/bboxes instead of rays
@@ -131,17 +133,23 @@ class Octree:
                 ray_origins_3 = ray_origins_2[ray_hit_indices]
                 ray_directions_3 = ray_directions_2[ray_hit_indices]
                 # we can intersect all interesting rays with all triangles in the current node in parallel
-                ray_hit_times = triangles_rays_intersection(ray_origins_3, ray_directions_3,
+                ray_hit_times, ray_hit_triangle_ids = triangles_rays_intersection(ray_origins_3, ray_directions_3,
                                             self.mesh.triangles_A[current_node.triangles],
                                             self.mesh.triangles_edge1[current_node.triangles],
                                             self.mesh.triangles_edge2[current_node.triangles],
-                                            self.mesh.triangles_normal[current_node.triangles])
+                                            self.mesh.triangles_normal[current_node.triangles],
+                                            current_node.triangles)
                 ray_hit_times[ray_hit_times == -1] = float("inf")  # set misses to inf
-                t_mins[ray_indices[ray_hit_indices]] = torch.min(t_mins[ray_indices[ray_hit_indices]], ray_hit_times)
+                
+                # Update t_mins and t_mins_indices where we found closer intersections
+                closer_hits = ray_hit_times < t_mins[ray_indices[ray_hit_indices]]
+                indices_to_update = ray_indices[ray_hit_indices][closer_hits]
+                t_mins[indices_to_update] = ray_hit_times[closer_hits]
+                t_mins_indices[indices_to_update] = ray_hit_triangle_ids[closer_hits]
             else:
                 for child in current_node.children:
                     if child is not None:
                         nodes_to_visit.append((child, ray_indices[ray_hit_indices]))
 
         t_mins[t_mins == float("inf")] = -1.0  # set rays that didn't hit anything to -1
-        return t_mins
+        return t_mins, t_mins_indices

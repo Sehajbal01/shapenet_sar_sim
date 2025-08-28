@@ -4,7 +4,7 @@ from ..core import EPSILON
 import torch
 
 def triangles_rays_intersection(ray_origins, ray_directions,
-                                triangles_A, triangles_edge1, triangles_edge2, triangles_normal):
+                                triangles_A, triangles_edge1, triangles_edge2, triangles_normal, triangles_indices):
     """
     Computes the minimum intersection distance between multiple rays and multiple triangles.
     Refer to Fast, Minimum Storage Ray Triangle Intersection 1997 paper.
@@ -16,11 +16,14 @@ def triangles_rays_intersection(ray_origins, ray_directions,
         triangles_A (torch.Tensor): (M, 3) tensor of triangle vertices A.
         triangles_edge1 (torch.Tensor): (M, 3) tensor of triangle edges 1.
         triangles_edge2 (torch.Tensor): (M, 3) tensor of triangle edges 2.
-        triangle_normal (torch.Tensor): (M, 3) tensor of triangle normals.
+        triangles_normal (torch.Tensor): (M, 3) tensor of triangle normals.
+        triangles_indices (torch.Tensor): (M,) tensor of triangle indices / IDs.
 
     Returns:
         min_intersections (torch.Tensor): (N,) tensor of minimum intersection distances for each ray.
                                                -1.0 indicates no intersection with any triangle.
+        min_indices (torch.Tensor): (N,) tensor of triangle indices corresponding to the minimum intersections.
+                                          -1 indicates no intersection with any triangle.
     """
     # Expand dimensions for broadcasting: rays (N,1,3), triangles (1,M,3)
     ray_dirs_expanded = ray_directions.unsqueeze(1)  # (N, 1, 3)
@@ -76,11 +79,17 @@ def triangles_rays_intersection(ray_origins, ray_directions,
     intersections = torch.where(hit_mask, t, torch.full_like(t, float("inf")))  # (N, M)
     
     # Find minimum intersection distance for each ray by taking min over triangles
-    min_distances, _ = torch.min(intersections, dim=1)  # (N,)
+    min_distances, min_triangle_indices = torch.min(intersections, dim=1)  # (N,), (N,)
     
     # Set rays with no intersections to -1.0
     min_intersections = torch.where(min_distances == float("inf"), 
                                     torch.full_like(min_distances, -1.0), 
                                     min_distances)
     
-    return min_intersections
+    # Get the actual triangle IDs for the minimum intersections
+    # For rays that hit nothing, set triangle index to -1
+    min_triangle_ids = torch.where(min_distances == float("inf"),
+                                   torch.full_like(min_triangle_indices, -1),
+                                   triangles_indices[min_triangle_indices])
+    
+    return min_intersections, min_triangle_ids

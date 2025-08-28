@@ -44,7 +44,7 @@ ray_directions = ray_directions.reshape(H * W, 3)
 
 # intersect rays with octree (which intersects with triangles inside)
 print("Intersecting all rays with the Octree...")
-ray_hit_times = octree.intersect_rays(ray_origins, ray_directions)
+ray_hit_times, ray_hit_triangle_ids = octree.intersect_rays(ray_origins, ray_directions)
 
 ray_hit_times[ray_hit_times < 0] = torch.max(ray_hit_times)
 ray_hit_times -= torch.min(ray_hit_times)
@@ -54,6 +54,18 @@ ray_hit_times = 1 - ray_hit_times  # invert to make further = darker
 # reshape it back to image
 ray_hit_times = ray_hit_times.reshape(H, W)
 imageio.imwrite("output_depth.png", (ray_hit_times.cpu().detach().numpy() * 255).astype("uint8"))
+
+# create a diffuse image
+diffuse_image = torch.zeros((H*W,), dtype=torch.float32, device=device)
+mask = torch.argwhere(ray_hit_triangle_ids != -1).squeeze()
+normals = obj_trimesh.triangles_normal[ray_hit_triangle_ids[mask]]
+diffuse_image[mask] = torch.sum(-ortho_cam.direction.to(normals.device) * normals, dim=1)
+diffuse_image[mask] = torch.abs(diffuse_image[mask])  # we do not differentiate between front and back side of triangle
+diffuse_image[mask] = torch.clamp(diffuse_image[mask], 0, 1)
+diffuse_image /= torch.max(diffuse_image)
+diffuse_image = diffuse_image.reshape(H, W)
+
+imageio.imwrite("output_diffuse.png", (diffuse_image.cpu().detach().numpy() * 255).astype("uint8"))
 
 tok = time.time()
 print("Total time: ", tok - tik)
