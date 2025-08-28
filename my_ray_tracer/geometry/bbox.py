@@ -47,9 +47,10 @@ class BBox:
         # https://github.com/JiayinCao/SORT/blob/master/src/math/bbox.h
         # https://github.com/JhihYangWu/miniRT/blob/main/src/mymath/bbox.cpp
         N = ray_origins.shape[0]
+        device = ray_origins.device
 
-        tmins = torch.full((N,), float("-inf"), dtype=torch.float32)
-        tmaxs = torch.full((N,), float("inf"), dtype=torch.float32)
+        tmins = torch.full((N,), float("-inf"), dtype=torch.float32, device=device)
+        tmaxs = torch.full((N,), float("inf"), dtype=torch.float32, device=device)
 
         for axis in range(3):
             denom = ray_directions[:, axis]

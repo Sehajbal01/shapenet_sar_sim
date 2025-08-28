@@ -71,3 +71,19 @@ class TriMesh:
         min_pt = torch.min(all_triangle_vertices, dim=0)
         max_pt = torch.max(all_triangle_vertices, dim=0)
         return min_pt.values, max_pt.values
+
+    def to(self, device):
+        """
+        Move all the data to the specified device.
+
+        Args:
+            device (torch.device): the device to move the data to.       
+        """
+        self.triangles_A = self.triangles_A.to(device)
+        self.triangles_B = self.triangles_B.to(device)
+        self.triangles_C = self.triangles_C.to(device)
+        self.triangles_edge1 = self.triangles_edge1.to(device)
+        self.triangles_edge2 = self.triangles_edge2.to(device)
+        self.triangles_normal = self.triangles_normal.to(device)
+
+        return self

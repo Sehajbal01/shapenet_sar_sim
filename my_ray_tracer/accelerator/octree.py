@@ -6,7 +6,7 @@ from ..geometry.bbox import BBox
 from ..geometry.triangle import triangles_rays_intersection
 
 class Octree:
-    def __init__(self, max_depth, approx_trig_per_bbox, mesh, bbox=None, triangles=None):
+    def __init__(self, max_depth, approx_trig_per_bbox, mesh, device, bbox=None, triangles=None):
         """
         Constructor for the Octree class.
         
@@ -14,14 +14,17 @@ class Octree:
             max_depth (int): Maximum recursive depth of the octree.
             approx_trig_per_bbox (int): Number of triangles per bbox to stop subdividing.
             mesh (TriMesh): The mesh containing triangle data.
+            device (torch.device): The device to use for tensor operations.
             bbox (BBox): Bounding box for this octree node.
             triangles (list): List of triangle indices that may intersect this bounding box. These indices index into mesh.triangle_ arrays.
         """
+        self.device = device
+
         if bbox is None:
             # first call, create bbox from mesh
             min_pt, max_pt = mesh.get_bounds()
             bbox = BBox(min_pt, max_pt)
-            triangles = torch.arange(mesh.triangles_A.shape[0], dtype=torch.long)
+            triangles = torch.arange(mesh.triangles_A.shape[0], dtype=torch.long, device=device)
 
         self.bbox = bbox
         self.is_leaf = False  # whether this node is a leaf node. leaf nodes stop subdividing and contain triangles. non-leaf nodes don't contain triangles.
@@ -67,8 +70,8 @@ class Octree:
                             min_z = mid_pt[2]
                             max_z = bbox.max_pt[2]
                         
-                        child_min = torch.tensor([min_x, min_y, min_z], dtype=torch.float32)
-                        child_max = torch.tensor([max_x, max_y, max_z], dtype=torch.float32)
+                        child_min = torch.tensor([min_x, min_y, min_z], dtype=torch.float32, device=self.device)
+                        child_max = torch.tensor([max_x, max_y, max_z], dtype=torch.float32, device=self.device)
                         child_bbox = BBox(child_min, child_max)
                         
                         # find triangles that intersect this child bbox
@@ -88,6 +91,7 @@ class Octree:
                                 max_depth - 1, 
                                 approx_trig_per_bbox,
                                 mesh,
+                                self.device,
                                 bbox=child_bbox,
                                 triangles=child_triangles
                             )
@@ -104,12 +108,12 @@ class Octree:
         Returns:
             torch.Tensor: (N,) tensor of minimum intersection times for each ray. -1 if ray did not hit anything.
         """
-        t_mins = torch.full((ray_origins.shape[0],), float("inf"), dtype=torch.float32)
+        t_mins = torch.full((ray_origins.shape[0],), float("inf"), dtype=torch.float32, device=self.device)
 
         # quite hard to parallelize with pytorch because each ray intersects with different bboxs, also different number of them
         # instead, parallelize over octree nodes/bboxes instead of rays
 
-        nodes_to_visit = deque([(self, torch.arange(ray_origins.shape[0]))])  # tuples of (node, ray_indices of rays that are interested in this node)
+        nodes_to_visit = deque([(self, torch.arange(ray_origins.shape[0], device=self.device))])  # tuples of (node, ray_indices of rays that are interested in this node)
 
         while len(nodes_to_visit) > 0:
             current_node, ray_indices = nodes_to_visit.popleft()
