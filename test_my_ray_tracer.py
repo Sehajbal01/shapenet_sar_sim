@@ -1,6 +1,7 @@
 from my_ray_tracer.geometry.trimesh import TriMesh
 from my_ray_tracer.camera.orthographic import OrthographicCamera
 from my_ray_tracer.accelerator.octree import Octree
+from my_ray_tracer.geometry.bbox import BBox
 import torch
 import imageio
 import time
@@ -23,6 +24,64 @@ octree = Octree(
     mesh=obj_trimesh,
     device=device
 )
+
+# === hack to add a ground ===
+# add two triangles as ground to all octree leaf elements
+# needs to be done after octree construction because we want octree to be based on scale of the obj file
+ground_size = 1e5
+min_pt, _ = obj_trimesh.get_bounds()
+lowest_y = min_pt[1].item()
+# y is lowest point of obj file, x and z are ground_size
+ground_trig_1 = torch.tensor([[-ground_size, lowest_y, -ground_size],
+                              [-ground_size, lowest_y, ground_size],
+                              [ground_size, lowest_y, ground_size]]).to(device)
+ground_trig_2 = torch.tensor([[ground_size, lowest_y, ground_size],
+                              [ground_size, lowest_y, -ground_size],
+                              [-ground_size, lowest_y, -ground_size]]).to(device)
+# add them to mesh
+obj_trimesh.triangles_A = torch.cat([obj_trimesh.triangles_A, ground_trig_1[0:1], ground_trig_2[0:1]], dim=0)
+obj_trimesh.triangles_B = torch.cat([obj_trimesh.triangles_B, ground_trig_1[1:2], ground_trig_2[1:2]], dim=0)
+obj_trimesh.triangles_C = torch.cat([obj_trimesh.triangles_C, ground_trig_1[2:3], ground_trig_2[2:3]], dim=0)
+obj_trimesh.triangles_edge1 = obj_trimesh.triangles_B - obj_trimesh.triangles_A  # recompute
+obj_trimesh.triangles_edge2 = obj_trimesh.triangles_C - obj_trimesh.triangles_A
+obj_trimesh.triangles_normal = torch.cross(obj_trimesh.triangles_edge1, obj_trimesh.triangles_edge2)
+# add them to octree
+num_trigs = len(obj_trimesh.triangles_A)
+last_two_indices = torch.tensor([num_trigs - 2, num_trigs - 1], device=device)
+def add_ground(octree_node):
+    if octree_node.is_leaf:
+        octree_node.triangles = torch.cat([octree_node.triangles, last_two_indices], dim=0)
+    else:
+        for child in octree_node.children:
+            if child is not None:
+                add_ground(child)
+add_ground(octree)
+# add two octree nodes because lots of primary rays miss the first octree right now
+octree_parent = Octree(
+    max_depth=0,
+    approx_trig_per_bbox=256,
+    mesh=obj_trimesh,
+    device=device,
+    bbox=BBox(torch.full((3,), -ground_size, dtype=torch.float32, device=device),
+              torch.full((3,), ground_size, dtype=torch.float32, device=device)),
+    triangles=[]
+)
+octree_parent.is_leaf = False
+octree_second_child = Octree(
+    max_depth=0,
+    approx_trig_per_bbox=256,
+    mesh=obj_trimesh,
+    device=device,
+    bbox=BBox(torch.full((3,), -ground_size, dtype=torch.float32, device=device),
+              torch.full((3,), ground_size, dtype=torch.float32, device=device)),
+    triangles=last_two_indices
+)
+octree_parent.children[0] = octree
+octree_parent.children[1] = octree_second_child
+# start tracing from octree_parent
+octree = octree_parent
+
+# ============================
 
 print("Generating camera rays...")
 ortho_cam = OrthographicCamera(
