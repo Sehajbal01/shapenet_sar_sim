@@ -283,130 +283,6 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
     print('Saved SAR and RGB image to: ', path)
 
 
-def az_spread_experiment():
-
-    seed = 8134
-
-    # remove all files in figures with *spread*
-    for f in os.listdir('figures'):
-        if 'spread' in f:
-            os.remove(os.path.join('figures', f))
-
-    # generate the images for each azspread
-    for azimuth_spread in torch.arange(0, 361, 30).numpy():
-
-        # set the random seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-        render_random_image(debug_gif=False, num_pulse=50, azimuth_spread=azimuth_spread, suffix='spread%d'%azimuth_spread)
-
-    # find all files in figures that have 'spread' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'spread' in f]
-    figure_num = [int(f.split('spread')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by spread number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
-
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for fname in sorted_files:
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        cropped_images.append(np.array(cropped))
-
-    # Stitch horizontally
-    stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
-    path = 'figures/sar_spread_stitched.png'
-    stitched_img.save(path)
-    print('Saved stitched image to: %s' % path)
-
-
-def pulse_experiment():
-
-    seed = 8134
-
-    # remove all files in figures with *spread*
-    for f in os.listdir('figures'):
-        if 'pulses' in f:
-            os.remove(os.path.join('figures', f))
-
-    n_pulse_vals = torch.arange(2, 101, 5).numpy()
-
-    # generate the images for each azspread
-    for n_pulse in n_pulse_vals:
-
-        # set the random seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-        render_random_image(debug_gif=False, num_pulse=n_pulse, azimuth_spread=100, suffix='pulses%d'%n_pulse)
-
-    # find all files in figures that have 'pulses' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'pulses' in f]
-    figure_num = [int(f.split('pulses')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by pulses number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
-
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for i,fname in enumerate(sorted_files):
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        draw = ImageDraw.Draw(cropped)
-        draw.text((10, 10), 'Pulses: %d'%n_pulse_vals[i], fill=(255, 255, 255))
-        cropped_images.append(np.array(cropped))
-
-    # Stitch horizontally
-    stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
-    path = 'figures/sar_pulses_stitched.png'
-    stitched_img.save(path)
-    print('Saved stitched image to: %s' % path)
-
-
-def bw_experiment():
-
-    seed = 8134
-
-    # remove all files in figures with *spread*
-    for f in os.listdir('figures'):
-        if 'bw' in f:
-            os.remove(os.path.join('figures', f))
-
-    bw_vals = np.linspace(75,175,10,endpoint=True)
-    # bw_vals = 2**np.arange(13)
-
-    # generate the images for each azspread
-    for bw in bw_vals:
-
-        # set the random seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fs=bw, bw=bw, suffix='bw%d'%bw)
-
-    # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'sar_rgb_image_bw' in f]
-    figure_num = [int(f.split('bw')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by bw number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
-
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for i,fname in enumerate(sorted_files):
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        draw = ImageDraw.Draw(cropped)
-        draw.text((10, 10), 'BW: %d'%bw_vals[i], fill=(255, 255, 255))
-        cropped_images.append(np.array(cropped))
-
-    # Stitch horizontally
-    stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
-    path = 'figures/sar_bw_stitched.png'
-    stitched_img.save(path)
-    print('Saved stitched image to: %s' % path)
 
 
 def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134):
@@ -447,17 +323,17 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             kwargs[param_name] = param_vals[i]
             param_str_parts.append(f"{param_name}{int(param_vals[i])}")
         
-        kwargs['suffix'] = f"{experiment_name}_{'_'.join(param_str_parts)}"
-        print("kwargs: ", kwargs)
+        # Add a numeric ID to ensure correct sorting
+        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{'_'.join(param_str_parts)}"
         render_random_image(**kwargs)
 
     # find all files in figures that have the experiment name
     figure_files = [f for f in os.listdir('figures') if f'sar_rgb_image_{experiment_name}' in f]
     
-    # Extract the parameter string (everything between experiment name and .png)
-    figure_ids = [f.split(experiment_name + '_')[1].split('.png')[0] for f in figure_files]
+    # Extract the figure ID (the 3-digit number after experiment_name_)
+    figure_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in figure_files]
     
-    # Sort files by the full parameter string
+    # Sort files by the figure ID
     sorted_files = [f for _, f in sorted(zip(figure_ids, figure_files))]
 
     # Load images, crop left 128 columns, and collect
