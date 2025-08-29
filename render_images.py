@@ -219,7 +219,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fsbw = 64, suffix = None):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs = 64, bw = 64, n_rays_per_side = 128, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -251,10 +251,10 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
 
                             z_near = 0.8,
                             z_far  = 1.8,
-                            spatial_bw = fsbw*2,
-                            spatial_fs = fsbw,
+                            spatial_bw = bw,
+                            spatial_fs = fs,
                             image_size = 64,
-                            n_rays_per_side = 128,
+                            n_rays_per_side = n_rays_per_side,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -384,7 +384,7 @@ def bw_experiment():
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
+        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fs=bw, bw=bw, suffix='bw%d'%bw)
 
     # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
     figure_files = [f for f in os.listdir('figures') if 'sar_rgb_image_bw' in f]
@@ -409,13 +409,107 @@ def bw_experiment():
     print('Saved stitched image to: %s' % path)
 
 
-if __name__ == '__main__':
-    # # select random seed
-    # seed = np.random.randint(0, 10000)
-    # seed = 8134
-    # print('Random seed: ', seed)
+def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134):
+    """
+    A modular function to run experiments by varying multiple parameters together
+    
+    Args:
+        param_dict (dict): Dictionary where each key is a parameter name and value is a list/array of values.
+                          All lists/arrays must have the same length.
+        default_kwargs (dict): Default arguments for render_random_image
+        experiment_name (str): Name of the experiment for saving files
+        seed (int): Random seed for reproducibility
+    """
+    # Verify all parameter arrays have the same length
+    lengths = [len(vals) for vals in param_dict.values()]
+    if not all(l == lengths[0] for l in lengths):
+        raise ValueError("All parameter arrays must have the same length")
+    n_experiments = lengths[0]
+    
+    # Create parameter names string for labeling
+    param_names = "_".join(param_dict.keys())
 
-    # # for i in range(10):
-    bw_experiment()
+    # remove all files in figures with the experiment name
+    for f in os.listdir('figures'):
+        if experiment_name in f:
+            os.remove(os.path.join('figures', f))
+
+    # generate the images for each parameter combination
+    for i in range(n_experiments):
+        # set the random seed
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        # update the kwargs with the current parameter values
+        kwargs = default_kwargs.copy()
+        param_str_parts = []
+        for param_name, param_vals in param_dict.items():
+            kwargs[param_name] = param_vals[i]
+            param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+        
+        kwargs['suffix'] = f"{experiment_name}_{'_'.join(param_str_parts)}"
+        print("kwargs: ", kwargs)
+        render_random_image(**kwargs)
+
+    # find all files in figures that have the experiment name
+    figure_files = [f for f in os.listdir('figures') if f'sar_rgb_image_{experiment_name}' in f]
+    
+    # Extract the parameter string (everything between experiment name and .png)
+    figure_ids = [f.split(experiment_name + '_')[1].split('.png')[0] for f in figure_files]
+    
+    # Sort files by the full parameter string
+    sorted_files = [f for _, f in sorted(zip(figure_ids, figure_files))]
+
+    # Load images, crop left 128 columns, and collect
+    cropped_images = []
+    for i, fname in enumerate(sorted_files):
+        img = PIL.Image.open(os.path.join('figures', fname))
+        cropped = img.crop((128, 0, img.width, img.height))
+        draw = ImageDraw.Draw(cropped)
+        
+        # Create label with all parameter values
+        label_parts = []
+        for param_name, param_vals in param_dict.items():
+            label_parts.append("%s: %.1f"%(param_name, param_vals[i]))
+        label = ", ".join(label_parts)
+        
+        draw.text((10, 10), label, fill=(255, 255, 255))
+        cropped_images.append(np.array(cropped))
+
+    # Stitch horizontally
+    stitched = np.hstack(cropped_images)
+    stitched_img = PIL.Image.fromarray(stitched)
+    path = f'figures/sar_{experiment_name}_stitched.png'
+    stitched_img.save(path)
+    print('Saved stitched image to: %s' % path)
+
+
+if __name__ == '__main__':
+    # Example of using multi_param_experiment for a single parameter (equivalent to old experiments)
+    
+    # Bandwidth experiment
+    # bw_vals = torch.linspace(75, 175, 10)
+    bw_vals = 2**torch.arange(3, 11)
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'azimuth_spread': 100,
+    }
+    multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
+
+    # varying just azimuth spread
+    n_vals = 5  # number of parameter combinations
+    spread_vals = torch.linspace(60, 180, n_vals)
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'fs': 64,
+        'bw': 64,
+    }
+    param_dict = {
+        'azimuth_spread': spread_vals
+    }
+    
+    multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
 
 

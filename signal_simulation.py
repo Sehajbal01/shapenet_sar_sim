@@ -190,7 +190,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
-        batch_size = None, want_complex = False
+        batch_size = None, want_complex = False, window_func = 'sinc'
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -206,6 +206,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         wavelength (float): wavelength of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
         want_complex (bool): whether to return complex-valued signal based on range
+        window_func (str): window function to use ('sinc' or 'gaussian')
 
     Returns:
         signal (tensor): simulated received signal .shape=(..., Z)
@@ -217,6 +218,15 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     N = np.prod(shape_prefix)
     assert(len(scatter_z.shape) > 1), "scatter_z should have at least 2 dimensions, but got %d" % len(scatter_z.shape)
     assert(scatter_z.shape == scatter_e.shape), "scatter_z and scatter_e should have the same shape, but got %s and %s" % (scatter_z.shape, scatter_e.shape)
+
+    # make the window function
+    if window_func == "sinc":
+        window = lambda x: torch.sinc(spatial_bw * x)
+    elif window_func == "gaussian":
+        window = lambda x: torch.exp(-0.5 * (x * spatial_bw) ** 2)
+    else:
+        raise ValueError("window_func should be 'sinc' or 'gaussian', but got %s" % window_func)
+
 
     # apply complex exponential
     if want_complex:
@@ -235,9 +245,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     if batch_size is None:
         signal = torch.sum(
             scatter_e.reshape(N,R,1) * \
-            torch.sinc( spatial_bw * \
-                        (scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z))
-                      ),
+            window(scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z)),
             dim=1
         ) # (N, Z)
 
@@ -254,9 +262,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
             end = min(start + batch_size, N)
             signal.append(
                 torch.sum( reshaped_scatter_e[start:end] * \
-                           torch.sinc( spatial_bw * \
-                                       (reshaped_scatter_z[start:end] - reshapes_sample_z)
-                                     ),
+                           window(reshaped_scatter_z[start:end] - reshapes_sample_z),
                            dim=2
             ))  # (N', Z)
             start = end
@@ -295,19 +301,19 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     plt.ylim(sig_min, sig_max)
 
     # plot the interpolating sinc pulse function along with the scatters
-    sinc_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
+    window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
     plt.subplot(1, 3, 3)
     plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
     for sz in sample_z:
-        sinc_pulse = torch.sinc(spatial_bw * (sinc_range - sz))
-        plt.plot(sinc_range.cpu().numpy(), sinc_pulse.cpu().numpy()*energy_max, color='orange')
+        window_pulse = window(window_range - sz)
+        plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
     plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
-    plt.title('Sinc Pulse')
+    plt.title('Window Pulse')
     plt.xlabel('Range')
     plt.ylabel('Energy')
     mid_z = (z_near + z_far) / 2
     plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
-    plt.ylim(sinc_pulse.min().cpu().numpy(), sinc_pulse.max().cpu().numpy())
+    plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
 
     path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
