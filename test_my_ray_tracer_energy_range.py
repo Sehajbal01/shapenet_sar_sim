@@ -36,5 +36,8 @@ e_r_values = energy_range_values[0]  # list[(n, 2)]  # just the first camera for
 for i in range(len(e_r_values)):
     xy = e_r_values[i].cpu().numpy()
     plt.scatter(xy[:, 0], xy[:, 1], s=1)
+    plt.xlabel("Range")
+    plt.ylabel("Energy")
+    plt.title(f"Energy vs Range Plot for Bounce {i}")
     plt.savefig(f"energy_range_bounce_{i}.png")
     plt.close()

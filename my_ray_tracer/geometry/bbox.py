@@ -60,4 +60,4 @@ class BBox:
             tmins[mask] = torch.max(tmins[mask], torch.min(t1[mask], t2[mask]))
             tmaxs[mask] = torch.min(tmaxs[mask], torch.max(t1[mask], t2[mask]))
 
-        return torch.where(tmins > tmaxs, torch.tensor(-1.0, dtype=torch.float32), tmins)
+        return torch.where(tmins > tmaxs, torch.tensor(-1.0, dtype=torch.float32, device=device), tmins)
