@@ -57,7 +57,7 @@ class TriMesh:
 
         self.triangles_edge1 = self.triangles_B - self.triangles_A
         self.triangles_edge2 = self.triangles_C - self.triangles_A
-        self.triangles_normal = torch.cross(self.triangles_edge1, self.triangles_edge2)
+        self.triangles_normal = torch.cross(self.triangles_edge1, self.triangles_edge2, dim=1)
         self.triangles_normal = self.triangles_normal / torch.norm(self.triangles_normal, dim=1, keepdim=True)
 
     def get_bounds(self):

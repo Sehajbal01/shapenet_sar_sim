@@ -39,8 +39,8 @@ class OrthographicCamera:
 
         # generate useful vectors
         # same as OpenGL, u vector points to the right from where the sensor is looking, v vector points upward of where the sensor is looking
-        u = torch.cross(self.direction, torch.tensor(UP, dtype=torch.float32))
-        v = torch.cross(u, self.direction)
+        u = torch.cross(self.direction, torch.tensor(UP, dtype=torch.float32), dim=0)
+        v = torch.cross(u, self.direction, dim=0)
 
         # generate ray origins and directions
         ray_origins = self.position.expand((self.pixels_h, self.pixels_w, 3))  # first let every ray start at camera position
