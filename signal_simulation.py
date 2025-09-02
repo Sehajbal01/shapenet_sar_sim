@@ -408,3 +408,33 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
 
     # return the mesh
     return verts,faces
+
+
+def apply_snr(signal, snr_db, dim=-1):
+    """
+    Apply a signal-to-noise ratio (SNR) to the input signal.
+
+    Args:
+        signal (torch.Tensor): The input signal tensor.
+        snr_db (float): The desired SNR in decibels.
+        dim (int): The dimension along which to compute the SNR.
+
+    Returns:
+        torch.Tensor: The signal with the applied SNR.
+    """
+    # Convert SNR from dB to linear scale
+    snr_linear = 10 ** (snr_db / 10)
+
+    # Compute the signal power
+    signal_power = torch.mean(signal ** 2, dim=dim, keepdim=True)
+
+    # Compute the noise power
+    noise_power = signal_power / snr_linear
+
+    # Generate noise
+    noise = torch.randn_like(signal) * torch.sqrt(noise_power)
+
+    # Add noise to the signal
+    noisy_signal = signal + noise
+
+    return noisy_signal

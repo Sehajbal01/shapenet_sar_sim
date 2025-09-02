@@ -9,7 +9,7 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-from signal_simulation import accumulate_scatters, interpolate_signal
+from signal_simulation import accumulate_scatters, interpolate_signal, apply_snr
 # from signal_simulation import accumulate_scatters, interpolate_signal
 
 
@@ -23,6 +23,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         debug_gif_suffix = None,
                         image_size = 128,
                         n_rays_per_side = 128,
+                        snr_db = None,
     ):
 
     # set device
@@ -48,6 +49,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             batch_size = None,
     )
     print('done.')
+
+    # apply SNR
+    if snr_db is not None:
+        signals = apply_snr(signals, snr_db)
 
     # compute forward vectors from azimuth and elevation angles
     forward_vectors = -torch.stack([
@@ -219,7 +224,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, spatial_bw = 64, n_rays_per_side = 128, image_size = 128, suffix = None):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, spatial_bw = 64, n_rays_per_side = 128, image_size = 128, snr_db = None, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -255,6 +260,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, sp
                             spatial_fs = spatial_fs,
                             image_size = image_size,
                             n_rays_per_side = n_rays_per_side,
+                            snr_db = snr_db,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -374,18 +380,32 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
 
-    # ray density
+    # # ray density
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 170.7,
+    #     'spatial_fs': 170.7,
+    # }
+    # vary_kwargs = {
+    #     'n_rays_per_side': np.linspace(133,140, 8,endpoint=True).astype(np.int32).tolist()
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "ray_density_experiment")
+
+    # SNR
     default_kwargs = {
         'debug_gif': False,
         'num_pulse': 32,
         'azimuth_spread': 100,
-        'spatial_bw': 170.7,
-        'spatial_fs': 170.7,
+        'spatial_bw': 128,
+        'spatial_fs': 128,
+        'n_rays_per_side': 128
     }
     vary_kwargs = {
-        'n_rays_per_side': np.linspace(133,140, 8,endpoint=True).astype(np.int32).tolist()
+        'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
     }
-    multi_param_experiment(vary_kwargs, default_kwargs, "ray_density_experiment")
+    multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
 
     #     # render the SAR images for each pose
     # sar = sar_render_image( mesh_path, # fname
