@@ -7,22 +7,190 @@ import sys
 import torch
 from PIL import Image
 import numpy as np
-from pytorch3d.structures import Meshes
-from pytorch3d.io import load_objs_as_meshes
-from pytorch3d.renderer import (
-    look_at_view_transform,
-    FoVOrthographicCameras,
-    RasterizationSettings, 
-    MeshRasterizer,  
-)
+# from pytorch3d.structures import Meshes
+# from pytorch3d.io import load_objs_as_meshes
+# from pytorch3d.renderer import (
+#     look_at_view_transform,
+#     FoVOrthographicCameras,
+#     RasterizationSettings, 
+#     MeshRasterizer,  
+# )
 import math
 from utils import get_next_path, extract_pose_info
+from my_ray_tracer.core.scene import Scene
+from my_ray_tracer.camera.orthographic import OrthographicCamera
 
 
+
+# def accumulate_scatters(target_poses, z_near, z_far, object_filename,
+#                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
+#                alpha_1=1.0, alpha_2=0.0, use_ground=True, debug_gif=False):
+#     '''
+#     returns the energy and range for a bunch of rays for each pulse
+
+#     inputs:
+#         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
+#         z_near (int): near distance of the obj
+#         z_far (int): far distance of the obj
+#         object_filename (str): path to the .obj file
+#         azimuth_spread (float): the range of azimuth angles for sar rendering
+#         n_pulses (int): the number of pulses for sar rendering
+#         n_rays_per_side (int): the number of rays on each side of the triangle, yielding num_ray_side**2 total rays
+#         alpha_1 (float): scaling factor for the energy return
+#         alpha_2 (float): offset for the energy return
+#         use_ground (bool): whether to use the ground plane for rendering
+#         debug_gif (bool): whether to save a gif of the depth and energy images
+
+#     outputs:
+#         range (T,P,R): the range of all the rays
+#         energy (T,P,R): the simulated energy of all the rays
+
+#     '''
+#     device = target_poses.device
+#     T = target_poses.shape[0]  # no. of camera views
+#     P = n_pulses               # no. of pulses per view
+#     half_side_len = abs(z_far - z_near) / 2
+
+#     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
+#     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
+#     #           (T,)          (T,)           (T,)
+#     print('Camera azimuth:   ', cam_azimuth)
+#     print('Camera elevation: ', cam_elevation)
+#     print('Camera distance:  ', cam_distance)
+
+#     # Spread the pulses across a small range of azimuth angles
+#     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
+#     azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+#     pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
+
+#     # prepare rasterization settings
+#     raster_settings = RasterizationSettings(
+#         image_size=n_rays_per_side, 
+#         blur_radius=0.0, 
+#         faces_per_pixel=1, 
+
+#         bin_size=0,  # or set to a small value
+#         max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
+#     )
+
+#     # get mesh and compute face normals
+#     mesh = load_objs_as_meshes([object_filename], device=device)
+#     verts = mesh.verts_packed()  # (V, 3)
+#     faces = mesh.faces_packed()  # (F, 3)
+
+#     # add a ground if desired to the mesh
+#     # if False:
+#     if use_ground:
+#         ground_buffer = 0.001
+#         low_y  = verts[:, 1].min().item() - ground_buffer
+#         high_y = verts[:, 1].max().item() + ground_buffer
+#         ground_y = torch.full((T,), low_y, device=device) # (T,)
+#         ground_y[cam_elevation < 0] = high_y # (T,)
+#         # TODO: don;'t use ground_y[0]
+#         ground_size = 100
+#         ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/100.0, device = device )
+#         num_verts_before = verts.shape[0]
+#         verts = torch.cat([verts, ground_verts], dim=0)
+#         faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
+#         mesh = Meshes(verts=[verts], faces=[faces])
+
+#     face_verts = verts[faces]  # (F, 3, 3)
+#     v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
+#     face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+#     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+
+#     # loop over each pulse and compute the depth map and surface normal
+#     scatter_ranges = []
+#     scatter_energies = []
+#     dm_e_images = []  # to store depth and energy images
+#     for t in range(T):
+#         scatter_ranges.append([])
+#         scatter_energies.append([])
+#         for p in range(P):
+
+#             # perform rasterization to find where the rays hit the mesh
+#             rotation, translation = look_at_view_transform(
+#                 cam_distance[t],
+#                 cam_elevation[t],
+#                 pytorch3d_azimuth[t, p],
+#                 device=device)
+#             cameras = FoVOrthographicCameras(
+#                 device = device, R = rotation, T = translation, 
+#                 min_x = -half_side_len, max_x = half_side_len,
+#                 min_y = -half_side_len, max_y = half_side_len,
+#             )
+#             rasterizer = MeshRasterizer(
+#                 cameras=cameras,
+#                 raster_settings=raster_settings
+#             )
+#             fragments = rasterizer(mesh)
+
+#             # get depth map
+#             depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+
+#             # compute surface normals from face indices and mesh vertices/faces
+#             face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
+#             hit = (depth_map >= 0) # (r, r) valid hits
+            
+#             # create normal map by indexing face normals with face IDs
+#             valid_face_ids = face_ids[hit] # (R',)
+
+#             # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
+#             # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
+#             forward_vector = rotation[0,:,2] # (3,)
+#             energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
+#             energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
+
+#             # produce a frame of the depth and energy maps
+#             if debug_gif:
+#                 masked_dm = depth_map[hit]
+#                 masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
+#                 masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
+#                 masked_dm = 1 - masked_dm  # invert the depth map
+#                 dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
+#                 dm_im[hit] = masked_dm  # apply the mask
+
+#                 masked_e = energy_map[hit]
+#                 masked_e = masked_e - masked_e.min()  # shift to start from 0
+#                 masked_e = masked_e / masked_e.max()  # normalize to [0,1]
+#                 e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
+#                 e_im[hit] = masked_e  # apply the mask
+
+#                 e_im = e_im.cpu().numpy()  # convert to numpy for saving
+#                 dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
+#                 dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
+#                 dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
+
+#                 dm_e_images.append(dm_e_im)  # store the depth and energy image
+
+#                 # save current image to a file in a tmp folder in figures to be made into a gif later
+#                 if not os.path.exists('figures/tmp'):
+#                     os.makedirs('figures/tmp')
+#                 path = get_next_path(f'figures/tmp/depth_energy.png')
+#                 imageio.imwrite(path, dm_e_im)
+
+#             # finalize the range and energy
+#             depth_map[~hit]  = 0.0  # set missed rays to 0
+#             scatter_ranges[t].append(depth_map.reshape(-1))  # (R,)
+#             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
+
+
+#         # stack the results
+#         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
+#         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
+#     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
+#     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
+
+#     # tile elevation and distance to match the shape of azimuth
+#     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
+#     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
+
+#     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
+#     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
-               alpha_1=1.0, alpha_2=0.0, use_ground=True, debug_gif=False):
+               alpha_1=1.0, alpha_2=0.0, use_ground=True, debug_gif=False, num_bounces=1):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -38,6 +206,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         alpha_2 (float): offset for the energy return
         use_ground (bool): whether to use the ground plane for rendering
         debug_gif (bool): whether to save a gif of the depth and energy images
+        num_bounces (int): number of ray bounces to simulate
 
     outputs:
         range (T,P,R): the range of all the rays
@@ -59,134 +228,88 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
     azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
-    pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
 
-    # prepare rasterization settings
-    raster_settings = RasterizationSettings(
-        image_size=n_rays_per_side, 
-        blur_radius=0.0, 
-        faces_per_pixel=1, 
-
-        bin_size=0,  # or set to a small value
-        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
-    )
-
-    # get mesh and compute face normals
-    mesh = load_objs_as_meshes([object_filename], device=device)
-    verts = mesh.verts_packed()  # (V, 3)
-    faces = mesh.faces_packed()  # (F, 3)
+    scene = Scene(
+        obj_filename=object_filename,
+        device=device,
+    )  # will automatically build octree for this mesh
 
     # add a ground if desired to the mesh
-    # if False:
     if use_ground:
-        ground_buffer = 0.001
-        low_y  = verts[:, 1].min().item() - ground_buffer
-        high_y = verts[:, 1].max().item() + ground_buffer
-        ground_y = torch.full((T,), low_y, device=device) # (T,)
-        ground_y[cam_elevation < 0] = high_y # (T,)
-        # TODO: don;'t use ground_y[0]
-        ground_size = 100
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/100.0, device = device )
-        num_verts_before = verts.shape[0]
-        verts = torch.cat([verts, ground_verts], dim=0)
-        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
-        mesh = Meshes(verts=[verts], faces=[faces])
-
-    face_verts = verts[faces]  # (F, 3, 3)
-    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+        scene.add_ground()
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
     scatter_energies = []
-    dm_e_images = []  # to store depth and energy images
-    for t in range(T):
+    for t in range(T):  # for each camera
         scatter_ranges.append([])
         scatter_energies.append([])
+
+        # construct P number of cameras due to azimuth spread
+        cameras = []
+        for p in range(P):  # for each pulse
+            elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
+            azimuth = cam_azimuth[t] / 180 * torch.pi  # in radians now
+            position_vector = torch.tensor([
+                torch.cos(elevation) * torch.sin(azimuth),
+                torch.sin(elevation),
+                torch.cos(elevation) * torch.cos(azimuth)
+            ], device=device)
+            position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
+            direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
+            direction_vector = direction_vector / torch.norm(direction_vector)
+            ortho_cam = OrthographicCamera(
+                position_vector.cpu(),  # position
+                direction_vector.cpu(),  # direction
+                half_side_len * 2,  # sensor width in world space
+                half_side_len * 2,  # sensor height in world space
+                n_rays_per_side,  # number of rays to shoot in width dimension
+                n_rays_per_side,  # number of rays to shoot in height dimension
+            )
+            cameras.append(ortho_cam)
+        
+        # trace rays in parallel
+        with torch.no_grad():
+            energy_range_values = scene.get_energy_range_values(cameras, num_bounces=num_bounces)
+
+        if debug_gif:
+            os.makedirs('figures/tmp', exist_ok=True)
+            # depth and diffuse images
+            depth, diffuse = scene.get_depth_and_diffuse(cameras[0])
+            imageio.imwrite(os.path.join("figures", "debug_depth.png"), depth)
+            imageio.imwrite(os.path.join("figures", "debug_diffuse.png"), diffuse)
+            # range energy plots
+            e_r_values = energy_range_values[0]  # list[(n, 2)]  # just the first camera for now
+            for i in range(len(e_r_values)):  # generate a plot for each bounce
+                xy = e_r_values[i].cpu().numpy()
+                plt.scatter(xy[:, 0], xy[:, 1], s=1)
+                plt.xlabel("Range")
+                plt.ylabel("Energy")
+                plt.title(f"Energy vs Range Plot for Bounce {i}")
+                plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_{i}.png"))
+                plt.close()
+
+        # save the energy range values
+        energy_range_values = [torch.cat(e_r_values, dim=0) for e_r_values in energy_range_values]  # join plots for different number of bounces. (list[r, 2])
+        
+        max_R = max([e_r_values.shape[0] for e_r_values in energy_range_values])
+        scatter_ranges[t] = torch.zeros((P, max_R), device=device)  # different pulses will have different number of returned hits, pad with zero
+        scatter_energies[t] = torch.zeros((P, max_R), device=device)
+        # fill in the values
         for p in range(P):
+            e_r_values = energy_range_values[p]
+            scatter_ranges[t][p, :e_r_values.shape[0]] = e_r_values[:, 0]
+            scatter_energies[t][p, :e_r_values.shape[0]] = e_r_values[:, 1]
 
-            # perform rasterization to find where the rays hit the mesh
-            rotation, translation = look_at_view_transform(
-                cam_distance[t],
-                cam_elevation[t],
-                pytorch3d_azimuth[t, p],
-                device=device)
-            cameras = FoVOrthographicCameras(
-                device = device, R = rotation, T = translation, 
-                min_x = -half_side_len, max_x = half_side_len,
-                min_y = -half_side_len, max_y = half_side_len,
-            )
-            rasterizer = MeshRasterizer(
-                cameras=cameras,
-                raster_settings=raster_settings
-            )
-            fragments = rasterizer(mesh)
-
-            # get depth map
-            depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
-
-            # compute surface normals from face indices and mesh vertices/faces
-            face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-            hit = (depth_map >= 0) # (r, r) valid hits
-            
-            # create normal map by indexing face normals with face IDs
-            valid_face_ids = face_ids[hit] # (R',)
-
-            # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-            # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-            forward_vector = rotation[0,:,2] # (3,)
-            energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
-
-            # produce a frame of the depth and energy maps
-            if debug_gif:
-                masked_dm = depth_map[hit]
-                masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-                masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-                masked_dm = 1 - masked_dm  # invert the depth map
-                dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-                dm_im[hit] = masked_dm  # apply the mask
-
-                masked_e = energy_map[hit]
-                masked_e = masked_e - masked_e.min()  # shift to start from 0
-                masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-                e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-                e_im[hit] = masked_e  # apply the mask
-
-                e_im = e_im.cpu().numpy()  # convert to numpy for saving
-                dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-                dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-                dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
-
-                dm_e_images.append(dm_e_im)  # store the depth and energy image
-
-                # save current image to a file in a tmp folder in figures to be made into a gif later
-                if not os.path.exists('figures/tmp'):
-                    os.makedirs('figures/tmp')
-                path = get_next_path(f'figures/tmp/depth_energy.png')
-                imageio.imwrite(path, dm_e_im)
-
-            # finalize the range and energy
-            depth_map[~hit]  = 0.0  # set missed rays to 0
-            scatter_ranges[t].append(depth_map.reshape(-1))  # (R,)
-            scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
-
-
-        # stack the results
-        scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
-        scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
     # tile elevation and distance to match the shape of azimuth
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
+    distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
-
-
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
