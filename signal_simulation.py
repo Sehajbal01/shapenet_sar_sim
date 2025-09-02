@@ -249,11 +249,11 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         cameras = []
         for p in range(P):  # for each pulse
             elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
-            azimuth = cam_azimuth[t] / 180 * torch.pi  # in radians now
+            azimuth_ = azimuth[t][p] / 180 * torch.pi  # in radians now
             position_vector = torch.tensor([
-                torch.cos(elevation) * torch.sin(azimuth),
+                torch.cos(elevation) * torch.sin(azimuth_),
                 torch.sin(elevation),
-                torch.cos(elevation) * torch.cos(azimuth)
+                torch.cos(elevation) * torch.cos(azimuth_)
             ], device=device)
             position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
             direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
@@ -276,7 +276,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             os.makedirs('figures/tmp', exist_ok=True)
             # depth and diffuse images
             for p in range(P):
-                depth, diffuse = scene.get_depth_and_diffuse(cameras[0])
+                depth, diffuse = scene.get_depth_and_diffuse(cameras[p])
                 # concatenate along the width dimension
                 dm_e_im = np.concatenate((depth, diffuse), axis=1)  # (h, 2w)
                 path = get_next_path(f'figures/tmp/depth_energy.png')
@@ -408,7 +408,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     plt.title('Scatters')
     plt.xlabel('Range')
     plt.ylabel('Energy')
-    plt.xlim(z_near, z_far)
+    plt.xlim(2*z_near, 2*z_far)
     plt.ylim(energy_min, energy_max)
 
     # plot the signal
@@ -417,7 +417,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     plt.title('Signal')
     plt.xlabel('Range')
     plt.ylabel('Amplitude')
-    plt.xlim(z_near, z_far)
+    plt.xlim(2*z_near, 2*z_far)
     plt.ylim(sig_min, sig_max)
 
     # plot the interpolating sinc pulse function along with the scatters
@@ -431,7 +431,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     plt.title('Sinc Pulse')
     plt.xlabel('Range')
     plt.ylabel('Energy')
-    mid_z = (z_near + z_far) / 2
+    mid_z = (z_near + z_far)
     plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
     plt.ylim(sinc_pulse.min().cpu().numpy(), sinc_pulse.max().cpu().numpy())
 

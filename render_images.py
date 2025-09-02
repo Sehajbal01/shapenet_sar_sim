@@ -150,14 +150,14 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         plt.title('Scatters')
         plt.xlabel('Range')
         plt.ylabel('Energy')
-        plt.xlim(z_near, z_far)
+        plt.xlim(2*z_near, 2*z_far)
         plt.ylim(energy_min, energy_max)
         plt.subplot(1, 2, 2)
         plt.plot(sample_z.cpu().numpy(), signals[0,p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
         plt.ylabel('Amplitude')
-        plt.xlim(z_near, z_far)
+        plt.xlim(2*z_near, 2*z_far)
         plt.ylim(sig_min, sig_max)
 
 
@@ -384,7 +384,7 @@ def bw_experiment():
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
+        render_random_image(debug_gif=True, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
 
     # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
     figure_files = [f for f in os.listdir('figures') if 'sar_rgb_image_bw' in f]
