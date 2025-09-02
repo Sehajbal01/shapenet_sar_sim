@@ -10,7 +10,6 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from signal_simulation import accumulate_scatters, interpolate_signal, apply_snr
-# from signal_simulation import accumulate_scatters, interpolate_signal
 
 
 
@@ -24,6 +23,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         image_size = 128,
                         n_rays_per_side = 128,
                         snr_db = None,
+                        want_complex = False,
     ):
 
     # set device
@@ -46,13 +46,14 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     print('Interpolating signal...')
     signals, sample_z = interpolate_signal(all_ranges, all_energies, z_near, z_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-            batch_size = None,
+            batch_size = None, want_complex=want_complex,
     )
     print('done.')
 
     # apply SNR
     if snr_db is not None:
-        signals = apply_snr(signals, snr_db)
+        T,P,Z = signals.shape
+        signals = apply_snr(signals.reshape(T,P*Z), snr_db).reshape(T,P,Z)
 
     # compute forward vectors from azimuth and elevation angles
     forward_vectors = -torch.stack([
@@ -224,7 +225,9 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, spatial_bw = 64, n_rays_per_side = 128, image_size = 128, snr_db = None, suffix = None):
+def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, 
+                        spatial_bw = 64, n_rays_per_side = 128, image_size = 128, 
+                        snr_db = None, want_complex = False, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -261,6 +264,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, sp
                             image_size = image_size,
                             n_rays_per_side = n_rays_per_side,
                             snr_db = snr_db,
+                            want_complex=want_complex,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -327,7 +331,10 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         param_str_parts = []
         for param_name, param_vals in param_dict.items():
             kwargs[param_name] = param_vals[i]
-            param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+            try:
+                param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+            except(TypeError):
+                param_str_parts.append(f"{param_name}{param_vals[i]}")
         
         # Add a numeric ID to ensure correct sorting
         kwargs['suffix'] = f"{experiment_name}_{i:03d}_{'_'.join(param_str_parts)}"
@@ -352,7 +359,10 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         # Create label with all parameter values
         label_parts = []
         for param_name, param_vals in param_dict.items():
-            label_parts.append("%s: %.1f"%(param_name, param_vals[i]))
+            try:
+                label_parts.append("%s: %.1f"%(param_name, param_vals[i]))
+            except(TypeError):
+                label_parts.append(f"{param_name}: {param_vals[i]}")
         label = ", ".join(label_parts)
         
         draw.text((10, 10), label, fill=(255, 255, 255))
@@ -400,7 +410,8 @@ if __name__ == '__main__':
         'azimuth_spread': 100,
         'spatial_bw': 128,
         'spatial_fs': 128,
-        'n_rays_per_side': 128
+        'n_rays_per_side': 128,
+        'want_complex': False,
     }
     vary_kwargs = {
         'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
