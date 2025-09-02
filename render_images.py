@@ -219,7 +219,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs = 64, bw = 64, n_rays_per_side = 128, suffix = None):
+def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, spatial_bw = 64, n_rays_per_side = 128, image_size = 128, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -251,9 +251,9 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
 
                             z_near = 0.8,
                             z_far  = 1.8,
-                            spatial_bw = bw,
-                            spatial_fs = fs,
-                            image_size = 64,
+                            spatial_bw = spatial_bw,
+                            spatial_fs = spatial_fs,
+                            image_size = image_size,
                             n_rays_per_side = n_rays_per_side,
 
                             debug_gif=debug_gif, # debug gif
@@ -363,29 +363,59 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
 if __name__ == '__main__':
     # Example of using multi_param_experiment for a single parameter (equivalent to old experiments)
     
-    # Bandwidth experiment
-    # bw_vals = torch.linspace(75, 175, 10)
-    bw_vals = 2**torch.arange(3, 11)
+    # # Bandwidth experiment
+    # bw_vals = torch.tensor(np.linspace(128, 256, 10,endpoint=True))
+    # # bw_vals = 2**torch.arange(3, 11)
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+
+    # }
+    # multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
+
+    # ray density
     default_kwargs = {
         'debug_gif': False,
         'num_pulse': 32,
         'azimuth_spread': 100,
+        'spatial_bw': 170.7,
+        'spatial_fs': 170.7,
     }
-    multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
+    vary_kwargs = {
+        'n_rays_per_side': np.linspace(133,140, 8,endpoint=True).astype(np.int32).tolist()
+    }
+    multi_param_experiment(vary_kwargs, default_kwargs, "ray_density_experiment")
 
-    # varying just azimuth spread
-    n_vals = 5  # number of parameter combinations
-    spread_vals = torch.linspace(60, 180, n_vals)
-    default_kwargs = {
-        'debug_gif': False,
-        'num_pulse': 32,
-        'fs': 64,
-        'bw': 64,
-    }
-    param_dict = {
-        'azimuth_spread': spread_vals
-    }
-    
-    multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
+    #     # render the SAR images for each pose
+    # sar = sar_render_image( mesh_path, # fname
+    #                         num_pulse, # num_pulses
+    #                         target_poses, # poses
+    #                         azimuth_spread, # azimuth spread
+
+    #                         z_near = 0.8,
+    #                         z_far  = 1.8,
+    #                         spatial_bw = bw,
+    #                         spatial_fs = fs,
+    #                         image_size = image_size,
+    #                         n_rays_per_side = n_rays_per_side,
+
+    #                         debug_gif=debug_gif, # debug gif
+    #                         debug_gif_suffix = suffix,
+    # ) # (1,H,W)
+
+    # # varying just azimuth spread
+    # n_vals = 5  # number of parameter combinations
+    # spread_vals = torch.linspace(60, 180, n_vals)
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'fs': 64,
+    #     'bw': 64,
+    # }
+    # param_dict = {
+    #     'azimuth_spread': spread_vals
+    # }
+    # multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
 
 

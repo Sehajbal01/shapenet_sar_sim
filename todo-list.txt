@@ -1,0 +1,13 @@
+- incorporate 2*distance for the signal samples
+    - this will have to be in jhihyang's stuff
+
+- SNR stitch experiment
+
+DONE - increased ray density
+    DONE - 0, increase to 128x128 images (ez)
+    DONE - 1, find the BW/Fs where the curent ray density fails
+    DONE - 2, then do a stitch with increasing rays to see where that fixes the failur
+
+- get rid of the ring effect by increasing the signal length in space
+
+- should i adjust the r-points interpolation in the CBP function?
