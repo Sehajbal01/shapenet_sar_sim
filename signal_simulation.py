@@ -275,9 +275,12 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         if debug_gif:
             os.makedirs('figures/tmp', exist_ok=True)
             # depth and diffuse images
-            depth, diffuse = scene.get_depth_and_diffuse(cameras[0])
-            imageio.imwrite(os.path.join("figures", "debug_depth.png"), depth)
-            imageio.imwrite(os.path.join("figures", "debug_diffuse.png"), diffuse)
+            for p in range(P):
+                depth, diffuse = scene.get_depth_and_diffuse(cameras[0])
+                # concatenate along the width dimension
+                dm_e_im = np.concatenate((depth, diffuse), axis=1)  # (h, 2w)
+                path = get_next_path(f'figures/tmp/depth_energy.png')
+                imageio.imwrite(path, dm_e_im)
             # range energy plots
             e_r_values = energy_range_values[0]  # list[(n, 2)]  # just the first camera for now
             for i in range(len(e_r_values)):  # generate a plot for each bounce
