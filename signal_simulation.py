@@ -423,7 +423,7 @@ def apply_snr(signal, snr_db, dim=-1):
     snr_linear = 10 ** (snr_db / 10)
 
     # Compute the signal power
-    signal_power = torch.mean(signal ** 2, dim=dim, keepdim=True)
+    signal_power = torch.mean(signal.abs() ** 2, dim=dim, keepdim=True)
 
     # Compute the noise power
     noise_power = signal_power / snr_linear

@@ -24,6 +24,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         n_rays_per_side = 128,
                         snr_db = None,
                         wavelength = None,
+                        use_sig_magnitude = True,
                         verbose = False,
     ):
 
@@ -68,6 +69,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         torch.sin(3.14159/180*azimuth) * torch.cos(3.14159/180*elevation),
         torch.sin(3.14159/180*elevation),
     ], dim=-1)  # (T, P, 3)
+
+    # convert to signal magnitude if desired
+    if use_sig_magnitude:
+        signals = signals.abs()
 
     # Compute sar image
     if verbose:
@@ -237,7 +242,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
 
 def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, 
                         spatial_bw = 64, n_rays_per_side = 128, image_size = 128, 
-                        snr_db = None, wavelength = None, suffix = None):
+                        snr_db = None, wavelength = None, use_sig_magnitude=True, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -275,6 +280,7 @@ def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, s
                             n_rays_per_side = n_rays_per_side,
                             snr_db = snr_db,
                             wavelength=wavelength,
+                            use_sig_magnitude=use_sig_magnitude,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -452,6 +458,7 @@ if __name__ == '__main__':
         'spatial_fs': 128,
         'n_rays_per_side': 500,
         'snr_db': None,
+        'use_sig_magnitude': True
     }
     vary_kwargs = {
         'wavelength': (10**np.linspace(np.log10(0.01), np.log10(10), 6, endpoint=True)).tolist()
