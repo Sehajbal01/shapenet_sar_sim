@@ -23,32 +23,39 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         image_size = 128,
                         n_rays_per_side = 128,
                         snr_db = None,
-                        want_complex = False,
+                        wavelength = None,
+                        verbose = False,
     ):
 
     # set device
     device = 'cuda'
 
     # SAR raytracing 
-    print('Accumulating scatters...')
+    if verbose:
+        print('Accumulating scatters...')
+
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
     all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters(
         poses.to(device), z_near, z_far, file_name,
         azimuth_spread=az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=n_rays_per_side,
+        wavelength=wavelength,
         debug_gif=debug_gif,
     )
-    print('done.')
+    if verbose:
+        print('done.')
 
     # Generate signal
     # (T,P,Z) (Z,)
-    print('Interpolating signal...')
+    if verbose:
+        print('Interpolating signal...')
     signals, sample_z = interpolate_signal(all_ranges, all_energies, z_near, z_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-            batch_size = None, want_complex=want_complex,
+            batch_size = None,
     )
-    print('done.')
+    if verbose:
+        print('done.')
 
     # apply SNR
     if snr_db is not None:
@@ -63,9 +70,11 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     ], dim=-1)  # (T, P, 3)
 
     # Compute sar image
-    print('Computing SAR image...')
+    if verbose:
+        print('Computing SAR image...')
     sar_image = convolutional_back_projection(signals, sample_z, forward_vectors, cam_azimuth, cam_distance, z_near-z_far, spatial_fs, image_size, image_size)
-    print('done.')
+    if verbose:
+        print('done.')
 
     # make a gif if desired
     if debug_gif:
@@ -141,6 +150,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     # convert to amplitude
     try:
         signals = torch.sqrt(signals.real**2 + signals.imag**2)
+        all_energies = torch.sqrt(all_energies.real**2 + all_energies.imag**2)
     except(RuntimeError):
         pass
 
@@ -227,7 +237,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
 
 def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, 
                         spatial_bw = 64, n_rays_per_side = 128, image_size = 128, 
-                        snr_db = None, want_complex = False, suffix = None):
+                        snr_db = None, wavelength = None, suffix = None):
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -264,7 +274,7 @@ def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, s
                             image_size = image_size,
                             n_rays_per_side = n_rays_per_side,
                             snr_db = snr_db,
-                            want_complex=want_complex,
+                            wavelength=wavelength,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -332,7 +342,9 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         for param_name, param_vals in param_dict.items():
             kwargs[param_name] = param_vals[i]
             try:
-                param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+                # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+                param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+
             except(TypeError):
                 param_str_parts.append(f"{param_name}{param_vals[i]}")
         
@@ -360,7 +372,7 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         label_parts = []
         for param_name, param_vals in param_dict.items():
             try:
-                label_parts.append("%s: %.1f"%(param_name, param_vals[i]))
+                label_parts.append("%s: %.2f"%(param_name, param_vals[i]))
             except(TypeError):
                 label_parts.append(f"{param_name}: {param_vals[i]}")
         label = ", ".join(label_parts)
@@ -377,7 +389,6 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
 
 
 if __name__ == '__main__':
-    # Example of using multi_param_experiment for a single parameter (equivalent to old experiments)
     
     # # Bandwidth experiment
     # bw_vals = torch.tensor(np.linspace(128, 256, 10,endpoint=True))
@@ -390,7 +401,7 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
 
-    # # ray density
+    # # ray density experiment
     # default_kwargs = {
     #     'debug_gif': False,
     #     'num_pulse': 32,
@@ -403,39 +414,7 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment(vary_kwargs, default_kwargs, "ray_density_experiment")
 
-    # SNR
-    default_kwargs = {
-        'debug_gif': False,
-        'num_pulse': 32,
-        'azimuth_spread': 100,
-        'spatial_bw': 128,
-        'spatial_fs': 128,
-        'n_rays_per_side': 128,
-        'want_complex': False,
-    }
-    vary_kwargs = {
-        'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
-    }
-    multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
-
-    #     # render the SAR images for each pose
-    # sar = sar_render_image( mesh_path, # fname
-    #                         num_pulse, # num_pulses
-    #                         target_poses, # poses
-    #                         azimuth_spread, # azimuth spread
-
-    #                         z_near = 0.8,
-    #                         z_far  = 1.8,
-    #                         spatial_bw = bw,
-    #                         spatial_fs = fs,
-    #                         image_size = image_size,
-    #                         n_rays_per_side = n_rays_per_side,
-
-    #                         debug_gif=debug_gif, # debug gif
-    #                         debug_gif_suffix = suffix,
-    # ) # (1,H,W)
-
-    # # varying just azimuth spread
+    # # Azimuth spread experiment
     # n_vals = 5  # number of parameter combinations
     # spread_vals = torch.linspace(60, 180, n_vals)
     # default_kwargs = {
@@ -449,4 +428,34 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
 
+    # # SNR experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 128,
+    #     'wavelength': None,
+    # }
+    # vary_kwargs = {
+    #     'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
 
+    # wavelength experiment
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'azimuth_spread': 100,
+        'spatial_bw': 128,
+        'spatial_fs': 128,
+        'n_rays_per_side': 500,
+        'snr_db': None,
+    }
+    vary_kwargs = {
+        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(10), 6, endpoint=True)).tolist()
+        # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    }
+    print('vary_kwargs:', vary_kwargs)
+    multi_param_experiment(vary_kwargs, default_kwargs, "wavelength_experiment")

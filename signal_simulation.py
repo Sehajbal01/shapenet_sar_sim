@@ -22,7 +22,8 @@ from utils import get_next_path, extract_pose_info
 
 def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
-               alpha_1=1.0, alpha_2=0.0, use_ground=True, debug_gif=False):
+               alpha_1=1.0, alpha_2=0.0, use_ground=True, wavelength=None,
+               debug_gif=False):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -37,6 +38,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
         use_ground (bool): whether to use the ground plane for rendering
+        wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         debug_gif (bool): whether to save a gif of the depth and energy images
 
     outputs:
@@ -52,9 +54,6 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #           (T,)          (T,)           (T,)
-    print('Camera azimuth:   ', cam_azimuth)
-    print('Camera elevation: ', cam_elevation)
-    print('Camera distance:  ', cam_distance)
 
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
@@ -183,14 +182,18 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
+    # apply complex value to the energy according to wavelength
+    if wavelength is not None:
+        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges * 2) # multiple range by 2 because we have two-way travel
+
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
 
 
 
 def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
-        spatial_bw = 20, spatial_fs = 20, wavelength = 0.03,
-        batch_size = None, want_complex = False, window_func = 'sinc'
+        spatial_bw = 20, spatial_fs = 20,
+        batch_size = None, window_func = 'sinc'
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -203,9 +206,7 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         z_far (float): z far to use when rendering
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
-        wavelength (float): wavelength of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
-        want_complex (bool): whether to return complex-valued signal based on range
         window_func (str): window function to use ('sinc' or 'gaussian')
 
     Returns:
@@ -227,10 +228,6 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
     else:
         raise ValueError("window_func should be 'sinc' or 'gaussian', but got %s" % window_func)
 
-
-    # apply complex exponential
-    if want_complex:
-        scatter_e = scatter_e * torch.exp(1j * 2 * math.pi / wavelength * scatter_z * 2) # multiple range by 2 because we have two-way travel
 
     # calculate the center of each spatial sample
     device = scatter_z.device
