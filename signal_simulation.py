@@ -268,9 +268,16 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             )
             cameras.append(ortho_cam)
         
-        # trace rays in parallel
+        # # trace rays in parallel
+        # with torch.no_grad():
+        #     energy_range_values = scene.get_energy_range_values(cameras, num_bounces=num_bounces)
+
+        # trace rays somewhat in parallel
         with torch.no_grad():
-            energy_range_values = scene.get_energy_range_values(cameras, num_bounces=num_bounces)
+            num_cams_at_once = int(30 / num_bounces)
+            energy_range_values = []
+            for i in range(0, len(cameras), num_cams_at_once):
+                energy_range_values.extend(scene.get_energy_range_values(cameras[i:i+num_cams_at_once], num_bounces=num_bounces))
 
         if debug_gif:
             os.makedirs('figures/tmp', exist_ok=True)
