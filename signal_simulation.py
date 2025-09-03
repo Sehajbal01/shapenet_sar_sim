@@ -295,6 +295,8 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
                 plt.scatter(xy[:, 0], xy[:, 1], s=1)
                 plt.xlabel("Range")
                 plt.ylabel("Energy")
+                plt.xlim(0, 10)
+                plt.ylim(0, 1)
                 plt.title(f"Energy vs Range Plot for Bounce {i}")
                 plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_{i}.png"))
                 plt.close()
