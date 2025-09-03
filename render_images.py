@@ -23,6 +23,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         debug_gif_suffix = None,
                         image_size = 128,
                         n_rays_per_side = 128,
+                        num_bounces=1
     ):
 
     # set device
@@ -37,6 +38,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         n_pulses=num_pulses,
         n_rays_per_side=n_rays_per_side,
         debug_gif=debug_gif,
+        num_bounces=num_bounces
     )
     print('done.')
 
@@ -258,6 +260,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
+                            num_bounces=3  # number of reflections / bounces
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image

@@ -350,8 +350,8 @@ def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
 
     # calculate the center of each spatial sample
     device = scatter_z.device
-    first_z = int(math.ceil(z_near*spatial_fs))
-    last_z =  int(math.floor(z_far*spatial_fs))
+    first_z = int(math.ceil(z_near*2*spatial_fs))
+    last_z =  int(math.floor(z_far*2*spatial_fs))
     sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
     Z = len(sample_z)
 
