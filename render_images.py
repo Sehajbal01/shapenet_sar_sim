@@ -458,11 +458,29 @@ if __name__ == '__main__':
         'spatial_fs': 128,
         'n_rays_per_side': 500,
         'snr_db': None,
-        'use_sig_magnitude': True
+        'use_sig_magnitude': True,
     }
     vary_kwargs = {
-        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(10), 6, endpoint=True)).tolist()
+        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
         # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
     }
     print('vary_kwargs:', vary_kwargs)
-    multi_param_experiment(vary_kwargs, default_kwargs, "wavelength_experiment")
+    multi_param_experiment(vary_kwargs, default_kwargs, "mag_wavelength_experiment")
+
+    # wavelength experiment
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'azimuth_spread': 100,
+        'spatial_bw': 128,
+        'spatial_fs': 128,
+        'n_rays_per_side': 500,
+        'snr_db': None,
+        'use_sig_magnitude': False,
+    }
+    vary_kwargs = {
+        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
+        # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    }
+    print('vary_kwargs:', vary_kwargs)
+    multi_param_experiment(vary_kwargs, default_kwargs, "nomag_wavelength_experiment")
