@@ -206,21 +206,22 @@ class Scene:
                 # find intersection points on sensor plane
                 sensor_intersect_points = camera_ray_hit_pos + t_intersect.unsqueeze(1) * direction_to_sensor
                 
-                # check if intersection points are within sensor bounds
-                # generate camera coordinate system (same as in orthographic.py)
-                up = torch.tensor(UP, dtype=torch.float32, device=camera_ray_hit_pos.device)
-                u = torch.linalg.cross(camera_dir, up)  # right vector
-                u = u / torch.norm(u)
-                v = torch.linalg.cross(u, camera_dir)  # up vector
-                v = v / torch.norm(v)
-                # project intersection points to camera coordinate system
-                offset_from_camera = sensor_intersect_points - camera_pos
-                u_coord = torch.sum(offset_from_camera * u, dim=1)  # horizontal coordinate
-                v_coord = torch.sum(offset_from_camera * v, dim=1)  # vertical coordinate
-                # check if within sensor bounds
-                camera_ray_hit_mask = (torch.abs(u_coord) <= camera.size_w / 2) & \
-                                      (torch.abs(v_coord) <= camera.size_h / 2) & \
-                                      (t_intersect > 0)  # also check that intersection is in forward direction
+                # # check if intersection points are within sensor bounds
+                # # generate camera coordinate system (same as in orthographic.py)
+                # up = torch.tensor(UP, dtype=torch.float32, device=camera_ray_hit_pos.device)
+                # u = torch.linalg.cross(camera_dir, up)  # right vector
+                # u = u / torch.norm(u)
+                # v = torch.linalg.cross(u, camera_dir)  # up vector
+                # v = v / torch.norm(v)
+                # # project intersection points to camera coordinate system
+                # offset_from_camera = sensor_intersect_points - camera_pos
+                # u_coord = torch.sum(offset_from_camera * u, dim=1)  # horizontal coordinate
+                # v_coord = torch.sum(offset_from_camera * v, dim=1)  # vertical coordinate
+                # # check if within sensor bounds
+                # camera_ray_hit_mask = (torch.abs(u_coord) <= camera.size_w / 2) & \
+                #                       (torch.abs(v_coord) <= camera.size_h / 2) & \
+                #                       (t_intersect > 0)  # also check that intersection is in forward direction
+                camera_ray_hit_mask = (t_intersect > 0)  # just check that intersection is in forward direction, there is no such thing as sensor bounds for radar
 
                 # 4. check if anything is blocking this point from being seen by camera sensor by running octree.intersect_rays again
                 # create rays from hit positions towards camera sensor
