@@ -419,17 +419,27 @@ def apply_snr(signal, snr_db, dim=-1):
     Returns:
         torch.Tensor: The signal with the applied SNR.
     """
+
+    # N = Ni + Nr # real and imaginary parts are iid
+    # SNR = Ps/Pn = E[|S|^2]/E[|N|^2]
+    # E[|N|^2] = E[|S|^2]/SNR
+
+    # E[|N|^2] = E[Nr^2 + Ni^2] = 2 * E[Nr^2]
+    # E[|N|^2]/2 = E[Nr^2] = sigma^2
+    # sigma = sqrt( E[|N|^2]/2 ) = sqrt( E[|S|^2]/(2*SNR) )
+
     # Convert SNR from dB to linear scale
     snr_linear = 10 ** (snr_db / 10)
 
     # Compute the signal power
     signal_power = torch.mean(signal.abs() ** 2, dim=dim, keepdim=True)
-
-    # Compute the noise power
-    noise_power = signal_power / snr_linear
+    noise_std_dev = torch.sqrt(signal_power / (2 * snr_linear)).cpu().numpy()
 
     # Generate noise
-    noise = torch.randn_like(signal) * torch.sqrt(noise_power)
+    noise = torch.tensor(
+             np.random.normal(scale=noise_std_dev, size=signal.shape) + \
+        1j * np.random.normal(scale=noise_std_dev, size=signal.shape)
+    ).to(signal.device, dtype=signal.dtype)
 
     # Add noise to the signal
     noisy_signal = signal + noise

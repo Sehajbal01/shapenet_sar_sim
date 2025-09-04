@@ -8,10 +8,15 @@ DONE - increased ray density
     DONE - 1, find the BW/Fs where the curent ray density fails
     DONE - 2, then do a stitch with increasing rays to see where that fixes the failur
 
-- update snr for complex signal
+DONE - update snr for complex signal
 
 DONE - implement option for converting to magnitude of the signal for the CBP
 
 - get rid of the ring effect by increasing the signal length in space
 
 - should i adjust the r-points interpolation in the CBP function?
+
+- refine energy equation
+    - second bounce
+    - include scatter/reflection coefficients
+    - ground should have higher scatter, car should have higher reflection

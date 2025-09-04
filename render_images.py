@@ -434,53 +434,54 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
 
-    # # SNR experiment
+    # SNR experiment
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'azimuth_spread': 100,
+        'spatial_bw': 128,
+        'spatial_fs': 128,
+        'n_rays_per_side': 200,
+        'wavelength': 0.3,
+        'use_sig_magnitude': True,
+    }
+    vary_kwargs = {
+        'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
+    }
+    multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
+
+    # # wavelength experiment WITH magnitude of signal used for CBP
     # default_kwargs = {
     #     'debug_gif': False,
     #     'num_pulse': 32,
     #     'azimuth_spread': 100,
     #     'spatial_bw': 128,
     #     'spatial_fs': 128,
-    #     'n_rays_per_side': 128,
-    #     'wavelength': None,
+    #     'n_rays_per_side': 500,
+    #     'snr_db': None,
+    #     'use_sig_magnitude': True,
     # }
     # vary_kwargs = {
-    #     'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
+    #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
     # }
-    # multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
+    # print('vary_kwargs:', vary_kwargs)
+    # multi_param_experiment(vary_kwargs, default_kwargs, "mag_wavelength_experiment")
 
-    # wavelength experiment
-    default_kwargs = {
-        'debug_gif': False,
-        'num_pulse': 32,
-        'azimuth_spread': 100,
-        'spatial_bw': 128,
-        'spatial_fs': 128,
-        'n_rays_per_side': 500,
-        'snr_db': None,
-        'use_sig_magnitude': True,
-    }
-    vary_kwargs = {
-        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
-        # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
-    }
-    print('vary_kwargs:', vary_kwargs)
-    multi_param_experiment(vary_kwargs, default_kwargs, "mag_wavelength_experiment")
-
-    # wavelength experiment
-    default_kwargs = {
-        'debug_gif': False,
-        'num_pulse': 32,
-        'azimuth_spread': 100,
-        'spatial_bw': 128,
-        'spatial_fs': 128,
-        'n_rays_per_side': 500,
-        'snr_db': None,
-        'use_sig_magnitude': False,
-    }
-    vary_kwargs = {
-        'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
-        # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
-    }
-    print('vary_kwargs:', vary_kwargs)
-    multi_param_experiment(vary_kwargs, default_kwargs, "nomag_wavelength_experiment")
+    # # wavelength experiment WITHOUT magnitude of signal used for CBP
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 500,
+    #     'snr_db': None,
+    #     'use_sig_magnitude': False,
+    # }
+    # vary_kwargs = {
+    #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    # }
+    # print('vary_kwargs:', vary_kwargs)
+    # multi_param_experiment(vary_kwargs, default_kwargs, "nomag_wavelength_experiment")
