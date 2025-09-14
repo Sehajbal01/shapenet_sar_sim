@@ -1,5 +1,9 @@
-- incorporate 2*distance for the signal samples
-    - this will have to be in jhihyang's stuff
+DONE - incorporate 2*distance for the signal samples
+    DONE - this will have to be in jhihyang's stuff
+    DONE - calculate signal with the usual fs/bw
+    DONE - place samples in space differently
+    DONE - adjust how spatial fs is used in the second orund of interpolation
+    DONE - testing needed
 
 DONE - SNR stitch experiment
 
@@ -12,11 +16,22 @@ DONE - update snr for complex signal
 
 DONE - implement option for converting to magnitude of the signal for the CBP
 
-- get rid of the ring effect by increasing the signal length in space
+DONE - get rid of the ring effect by increasing the signal length in space
+    DONE - z_near and z_far are no longer the generaly important
+        DONE - specifically decide height/width of ray grid
+        DONE - specifically decide height/width of image plane
+        DONE - specifically decide the num rows/cols of the image plane
+        DONE - specifically decide near/far of the signals
+    DONE - increase the size of the ray grid too, because any samples outside the range of scatters will be zero
+    DONE - needs testing
 
-- should i adjust the r-points interpolation in the CBP function?
+NO - should i adjust the r-points interpolation in the CBP function?
 
-- refine energy equation
-    - second bounce
-    - include scatter/reflection coefficients
-    - ground should have higher scatter, car should have higher reflection
+DONE - refine energy equation
+    DONE - second bounce
+    DONE - include scatter/reflection coefficients
+    DONE - ground should have higher scatter, car should have higher reflection
+
+- Optionally use Jhih-yangs accumulate scatters function
+    DONE - add opption in render_images for rasterization vs ray-tracing
+    - include jhihyangs code
