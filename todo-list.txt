@@ -34,4 +34,5 @@ DONE - refine energy equation
 
 - Optionally use Jhih-yangs accumulate scatters function
     DONE - add opption in render_images for rasterization vs ray-tracing
-    - include jhihyangs code
+    DONE - include jhihyangs code
+    - test it
