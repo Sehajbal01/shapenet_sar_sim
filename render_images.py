@@ -10,6 +10,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from signal_simulation import pytorch3d_accumulate_scatters, interpolate_signal, apply_snr
+from ray_tracer_signal_simulation import accumulate_scatters as ray_tracer_accumulate_scatters
 
 
 
@@ -52,10 +53,18 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             n_ray_width    = n_ray_width,
             wavelength     = wavelength,
             debug_gif      = debug_gif,
-            rendering_method = 'pytorch3d',
         )
-    elif rendering_method = 'jhihyang_raytracer':
-        raise NotImplementedError("still need to add in jhihyangs's ray tracer")
+    elif rendering_method = 'raytracer':
+        all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = ray_tracer_accumulate_scatters(
+            poses.to(device), ray_grid_height, ray_grid_width, file_name,
+            azimuth_spread = az_spread,
+            n_pulses       = num_pulses,
+            n_ray_height   = n_ray_height,
+            n_ray_width    = n_ray_width,
+            wavelength     = wavelength,
+            debug_gif      = debug_gif,
+        )
+    
     else:
         raise ValueError("need pytorch3d or jhihyang_raytracer for rendering_method")
     if verbose:
