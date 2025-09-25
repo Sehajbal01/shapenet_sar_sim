@@ -84,6 +84,7 @@ def accumulate_scatters(target_poses, z_near, z_far, object_filename,
             position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
             direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
             direction_vector = direction_vector / torch.norm(direction_vector)
+            ############################# THIS IS WHERE I ADD GRID HEIGHT AND N RAYS
             ortho_cam = OrthographicCamera(
                 position_vector.cpu(),  # position
                 direction_vector.cpu(),  # direction

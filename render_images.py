@@ -44,7 +44,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         print('Accumulating scatters...')
 
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
-    if rendering_method = 'pytorch3d':
+    if rendering_method == 'pytorch3d':
         all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = pytorch3d_accumulate_scatters(
             poses.to(device), ray_grid_height, ray_grid_width, file_name,
             azimuth_spread = az_spread,
@@ -54,7 +54,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             wavelength     = wavelength,
             debug_gif      = debug_gif,
         )
-    elif rendering_method = 'raytracer':
+    elif rendering_method == 'raytracer':
         all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = ray_tracer_accumulate_scatters(
             poses.to(device), ray_grid_height, ray_grid_width, file_name,
             azimuth_spread = az_spread,
@@ -407,6 +407,8 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             kwargs[param_name] = param_vals[i]
             try:
                 # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+                if type(param_vals[i]) == str:
+                    raise TypeError
                 param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
 
             except(TypeError):
@@ -436,6 +438,8 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         label_parts = []
         for param_name, param_vals in param_dict.items():
             try:
+                if type(param_vals[i]) == str:
+                    raise TypeError
                 label_parts.append("%s: %.2f"%(param_name, param_vals[i]))
             except(TypeError):
                 label_parts.append(f"{param_name}: {param_vals[i]}")
@@ -544,11 +548,43 @@ if __name__ == '__main__':
     # multi_param_experiment(vary_kwargs, default_kwargs, "nomag_wavelength_experiment")
 
 
-    # removing ring experiment
+    # # removing ring experiment
+    # default_kwargs = {
+    #     "debug_gif":False,
+    #     # "range_near" : 0.8,
+    #     # "range_far"  : 1.8,
+    #     "num_pulse":120,
+    #     "azimuth_spread" : 180,
+    #     "spatial_fs" : 64, 
+    #     "spatial_bw" : 64,
+    #     "snr_db" : None,
+    #     "wavelength" : None,
+    #     "use_sig_magnitude":True,
+    #     "suffix" : None,
+    #     "verbose" : False,
+    #     # "ray_grid_height" : 1.0,
+    #     # "ray_grid_width" : 1.0,
+    #     "n_ray_height" : 300,
+    #     "n_ray_width" : 300,
+    #     "image_plane_height" : 1.0,
+    #     "image_plane_width" : 1.0,
+    #     "image_rows" : 128,
+    #     "image_cols" :128,
+    # }
+    # vary_kwargs = {
+    #     "range_near": np.linspace(0.8, 0.0, 8, endpoint=True).tolist(),
+    #     "range_far":  np.linspace(1.8, 2.6, 8, endpoint=True).tolist(),
+    #     "ray_grid_height" : np.linspace(1.0, 2.6, 8, endpoint=True).tolist(),
+    #     "ray_grid_width" : np.linspace(1.0, 2.6, 8, endpoint=True).tolist(),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "remove_ring_experiment")
+
+
+    # experiment comparing rendering methods
     default_kwargs = {
         "debug_gif":False,
-        # "range_near" : 0.8,
-        # "range_far"  : 1.8,
+        "range_near" : 0.6,
+        "range_far"  : 1.9,
         "num_pulse":120,
         "azimuth_spread" : 180,
         "spatial_fs" : 64, 
@@ -558,8 +594,8 @@ if __name__ == '__main__':
         "use_sig_magnitude":True,
         "suffix" : None,
         "verbose" : False,
-        # "ray_grid_height" : 1.0,
-        # "ray_grid_width" : 1.0,
+        "ray_grid_height" : 1.3,
+        "ray_grid_width" : 1.3,
         "n_ray_height" : 300,
         "n_ray_width" : 300,
         "image_plane_height" : 1.0,
@@ -568,9 +604,6 @@ if __name__ == '__main__':
         "image_cols" :128,
     }
     vary_kwargs = {
-        "range_near": np.linspace(0.8, 0.0, 8, endpoint=True).tolist(),
-        "range_far":  np.linspace(1.8, 2.6, 8, endpoint=True).tolist(),
-        "ray_grid_height" : np.linspace(1.0, 2.6, 8, endpoint=True).tolist(),
-        "ray_grid_width" : np.linspace(1.0, 2.6, 8, endpoint=True).tolist(),
+        "rendering_method": ['pytorch3d', 'raytracer'],
     }
-    multi_param_experiment(vary_kwargs, default_kwargs, "remove_ring_experiment")
+    multi_param_experiment(vary_kwargs, default_kwargs, "rendering_method_experiment")
