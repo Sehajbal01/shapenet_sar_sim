@@ -20,26 +20,21 @@ from utils import get_next_path, extract_pose_info
 
 
 
-def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width, object_filename,
-               azimuth_spread=15, n_pulses=30, 
-                n_ray_height   = 128,
-                n_ray_width    = 128,
-
+def accumulate_scatters(target_poses, z_near, z_far, object_filename,
+               azimuth_spread=15, n_pulses=30, n_rays_per_side=128,
                alpha_1=1.0, alpha_2=0.0, use_ground=True, wavelength=None,
-               debug_gif=False,
-               ):
+               debug_gif=False):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
     inputs:
         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
-        ray_grid_height (float): the height of the ray grid in world units
-        ray_grid_width (float): the width of the ray grid in world units
+        z_near (int): near distance of the obj
+        z_far (int): far distance of the obj
         object_filename (str): path to the .obj file
         azimuth_spread (float): the range of azimuth angles for sar rendering
         n_pulses (int): the number of pulses for sar rendering
-        n_ray_height (int): the number of rays in the height direction
-        n_ray_width (int): the number of rays in the width direction
+        n_rays_per_side (int): the number of rays on each side of the triangle, yielding num_ray_side**2 total rays
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
         use_ground (bool): whether to use the ground plane for rendering
@@ -54,6 +49,7 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
     device = target_poses.device
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
+    half_side_len = abs(z_far - z_near) / 2
 
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
@@ -66,7 +62,7 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
 
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
-        image_size=(n_ray_height, n_ray_width), 
+        image_size=n_rays_per_side, 
         blur_radius=0.0, 
         faces_per_pixel=1, 
 
@@ -117,8 +113,8 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
                 device=device)
             cameras = FoVOrthographicCameras(
                 device = device, R = rotation, T = translation, 
-                min_x = -ray_grid_width / 2, max_x = ray_grid_width / 2,
-                min_y = -ray_grid_height / 2, max_y = ray_grid_height / 2,
+                min_x = -half_side_len, max_x = half_side_len,
+                min_y = -half_side_len, max_y = half_side_len,
             )
             rasterizer = MeshRasterizer(
                 cameras=cameras,
@@ -139,7 +135,7 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
             # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
             # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
             forward_vector = rotation[0,:,2] # (3,)
-            energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
+            energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
             energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
 
             # produce a frame of the depth and energy maps
@@ -148,13 +144,13 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
                 masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
                 masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
                 masked_dm = 1 - masked_dm  # invert the depth map
-                dm_im = torch.zeros((n_ray_height, n_ray_width), device=device)  # (r, r)
+                dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
                 dm_im[hit] = masked_dm  # apply the mask
 
                 masked_e = energy_map[hit]
                 masked_e = masked_e - masked_e.min()  # shift to start from 0
                 masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-                e_im = torch.zeros((n_ray_height, n_ray_width), device=device)
+                e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
                 e_im[hit] = masked_e  # apply the mask
 
                 e_im = e_im.cpu().numpy()  # convert to numpy for saving
@@ -186,19 +182,16 @@ def pytorch3d_accumulate_scatters(target_poses, ray_grid_height, ray_grid_width,
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
-    # double the range because we have two-way travel
-    scatter_ranges = scatter_ranges * 2.0
-
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
-        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges) # (T, P, R)
+        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges * 2) # multiple range by 2 because we have two-way travel
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
 
 
 
-def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
+def interpolate_signal(scatter_z, scatter_e, z_near, z_far,
         spatial_bw = 20, spatial_fs = 20,
         batch_size = None, window_func = 'sinc'
 ):
@@ -209,8 +202,8 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     Inputs:
         scatter_z (...,R): the range of each scatter point
         scatter_e (...,R): the energy of each scatter point
-        range_near (float): close side of the range for spatial occupation of the signal
-        range_far (float): far side of the range for spatial occupation of the signal
+        z_near (float): z near to use when rendering
+        z_far (float): z far to use when rendering
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
@@ -238,8 +231,8 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
     # calculate the center of each spatial sample
     device = scatter_z.device
-    first_z = int(math.ceil(2*range_near*spatial_fs)) # multiply by 2 because of the two-way travel in scatter_z
-    last_z =  int(math.floor(2*range_far*spatial_fs)) # multiply by 2 because of the two-way travel in scatter_z
+    first_z = int(math.ceil(z_near*spatial_fs))
+    last_z =  int(math.floor(z_far*spatial_fs))
     sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
     Z = len(sample_z)
 
@@ -273,57 +266,57 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         signal = torch.cat(signal, dim=1) # (N, Z)
 
-    ########################################### plot the first scatter and sig ###########################################
-    all_energies = scatter_e.reshape(N,R)
-    all_ranges   = scatter_z.reshape(N,R)
-    signals      = signal.reshape(N,Z)
+    # ########################################### plot the first scatter and sig ###########################################
+    # all_energies = scatter_e.reshape(N,R)
+    # all_ranges   = scatter_z.reshape(N,R)
+    # signals      = signal.reshape(N,Z)
 
-    # plot the signal and scatters for every pulse
-    sig_max = signals.max().item()
-    sig_min = signals.min().item()
-    energy_max = all_energies.max().item()
-    energy_min = all_energies.min().item()
-    p = N//2
-    plt.figure(figsize=(12, 6))
+    # # plot the signal and scatters for every pulse
+    # sig_max = signals.max().item()
+    # sig_min = signals.min().item()
+    # energy_max = all_energies.max().item()
+    # energy_min = all_energies.min().item()
+    # p = N//2
+    # plt.figure(figsize=(12, 6))
 
-    # plot the scatters
-    plt.subplot(1, 3, 1)
-    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    plt.title('Scatters')
-    plt.xlabel('Range')
-    plt.ylabel('Energy')
-    plt.xlim(2*range_near, 2*range_far)
-    plt.ylim(energy_min, energy_max)
+    # # plot the scatters
+    # plt.subplot(1, 3, 1)
+    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    # plt.title('Scatters')
+    # plt.xlabel('Range')
+    # plt.ylabel('Energy')
+    # plt.xlim(z_near, z_far)
+    # plt.ylim(energy_min, energy_max)
 
-    # plot the signal
-    plt.subplot(1, 3, 2)
-    plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
-    plt.title('Signal')
-    plt.xlabel('Range')
-    plt.ylabel('Amplitude')
-    plt.xlim(2*range_near, 2*range_far)
-    plt.ylim(sig_min, sig_max)
+    # # plot the signal
+    # plt.subplot(1, 3, 2)
+    # plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
+    # plt.title('Signal')
+    # plt.xlabel('Range')
+    # plt.ylabel('Amplitude')
+    # plt.xlim(z_near, z_far)
+    # plt.ylim(sig_min, sig_max)
 
-    # plot the interpolating sinc pulse function along with the scatters
-    window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
-    plt.subplot(1, 3, 3)
-    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    for sz in sample_z:
-        window_pulse = window(window_range - sz)
-        plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
-    plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
-    plt.title('Window Pulse')
-    plt.xlabel('Range')
-    plt.ylabel('Energy')
-    mid_z = (2*range_near + 2*range_far) / 2
-    plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
-    plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
+    # # plot the interpolating sinc pulse function along with the scatters
+    # window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
+    # plt.subplot(1, 3, 3)
+    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    # for sz in sample_z:
+    #     window_pulse = window(window_range - sz)
+    #     plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
+    # plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
+    # plt.title('Window Pulse')
+    # plt.xlabel('Range')
+    # plt.ylabel('Energy')
+    # mid_z = (z_near + z_far) / 2
+    # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
+    # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
 
-    path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
-    savefig(path)
-    print('Figure saved to %s' % path)
-    ########################################### plot the first scatter and sig ###########################################
+    # path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
+    # savefig(path)
+    # print('Figure saved to %s' % path)
+    # ########################################### plot the first scatter and sig ###########################################
 
     # return stuff
     signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
