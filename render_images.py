@@ -167,7 +167,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     # rotate the image plane according to the azimuth angle of the target pose
     # we want the SAR image to look as if we took the current camera position and moved up in elevation
     # so the top pixel should be in the up vector direction projected onto the ground plane
-    coord_grid = torch.stack((-h_coord, -w_coord), dim=-1) # (H,W,2)
+    coord_grid = torch.stack((h_coord, w_coord), dim=-1) # (H,W,2)
     cam_azimuth_rad = cam_azimuth * (np.pi / 180.0)  # convert to radians
     rotation_matrix = torch.stack([
         torch.cos(cam_azimuth_rad), -torch.sin(cam_azimuth_rad), torch.sin(cam_azimuth_rad), torch.cos(cam_azimuth_rad)
