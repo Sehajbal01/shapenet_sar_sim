@@ -9,40 +9,67 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-from signal_simulation import accumulate_scatters, interpolate_signal, apply_snr
+
+from signal_simulation import interpolate_signal, apply_snr
+
+from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
+from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
 
 
 
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
-                        z_near = 0.8,
-                        z_far  = 1.8,
                         spatial_bw = 64,
                         spatial_fs = 64,
                         debug_gif = False,
                         debug_gif_suffix = None,
-                        image_size = 128,
-                        n_rays_per_side = 128,
                         snr_db = None,
                         wavelength = None,
                         use_sig_magnitude = True,
                         verbose = False,
+                        render_method = 'rasterization',
+                        
+                        # image size stuff
+                        image_width = 64,
+                        image_height = 64,
+                        image_plane_width = 1,
+                        image_plane_height = 1,
+                        grid_width = 1,
+                        grid_height = 1,
+                        n_ray_width = 1,
+                        n_ray_height = 1,
+                        range_near = 1,
+                        range_far = 1,
     ):
 
     # set device
     device = 'cuda'
+
+    if render_method == 'rasterization':
+        accumulate_scatters_fn = accumulate_scatters_rasterization
+    elif render_method == 'raytracing':
+        accumulate_scatters_fn = accumulate_scatters_raytracing
+    else:
+        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
     # SAR raytracing 
     if verbose:
         print('Accumulating scatters...')
 
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
-    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters(
-        poses.to(device), z_near, z_far, file_name,
-        azimuth_spread=az_spread,
-        n_pulses=num_pulses,
-        n_rays_per_side=n_rays_per_side,
-        wavelength=wavelength,
-        debug_gif=debug_gif,
+    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
+        poses.to(device),
+        file_name,
+
+        azimuth_spread = az_spread,
+        n_pulses       = num_pulses,
+        wavelength     = wavelength,
+        debug_gif      = debug_gif,
+
+        # image size stuff
+        grid_width     = grid_width,
+        grid_height    = grid_height,
+        n_ray_width    = n_ray_width,
+        n_ray_height   = n_ray_height,
     )
     if verbose:
         print('done.')
@@ -51,7 +78,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # (T,P,Z) (Z,)
     if verbose:
         print('Interpolating signal...')
-    signals, sample_z = interpolate_signal(all_ranges, all_energies, z_near, z_far,
+    signals, sample_z = interpolate_signal(all_ranges/2, all_energies, # divide ranges by 2 to convert to spatial range
+            range_near = range_near, range_far = range_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
             batch_size = None,
     )
@@ -77,7 +105,17 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # Compute sar image
     if verbose:
         print('Computing SAR image...')
-    sar_image = convolutional_back_projection(signals, sample_z, forward_vectors, cam_azimuth, cam_distance, z_near-z_far, spatial_fs, image_size, image_size)
+    sar_image = convolutional_back_projection( signals, 
+                                               sample_z, 
+                                               forward_vectors, 
+                                               cam_azimuth, 
+                                               cam_distance, 
+                                               spatial_fs,
+                                               image_width = image_width,
+                                               image_height = image_height,
+                                               image_plane_width = image_plane_width,
+                                               image_plane_height = image_plane_height,
+                                              )
     if verbose:
         print('done.')
 
@@ -88,7 +126,12 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     return sar_image
 
 
-def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, side_len, spatial_fs, H, W):
+def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, spatial_fs,
+                        image_width = 64,
+                        image_height = 64,
+                        image_plane_width = 1,
+                        image_plane_height = 1,
+    ):
     '''
     Convolutional back projection for SAR imaging.
 
@@ -98,17 +141,14 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
         forward_vector: (T,P,3) - the forward vector for each ray
         cam_azimuth: (T,) - the azimuth angle of the camera
         cam_distance: (T,) - the distance of the camera from the origin
-        side_len: float - the length of the side of the image plane
         spatial_fs: float - the spatial frequency sampling rate
-        H: int - the height of the target image
-        W: int - the width of the target image
 
     outputs:
         image: (T,H,W) - the computed image
     '''
     # Get shapes
     T,P,Z = signal.shape
-    I = H * W
+    I = image_height * image_width
     device = signal.device
 
     # filter with |r| in frequency domain (equation 2.30)
@@ -118,8 +158,8 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
 
     # create grid of target image cooordinates on the ground plane
-    h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=sample_z.dtype),
-                                        torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=sample_z.dtype),
+    h_coord,w_coord = torch.meshgrid(   torch.linspace(-image_plane_height/2, image_plane_height/2, image_height, device=device, dtype=sample_z.dtype),
+                                        torch.linspace(-image_plane_width/2 , image_plane_width/2 , image_width , device=device, dtype=sample_z.dtype),
                                         indexing='ij')  # (H,W)
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
@@ -145,7 +185,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (T,I)
 
     # reshape and convert to real-valued images
-    image = image.reshape(T,H,W)
+    image = image.reshape(T,image_height,image_width) # (T,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
 
 
@@ -240,9 +280,32 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, spatial_fs = 64, 
-                        spatial_bw = 64, n_rays_per_side = 128, image_size = 128, 
-                        snr_db = None, wavelength = None, use_sig_magnitude=True, suffix = None):
+def render_random_image( 
+        debug_gif = False, 
+        num_pulse = 120,
+        azimuth_spread = 180,
+        spatial_fs = 64, 
+        spatial_bw = 64,
+        snr_db = None,
+        wavelength = None,
+        use_sig_magnitude=True,
+        suffix = None,
+
+        image_plane_width = 1,
+        image_plane_height = 1,
+        image_width = 64,
+        image_height = 64, 
+        grid_width = 1,
+        grid_height = 1,
+        n_ray_width = 1,
+        n_ray_height = 1, 
+        range_near = 1,
+        range_far = 1,
+    ):
+    """
+    Renders a random image from the ShapeNet dataset using SAR simulation.
+    """
+
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -272,18 +335,26 @@ def render_random_image( debug_gif=False, num_pulse=120, azimuth_spread = 180, s
                             target_poses, # poses
                             azimuth_spread, # azimuth spread
 
-                            z_near = 0.8,
-                            z_far  = 1.8,
                             spatial_bw = spatial_bw,
                             spatial_fs = spatial_fs,
-                            image_size = image_size,
-                            n_rays_per_side = n_rays_per_side,
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
+
+                            # image size stuff
+                            image_width = image_width,
+                            image_height = image_height,
+                            image_plane_width = image_plane_width,
+                            image_plane_height = image_plane_height,
+                            grid_width = grid_width,
+                            grid_height = grid_height,
+                            n_ray_width = n_ray_width,
+                            n_ray_height = n_ray_height,
+                            range_near = range_near,
+                            range_far = range_far,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -356,6 +427,8 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         
         # Add a numeric ID to ensure correct sorting
         kwargs['suffix'] = f"{experiment_name}_{i:03d}_{'_'.join(param_str_parts)}"
+        
+        # render the image with the current parameters
         render_random_image(**kwargs)
 
     # find all files in figures that have the experiment name
@@ -434,21 +507,22 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
 
-    # SNR experiment
-    default_kwargs = {
-        'debug_gif': False,
-        'num_pulse': 32,
-        'azimuth_spread': 100,
-        'spatial_bw': 128,
-        'spatial_fs': 128,
-        'n_rays_per_side': 200,
-        'wavelength': 0.3,
-        'use_sig_magnitude': True,
-    }
-    vary_kwargs = {
-        'snr_db': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
-    }
-    multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
+    # # SNR experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 200,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30
+    # }
+    # vary_kwargs = {
+    #     'grid_size': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
 
     # # wavelength experiment WITH magnitude of signal used for CBP
     # default_kwargs = {
@@ -484,4 +558,43 @@ if __name__ == '__main__':
     #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
     # }
     # print('vary_kwargs:', vary_kwargs)
-    # multi_param_experiment(vary_kwargs, default_kwargs, "nomag_wavelength_experiment")
+    #
+
+    # variabole grid, ray density, image plane size experiment
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        'azimuth_spread': 100,
+        'spatial_bw': 128,
+        'spatial_fs': 128,
+        'wavelength': 0.3,
+        'use_sig_magnitude': True,
+        'snr_db': 30
+    }
+    # wacky numbers hoowee
+    vary_kwargs = {
+        'image_width' : np.linspace(64, 64, 8,endpoint=True).astype(np.int32).tolist(),
+        'image_height': np.linspace(64, 64, 8,endpoint=True).astype(np.int32).tolist(),
+        'image_plane_width'  : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
+        'image_plane_height' : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
+        'grid_width'  : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
+        'grid_height' : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
+        'n_ray_width' : np.linspace(20, 400, 8,endpoint=True).astype(np.int32).tolist(),
+        'n_ray_height': np.linspace(20, 400, 8,endpoint=True).astype(np.int32).tolist(),
+        'range_near'  : np.linspace(0,0.8, 8,endpoint=True).tolist(),
+        'range_far'   : np.linspace(2.6, 1.8, 8,endpoint=True).tolist(),
+    }
+    # a sensible example
+    vary_kwargs = {
+        'image_width'        : [128,],
+        'image_height'       : [128,],
+        'image_plane_width'  : [1,],
+        'image_plane_height' : [1,],
+        'grid_width'         : [2,],
+        'grid_height'        : [2,],
+        'n_ray_width'        : [256,],
+        'n_ray_height'       : [256,],
+        'range_near'         : [0.5,],
+        'range_far'          : [2.1,],
+    }
+    multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")

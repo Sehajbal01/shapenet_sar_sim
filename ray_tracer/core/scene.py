@@ -1,9 +1,9 @@
 # written by JhihYang Wu <jhihyangwu@arizona.edu>
 
 import torch
-from my_ray_tracer.geometry.trimesh import TriMesh
-from my_ray_tracer.accelerator.octree import Octree
-from my_ray_tracer.geometry.bbox import BBox
+from ray_tracer.geometry.trimesh import TriMesh
+from ray_tracer.accelerator.octree import Octree
+from ray_tracer.geometry.bbox import BBox
 from ..core import UP
 
 class Scene:
