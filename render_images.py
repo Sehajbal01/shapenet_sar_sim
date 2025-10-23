@@ -560,7 +560,7 @@ if __name__ == '__main__':
     # print('vary_kwargs:', vary_kwargs)
     #
 
-    # variabole grid, ray density, image plane size experiment
+    # variable ray grid size experiment
     default_kwargs = {
         'debug_gif': False,
         'num_pulse': 32,
@@ -569,32 +569,22 @@ if __name__ == '__main__':
         'spatial_fs': 128,
         'wavelength': 0.3,
         'use_sig_magnitude': True,
-        'snr_db': 30
-    }
-    # wacky numbers hoowee
-    vary_kwargs = {
-        'image_width' : np.linspace(64, 64, 8,endpoint=True).astype(np.int32).tolist(),
-        'image_height': np.linspace(64, 64, 8,endpoint=True).astype(np.int32).tolist(),
-        'image_plane_width'  : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
-        'image_plane_height' : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
-        'grid_width'  : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
-        'grid_height' : np.linspace(.5, 2, 8,endpoint=True).astype(np.int32).tolist(),
-        'n_ray_width' : np.linspace(20, 400, 8,endpoint=True).astype(np.int32).tolist(),
-        'n_ray_height': np.linspace(20, 400, 8,endpoint=True).astype(np.int32).tolist(),
-        'range_near'  : np.linspace(0,0.8, 8,endpoint=True).tolist(),
-        'range_far'   : np.linspace(2.6, 1.8, 8,endpoint=True).tolist(),
+        'snr_db': 30,
+
+        'image_width'        : 128,
+        'image_height'       : 128,
+        'image_plane_width'  : 1,
+        'image_plane_height' : 1,
+        'grid_width'         : 2,
+        'grid_height'        : 2,
+        'n_ray_width'        : 256,
+        'n_ray_height'       : 256,
+        'range_near'         : 0.5,
+        'range_far'          : 2.1,
     }
     # a sensible example
     vary_kwargs = {
-        'image_width'        : [128,],
-        'image_height'       : [128,],
-        'image_plane_width'  : [1,],
-        'image_plane_height' : [1,],
-        'grid_width'         : [2,],
-        'grid_height'        : [2,],
-        'n_ray_width'        : [256,],
-        'n_ray_height'       : [256,],
-        'range_near'         : [0.5,],
-        'range_far'          : [2.1,],
+        'grid_width'         : np.linspace(0.5, 1.2, 6, endpoint=True),
+        'grid_height'        : np.linspace(0.5, 1.2, 6, endpoint=True),
     }
     multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")
