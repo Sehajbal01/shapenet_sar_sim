@@ -14,6 +14,7 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 def accumulate_scatters(target_poses, object_filename,
                azimuth_spread=15, n_pulses=30,
                use_ground=True, debug_gif=False, num_bounces=1,
+               wavelength = None,
                grid_width=1, grid_height=1,
                n_ray_width=1, n_ray_height=1,
                ):
@@ -141,6 +142,10 @@ def accumulate_scatters(target_poses, object_filename,
     # tile elevation and distance to match the shape of azimuth
     elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
     distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
+
+    # apply complex value to the energy according to wavelength
+    if wavelength is not None:
+        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)

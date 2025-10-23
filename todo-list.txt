@@ -1,15 +1,22 @@
-- incorporate 2*distance for the signal samples
-    - this will have to be in jhihyang's stuff
+DONE - incorporate 2*distance for the signal samples
+    DONE - this will have to be in jhihyang's stuff
 
-- get rid of the ring effect by increasing the signal length in space
+DONE - get rid of the ring effect by increasing the signal length in space
     DONE - in ray_tracer_signal_simulation.py
-    - in signal_simulation.py
+    DONE - in signal_simulation.py
+
+- integrate ray tracing module
+    DONE - include option for the ray tracing vs rasterization
+    - debug ray tracing OOM
 
 - should i adjust the r-points interpolation in the CBP function?
 
 - refine energy equation
     - hardcode rsa
+    - incorporate r, s, a components into the mesh
+    - load mesh before accumulate scatters
 
 # after the paper is submitted to radar conf 2026
-- load mesh before accumulate scatters
-- incorporate r, s, a components into the mesh
+- manual trajectory input
+    - use stop and hop assumption...
+- implement strip map mode simulation

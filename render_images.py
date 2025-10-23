@@ -44,6 +44,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # set device
     device = 'cuda'
 
+    # select the function for accumulating scatters
     if render_method == 'rasterization':
         accumulate_scatters_fn = accumulate_scatters_rasterization
     elif render_method == 'raytracing':
@@ -290,6 +291,7 @@ def render_random_image(
         wavelength = None,
         use_sig_magnitude=True,
         suffix = None,
+        render_method = 'rasterization',
 
         image_plane_width = 1,
         image_plane_height = 1,
@@ -343,6 +345,8 @@ def render_random_image(
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
+
+                            render_method=render_method,
 
                             # image size stuff
                             image_width = image_width,
@@ -420,7 +424,10 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             kwargs[param_name] = param_vals[i]
             try:
                 # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
-                param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+                try:
+                    param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+                except(ValueError):
+                    param_str_parts.append(f"{param_name}{param_vals[i]}")
 
             except(TypeError):
                 param_str_parts.append(f"{param_name}{param_vals[i]}")
@@ -560,6 +567,35 @@ if __name__ == '__main__':
     # print('vary_kwargs:', vary_kwargs)
     #
 
+    # # variable ray grid size experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'grid_width'         : np.linspace(0.5, 1.2, 6, endpoint=True),
+    #     'grid_height'        : np.linspace(0.5, 1.2, 6, endpoint=True),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")
+
     # variable ray grid size experiment
     default_kwargs = {
         'debug_gif': False,
@@ -581,10 +617,11 @@ if __name__ == '__main__':
         'n_ray_height'       : 256,
         'range_near'         : 0.5,
         'range_far'          : 2.1,
+        'grid_width'         : 1.2,
+        'grid_height'        : 1.2,
     }
     # a sensible example
     vary_kwargs = {
-        'grid_width'         : np.linspace(0.5, 1.2, 6, endpoint=True),
-        'grid_height'        : np.linspace(0.5, 1.2, 6, endpoint=True),
+        'render_method': ['rasterization', 'raytracing'],
     }
-    multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")
+    multi_param_experiment(vary_kwargs, default_kwargs, "render_method_experiment")
