@@ -13,7 +13,7 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 
 def accumulate_scatters(target_poses, object_filename,
                azimuth_spread=15, n_pulses=30,
-               use_ground=True, debug_gif=False, num_bounces=1,
+               use_ground=True, debug_gif=False, num_bounces=2,
                wavelength = None,
                grid_width=1, grid_height=1,
                n_ray_width=1, n_ray_height=1,
@@ -97,7 +97,7 @@ def accumulate_scatters(target_poses, object_filename,
 
         # trace rays somewhat in parallel
         with torch.no_grad():
-            num_cams_at_once = int(30 / num_bounces)
+            num_cams_at_once = int(5 / (num_bounces+1))
             energy_range_values = []
             for i in range(0, len(cameras), num_cams_at_once):
                 energy_range_values.extend(scene.get_energy_range_values(cameras[i:i+num_cams_at_once], num_bounces=num_bounces))

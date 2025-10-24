@@ -5,6 +5,8 @@ DONE - get rid of the ring effect by increasing the signal length in space
     DONE - in ray_tracer_signal_simulation.py
     DONE - in signal_simulation.py
 
+- adjust ground plane projection such that it falls in line with the projection function along the ground plane, not just projection.
+
 - integrate ray tracing module
     DONE - include option for the ray tracing vs rasterization
     - debug ray tracing OOM
