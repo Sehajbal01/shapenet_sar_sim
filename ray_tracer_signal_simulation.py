@@ -13,7 +13,7 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 
 def accumulate_scatters(target_poses, object_filename,
                azimuth_spread=15, n_pulses=30,
-               use_ground=True, debug_gif=False, num_bounces=2,
+               use_ground=True, debug_gif=False, num_bounces=1,
                wavelength = None,
                grid_width=1, grid_height=1,
                n_ray_width=1, n_ray_height=1,
@@ -72,7 +72,7 @@ def accumulate_scatters(target_poses, object_filename,
         cameras = []
         for p in range(P):  # for each pulse
             elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
-            azimuth_ = azimuth[t][p] / 180 * torch.pi  # in radians now
+            azimuth_ = (90 + azimuth[t][p]) / 180 * torch.pi  # in radians now
             position_vector = torch.tensor([
                 torch.cos(elevation) * torch.sin(azimuth_),
                 torch.sin(elevation),
@@ -103,26 +103,27 @@ def accumulate_scatters(target_poses, object_filename,
                 energy_range_values.extend(scene.get_energy_range_values(cameras[i:i+num_cams_at_once], num_bounces=num_bounces))
 
         if debug_gif:
-            os.makedirs('figures/tmp', exist_ok=True)
+            os.makedirs('figures/tmp_ray_tracer', exist_ok=True)
             # depth and diffuse images
             for p in range(P):
                 depth, diffuse = scene.get_depth_and_diffuse(cameras[p])
                 # concatenate along the width dimension
                 dm_e_im = np.concatenate((depth, diffuse), axis=1)  # (h, 2w)
-                path = get_next_path(f'figures/tmp/depth_energy.png')
+                path = get_next_path(f'figures/tmp_ray_tracer/depth_energy.png')
                 imageio.imwrite(path, dm_e_im)
             # range energy plots
-            e_r_values = energy_range_values[0]  # list[(n, 2)]  # just the first camera for now
-            for i in range(len(e_r_values)):  # generate a plot for each bounce
-                xy = e_r_values[i].cpu().numpy()
-                plt.scatter(xy[:, 0], xy[:, 1], s=1)
-                plt.xlabel("Range")
-                plt.ylabel("Energy")
-                plt.xlim(0, 10)
-                plt.ylim(0, 1)
-                plt.title(f"Energy vs Range Plot for Bounce {i}")
-                plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_{i}.png"))
-                plt.close()
+            for p in range(P):
+                e_r_values = energy_range_values[p]  # list[(n, 2)]
+                for i in range(len(e_r_values)):  # generate a plot for each bounce
+                    xy = e_r_values[i].cpu().numpy()
+                    plt.scatter(xy[:, 0], xy[:, 1], s=1)
+                    plt.xlabel("Range")
+                    plt.ylabel("Energy")
+                    plt.xlim(0, 6)
+                    plt.ylim(-0.5, 1.5)
+                    plt.title(f"Energy vs Range Plot for Bounce {i} for Pulse {p}")
+                    plt.savefig(os.path.join("figures", "tmp_ray_tracer", f"energy_range_bounce_{i}_pulse_{p}.png"))
+                    plt.close()
 
         # save the energy range values
         energy_range_values = [torch.cat(e_r_values, dim=0) for e_r_values in energy_range_values]  # join plots for different number of bounces. (list[r, 2])
