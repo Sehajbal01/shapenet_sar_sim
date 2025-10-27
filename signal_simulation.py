@@ -170,6 +170,18 @@ def accumulate_scatters(target_poses, object_filename,
             scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
 
+            if debug_gif and t == 0:
+                tmp1 = scatter_ranges[t][-1].cpu().numpy()
+                tmp2 = scatter_energies[t][-1].cpu().numpy()
+                plt.scatter(tmp1, tmp2, s=1)
+                plt.xlabel("Range")
+                plt.ylabel("Energy")
+                plt.xlim(0, 6)
+                plt.ylim(-0.5, 1.5)
+                plt.title(f"Energy vs Range Plot for Bounce 0 for Pulse {p}")
+                plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
+                plt.close()
+
 
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)

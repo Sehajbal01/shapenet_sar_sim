@@ -121,8 +121,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         print('done.')
 
     # make a gif if desired
-    if debug_gif:
-        signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix =debug_gif_suffix)
+    # if debug_gif:
+    #     signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix =debug_gif_suffix)
 
     return sar_image
 
@@ -598,7 +598,7 @@ if __name__ == '__main__':
 
     # variable ray grid size experiment
     default_kwargs = {
-        'debug_gif': False,
+        'debug_gif': True,
         'num_pulse': 32,
         'azimuth_spread': 100,
         'spatial_bw': 128,
