@@ -13,10 +13,10 @@ DONE - get rid of the ring effect by increasing the signal length in space
 
 - should i adjust the r-points interpolation in the CBP function?
 
-- refine energy equation
-    - hardcode rsa
-    - incorporate r, s, a components into the mesh
-    - load mesh before accumulate scatters
+DONE - refine energy equation
+    DONE - hardcode rsa
+    DONE - incorporate r, s, a components into the mesh
+    DONE - load mesh before accumulate scatters
 
 # after the paper is submitted to radar conf 2026
 - manual trajectory input

@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
-from signal_simulation import interpolate_signal, apply_snr
+from signal_simulation import interpolate_signal, apply_snr, load_mesh
 
 from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
 from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
@@ -52,14 +52,17 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     else:
         raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
-    # SAR raytracing 
+    # load the mesh and hardcode the material properties
+    mesh, normals, material_properties = load_mesh(file_name, device=device,)
+
+    # SAR raytracing / rasterization
     if verbose:
         print('Accumulating scatters...')
 
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
     all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
         poses.to(device),
-        file_name,
+        mesh, normals, material_properties,
 
         azimuth_spread = az_spread,
         n_pulses       = num_pulses,
