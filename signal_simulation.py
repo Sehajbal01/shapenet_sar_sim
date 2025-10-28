@@ -20,13 +20,14 @@ from utils import get_next_path, extract_pose_info
 
 
 
-def accumulate_scatters(target_poses, object_filename,
-               azimuth_spread=15, n_pulses=30,
-               alpha_1=1.0, alpha_2=0.0, use_ground=True, wavelength=None,
-               debug_gif=False,
-               grid_width=1, grid_height=1,
-               n_ray_width=1, n_ray_height=1,
-               ):
+def accumulate_scatters(target_poses, 
+                        mesh, face_normals, material_properties,
+                        azimuth_spread=15, n_pulses=30,
+                        wavelength=None,
+                        debug_gif=False,
+                        grid_width=1, grid_height=1,
+                        n_ray_width=1, n_ray_height=1,
+                    ):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -35,9 +36,6 @@ def accumulate_scatters(target_poses, object_filename,
         object_filename (str): path to the .obj file
         azimuth_spread (float): the range of azimuth angles for sar rendering
         n_pulses (int): the number of pulses for sar rendering
-        alpha_1 (float): scaling factor for the energy return
-        alpha_2 (float): offset for the energy return
-        use_ground (bool): whether to use the ground plane for rendering
         wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         debug_gif (bool): whether to save a gif of the depth and energy images
 
@@ -68,32 +66,6 @@ def accumulate_scatters(target_poses, object_filename,
         bin_size=0,  # or set to a small value
         max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
     )
-
-    # get mesh and compute face normals
-    mesh = load_objs_as_meshes([object_filename], device=device)
-    verts = mesh.verts_packed()  # (V, 3)
-    faces = mesh.faces_packed()  # (F, 3)
-
-    # add a ground if desired to the mesh
-    # if False:
-    if use_ground:
-        ground_buffer = 0.001
-        low_y  = verts[:, 1].min().item() - ground_buffer
-        high_y = verts[:, 1].max().item() + ground_buffer
-        ground_y = torch.full((T,), low_y, device=device) # (T,)
-        ground_y[cam_elevation < 0] = high_y # (T,)
-        # TODO: don;'t use ground_y[0]
-        ground_size = 100
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y[0], max_triangle_len = ground_size/100.0, device = device )
-        num_verts_before = verts.shape[0]
-        verts = torch.cat([verts, ground_verts], dim=0)
-        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
-        mesh = Meshes(verts=[verts], faces=[faces])
-
-    face_verts = verts[faces]  # (F, 3, 3)
-    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -131,11 +103,10 @@ def accumulate_scatters(target_poses, object_filename,
             # create normal map by indexing face normals with face IDs
             valid_face_ids = face_ids[hit] # (R',)
 
-            # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
             # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
             forward_vector = rotation[0,:,2] # (3,)
             energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
-            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) * alpha_1 + alpha_2 # (r, r)
+            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -277,57 +248,61 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         signal = torch.cat(signal, dim=1) # (N, Z)
 
-    # ########################################### plot the first scatter and sig ###########################################
-    # all_energies = scatter_e.reshape(N,R)
-    # all_ranges   = scatter_z.reshape(N,R)
-    # signals      = signal.reshape(N,Z)
+    ########################################### plot the first scatter and sig ###########################################
+    all_energies = scatter_e.reshape(N,R)
+    all_ranges   = scatter_z.reshape(N,R)
+    signals      = signal.reshape(N,Z)
+    if signals.dtype.is_complex:
+        signals = torch.abs(signals)
+    if all_energies.dtype.is_complex:
+        all_energies = torch.abs(all_energies)
 
-    # # plot the signal and scatters for every pulse
-    # sig_max = signals.max().item()
-    # sig_min = signals.min().item()
-    # energy_max = all_energies.max().item()
-    # energy_min = all_energies.min().item()
-    # p = N//2
-    # plt.figure(figsize=(12, 6))
+    # plot the signal and scatters for every pulse
+    sig_max = signals.max().item()
+    sig_min = signals.min().item()
+    energy_max = all_energies.max().item()
+    energy_min = all_energies.min().item()
+    p = N//2
+    plt.figure(figsize=(12, 6))
 
-    # # plot the scatters
-    # plt.subplot(1, 3, 1)
-    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    # plt.title('Scatters')
-    # plt.xlabel('Range')
-    # plt.ylabel('Energy')
-    # plt.xlim(range_near, range_far)
-    # plt.ylim(energy_min, energy_max)
+    # plot the scatters
+    plt.subplot(1, 3, 1)
+    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    plt.title('Scatters')
+    plt.xlabel('Range')
+    plt.ylabel('Energy')
+    plt.xlim(range_near, range_far)
+    plt.ylim(energy_min, energy_max)
 
-    # # plot the signal
-    # plt.subplot(1, 3, 2)
-    # plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
-    # plt.title('Signal')
-    # plt.xlabel('Range')
-    # plt.ylabel('Amplitude')
-    # plt.xlim(range_near, range_far)
-    # plt.ylim(sig_min, sig_max)
+    # plot the signal
+    plt.subplot(1, 3, 2)
+    plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
+    plt.title('Signal')
+    plt.xlabel('Range')
+    plt.ylabel('Amplitude')
+    plt.xlim(range_near, range_far)
+    plt.ylim(sig_min, sig_max)
 
-    # # plot the interpolating sinc pulse function along with the scatters
-    # window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
-    # plt.subplot(1, 3, 3)
-    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    # for sz in sample_z:
-    #     window_pulse = window(window_range - sz)
-    #     plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
-    # plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
-    # plt.title('Window Pulse')
-    # plt.xlabel('Range')
-    # plt.ylabel('Energy')
-    # mid_z = (range_near + range_far) / 2
-    # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
-    # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
+    # plot the interpolating sinc pulse function along with the scatters
+    window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
+    plt.subplot(1, 3, 3)
+    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    for sz in sample_z:
+        window_pulse = window(window_range - sz)
+        plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
+    plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
+    plt.title('Window Pulse')
+    plt.xlabel('Range')
+    plt.ylabel('Energy')
+    mid_z = (range_near + range_far) / 2
+    plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
+    plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
 
-    # path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
-    # savefig(path)
-    # print('Figure saved to %s' % path)
-    # ########################################### plot the first scatter and sig ###########################################
+    path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
+    savefig(path)
+    print('Figure saved to %s' % path)
+    ########################################### plot the first scatter and sig ###########################################
 
     # return stuff
     signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
@@ -373,6 +348,104 @@ def resample_signal(self, signal, out_samples, dim = -1):
     return resampled_signal  # (shape_prefix, out_samples, shape_suffix)
 
 
+
+
+def apply_snr(signal, snr_db, dim=-1):
+    """
+    Apply a signal-to-noise ratio (SNR) to the input signal.
+
+    Args:
+        signal (torch.Tensor): The input signal tensor.
+        snr_db (float): The desired SNR in decibels.
+        dim (int): The dimension along which to compute the SNR.
+
+    Returns:
+        torch.Tensor: The signal with the applied SNR.
+    """
+
+    # N = Ni + Nr # real and imaginary parts are iid
+    # SNR = Ps/Pn = E[|S|^2]/E[|N|^2]
+    # E[|N|^2] = E[|S|^2]/SNR
+
+    # E[|N|^2] = E[Nr^2 + Ni^2] = 2 * E[Nr^2]
+    # E[|N|^2]/2 = E[Nr^2] = sigma^2
+    # sigma = sqrt( E[|N|^2]/2 ) = sqrt( E[|S|^2]/(2*SNR) )
+
+    # Convert SNR from dB to linear scale
+    snr_linear = 10 ** (snr_db / 10)
+
+    # Compute the signal power
+    signal_power = torch.mean(signal.abs() ** 2, dim=dim, keepdim=True)
+    noise_std_dev = torch.sqrt(signal_power / (2 * snr_linear)).cpu().numpy()
+
+    # Generate noise
+    noise = torch.tensor(
+             np.random.normal(scale=noise_std_dev, size=signal.shape) + \
+        1j * np.random.normal(scale=noise_std_dev, size=signal.shape)
+    ).to(signal.device, dtype=signal.dtype)
+
+    # Add noise to the signal
+    noisy_signal = signal + noise
+
+    return noisy_signal
+
+
+def load_mesh(  file_name,
+                obj_rsa = (0.3,0.3,0.3),
+                make_ground = True,
+                ground_below = True,
+                ground_rsa = (0.3,0.3,0.3),
+                device = 'cuda',
+        ):  
+    '''
+    Load a mesh from an obj file and compute face normals.
+    Inputs:
+        file_name: str - path to the obj file
+        make_ground: bool - whether to add a ground plane
+        obj_rsa: tuple - roughness, specular, ambient for the object material
+        ground_rsa: tuple - roughness, specular, ambient for the ground material
+        device: str - device to load the mesh onto
+    Outputs:
+        mesh: Meshes - the loaded mesh with face normals
+        face_normals: (F, 3) - the face normals
+        rsa: (F, 3) - the material properties for each face in Reflectivity, Scatter, Absorption
+    '''
+    # load verts and faces
+    mesh = load_objs_as_meshes([file_name], device=device)
+    verts = mesh.verts_packed()  # (V, 3)
+    faces = mesh.faces_packed()  # (F, 3)
+
+    # set material properties for each face
+    rsa = torch.tensor(obj_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(faces.shape[0], 1)  # (F, 3)
+
+    # add a ground if desired to the mesh
+    if make_ground:
+        ground_buffer = 0.001
+        if ground_below:
+            ground_y  = verts[:, 1].min().item() - ground_buffer
+        else:
+            ground_y = verts[:, 1].max().item() + ground_buffer
+
+        ground_size = 100
+        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y, max_triangle_len = ground_size/100.0, device = device )
+        num_verts_before = verts.shape[0]
+        verts = torch.cat([verts, ground_verts], dim=0)
+        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
+        mesh = Meshes(verts=[verts], faces=[faces])
+
+        # set ground material properties
+        ground_properties = torch.tensor(ground_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(ground_faces.shape[0], 1)  # (F_g, 3)
+        rsa = torch.cat([rsa, ground_properties], dim=0)  # (F, 3)
+
+    # calculate the normals
+    face_verts = verts[faces]  # (F, 3, 3)
+    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
+    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+
+    return mesh, face_normals, rsa
+
+
 def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.1, device = 'cpu' ):
     """
     Make a big ground plane with the specified size and ground level.
@@ -416,43 +489,3 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
 
     # return the mesh
     return verts,faces
-
-
-def apply_snr(signal, snr_db, dim=-1):
-    """
-    Apply a signal-to-noise ratio (SNR) to the input signal.
-
-    Args:
-        signal (torch.Tensor): The input signal tensor.
-        snr_db (float): The desired SNR in decibels.
-        dim (int): The dimension along which to compute the SNR.
-
-    Returns:
-        torch.Tensor: The signal with the applied SNR.
-    """
-
-    # N = Ni + Nr # real and imaginary parts are iid
-    # SNR = Ps/Pn = E[|S|^2]/E[|N|^2]
-    # E[|N|^2] = E[|S|^2]/SNR
-
-    # E[|N|^2] = E[Nr^2 + Ni^2] = 2 * E[Nr^2]
-    # E[|N|^2]/2 = E[Nr^2] = sigma^2
-    # sigma = sqrt( E[|N|^2]/2 ) = sqrt( E[|S|^2]/(2*SNR) )
-
-    # Convert SNR from dB to linear scale
-    snr_linear = 10 ** (snr_db / 10)
-
-    # Compute the signal power
-    signal_power = torch.mean(signal.abs() ** 2, dim=dim, keepdim=True)
-    noise_std_dev = torch.sqrt(signal_power / (2 * snr_linear)).cpu().numpy()
-
-    # Generate noise
-    noise = torch.tensor(
-             np.random.normal(scale=noise_std_dev, size=signal.shape) + \
-        1j * np.random.normal(scale=noise_std_dev, size=signal.shape)
-    ).to(signal.device, dtype=signal.dtype)
-
-    # Add noise to the signal
-    noisy_signal = signal + noise
-
-    return noisy_signal
