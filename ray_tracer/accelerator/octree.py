@@ -126,7 +126,7 @@ class Octree:
             t_intersect = current_node.bbox.intersect(ray_origins_2, ray_directions_2)
             ray_hit_indices = torch.argwhere(t_intersect != -1).squeeze()  # indices of rays that hit this bbox
             # TODO: should we skip rays that already have a closer hit than this bbox intersection (because it found triangle hits in other bboxes)
-            if ray_hit_indices.shape[0] == 0:
+            if len(ray_hit_indices.shape) == 0 or ray_hit_indices.shape[0] == 0:
                 continue  # no rays hit this bbox
             if current_node.is_leaf:
                 # narrow down rays to evaluate

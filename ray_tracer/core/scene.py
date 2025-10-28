@@ -4,7 +4,7 @@ import torch
 from ray_tracer.geometry.trimesh import TriMesh
 from ray_tracer.accelerator.octree import Octree
 from ray_tracer.geometry.bbox import BBox
-from ..core import UP
+from ..core import UP, EPSILON
 
 class Scene:
     def __init__(self,
@@ -270,7 +270,7 @@ class Scene:
                 new_ray_directions = incident_directions - 2 * dot_in * hit_normals
                 
                 # Update ray arrays for next bounce
-                all_ray_origins = new_ray_origins
+                all_ray_origins = new_ray_origins + EPSILON * new_ray_directions  # offset a bit to avoid self-intersection
                 all_ray_directions = new_ray_directions
                 
                 # Update cumulative distances to only keep distances for rays that hit something
