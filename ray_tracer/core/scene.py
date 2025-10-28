@@ -277,7 +277,7 @@ class Scene:
                 cumulative_distances = cumulative_distances[hit_mask_all]
 
                 # Update energy_in to only keep energies for rays that hit something
-                energy_in = energy[hit_mask_all] * hit_rsa[:, 0]  # multiply by reflectivity for next bounce
+                energy_in = energy_in[hit_mask_all] * hit_rsa[:, 0]  # multiply by reflectivity for next bounce
                 
                 # Update camera_ray_numbers to track how many rays each camera has after hits
                 new_camera_ray_numbers = []
