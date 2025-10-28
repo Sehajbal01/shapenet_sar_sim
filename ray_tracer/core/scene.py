@@ -228,7 +228,7 @@ class Scene:
                 # 5. compute energy based on angle between surface normal and direction to camera
                 # (similar to diffuse computation but for the direction back to camera)
                 hit_normals_masked = hit_triangle_normals[camera_ray_hit_mask][not_blocked_mask]
-                energy = torch.max(torch.sum(direction_to_sensor * hit_normals_masked, dim=1), 0)
+                energy = torch.clamp(torch.sum(direction_to_sensor * hit_normals_masked, dim=1), min=0)
                 #energy = torch.clamp(energy, 0, 1)
                 
                 # range
