@@ -10,13 +10,14 @@ class Scene:
     def __init__(self,
                  obj_filename,
                  device,
+                 obj_rsa=(0.3,0.3,0.3),
                  octree_max_depth=2,
                  approx_trig_per_bbox=256):
         self.device = device
 
         # load obj file into trimesh
         self.trimesh = TriMesh()
-        self.trimesh.load_obj_file(obj_filename)
+        self.trimesh.load_obj_file(obj_filename, obj_rsa)
         self.trimesh = self.trimesh.to(device)
 
         # build octree to speed up ray tracing
@@ -27,16 +28,20 @@ class Scene:
             device=device
         )
 
-    def add_ground(self, ground_size=1e3):
+    def add_ground(self, ground_size=1e3, ground_below=True, ground_rsa=(0.3,0.3,0.3)):
         """
         Hack to add ground without adding / changing code anywhere else.
         
         Args:
             ground_size (float): The size of the ground plane.
+            ground_below (bool): Whether to place the ground below the object.
+            ground_rsa (tuple): reflectivity, specular, ambient for the ground material.
         
         Returns:
             None
         """
+        if ground_below == False:
+            raise NotImplementedError("Currently only ground_below=True is supported.")
         # add two triangles as ground to all octree leaf elements
         # needs to be done after octree construction because we want octree to be based on scale of the obj file
         ground_size = 1e3
@@ -57,6 +62,8 @@ class Scene:
         self.trimesh.triangles_edge2 = self.trimesh.triangles_C - self.trimesh.triangles_A
         self.trimesh.triangles_normal = torch.linalg.cross(self.trimesh.triangles_edge1, self.trimesh.triangles_edge2, dim=1)
         self.trimesh.triangles_normal = self.trimesh.triangles_normal / torch.norm(self.trimesh.triangles_normal, dim=1, keepdim=True)
+        self.trimesh.triangles_rsa = torch.cat([self.trimesh.triangles_rsa,
+                                                torch.tensor(ground_rsa, dtype=torch.float32).repeat(2, 1)], dim=0)  # add rsa for ground triangles
         # add them to octree
         num_trigs = len(self.trimesh.triangles_A)
         last_two_indices = torch.tensor([num_trigs - 2, num_trigs - 1], device=self.device)
@@ -136,6 +143,12 @@ class Scene:
         Args:
             cameras (list[OrthographicCamera]): The cameras to generate rays from.
             num_bounces (int): The number of bounces to simulate.
+        
+        Returns:
+            energy_range_values (list[list[torch.Tensor]]): 2D list where each row corresponds to one camera/pulse
+                                                            and each column corresponds to one bounce.
+                                                            Each entry is a (N, 2) tensor where N is the number of hits,
+                                                            and each row contains (range, energy) values.
         """
         # retval
         energy_range_values = [[None] * num_bounces for _ in range(len(cameras))]  # 2D list where each row corresponds to one camera
@@ -164,6 +177,7 @@ class Scene:
             cumulative_distances[hit_mask_all] += ray_hit_times[hit_mask_all]
 
             # we can easily lose track of which rays belong to which camera so we are not parallelizing this
+            assert sum(camera_ray_numbers) == all_ray_origins.shape[0], "Mismatch in total number of rays."
             for camera_index, camera in enumerate(cameras):
                 # get the rays that belong to this camera
                 start = sum(camera_ray_numbers[:camera_index])
@@ -178,15 +192,13 @@ class Scene:
                 # energy
                 # 1. compute useful values
                 hit_triangle_normals = self.trimesh.triangles_normal[camera_ray_hit_triangle_ids]  # normals of the hit triangles
+                # make sure normals point in opposite direction of incident ray
+                # incident_directions = camera_ray_directions
+                hit_triangle_normals[torch.sum(hit_triangle_normals * camera_ray_directions, dim=1) > 0] *= -1
                 camera_ray_hit_pos = camera_ray_origins + camera_ray_hit_times.unsqueeze(1) * camera_ray_directions  # 3D position of where the ray hit
                 # 2. direction to camera sensor plane
-                # TODO: using the following vector is most likely not physically correct.
                 # for orthographic camera, the direction back to sensor plane is simply the negative camera direction
                 direction_to_sensor = -camera.direction.to(camera_ray_hit_pos.device)
-                
-                # 3. check if a ray traced back to the camera is within the camera sensor
-                # we need to check if the ray from hit_pos in direction direction_to_sensor intersects the camera sensor plane
-                # and if that intersection point is within the sensor bounds
                 
                 # first, find intersection with camera sensor plane
                 # camera sensor plane is at camera.position with normal = camera.direction
@@ -203,24 +215,7 @@ class Scene:
                 numerator = torch.sum((camera_pos - camera_ray_hit_pos) * camera_dir, dim=1)
                 denominator = torch.sum(direction_to_sensor * camera_dir)
                 t_intersect = numerator / denominator
-                # find intersection points on sensor plane
-                sensor_intersect_points = camera_ray_hit_pos + t_intersect.unsqueeze(1) * direction_to_sensor
                 
-                # # check if intersection points are within sensor bounds
-                # # generate camera coordinate system (same as in orthographic.py)
-                # up = torch.tensor(UP, dtype=torch.float32, device=camera_ray_hit_pos.device)
-                # u = torch.linalg.cross(camera_dir, up)  # right vector
-                # u = u / torch.norm(u)
-                # v = torch.linalg.cross(u, camera_dir)  # up vector
-                # v = v / torch.norm(v)
-                # # project intersection points to camera coordinate system
-                # offset_from_camera = sensor_intersect_points - camera_pos
-                # u_coord = torch.sum(offset_from_camera * u, dim=1)  # horizontal coordinate
-                # v_coord = torch.sum(offset_from_camera * v, dim=1)  # vertical coordinate
-                # # check if within sensor bounds
-                # camera_ray_hit_mask = (torch.abs(u_coord) <= camera.size_w / 2) & \
-                #                       (torch.abs(v_coord) <= camera.size_h / 2) & \
-                #                       (t_intersect > 0)  # also check that intersection is in forward direction
                 camera_ray_hit_mask = (t_intersect > 0)  # just check that intersection is in forward direction, there is no such thing as sensor bounds for radar
 
                 # 4. check if anything is blocking this point from being seen by camera sensor by running octree.intersect_rays again
@@ -233,8 +228,8 @@ class Scene:
                 # 5. compute energy based on angle between surface normal and direction to camera
                 # (similar to diffuse computation but for the direction back to camera)
                 hit_normals_masked = hit_triangle_normals[camera_ray_hit_mask][not_blocked_mask]
-                energy = torch.abs(torch.sum(direction_to_sensor * hit_normals_masked, dim=1))  # abs because we do not differentiate between front and back side of triangles
-                energy = torch.clamp(energy, 0, 1)
+                energy = torch.max(torch.sum(direction_to_sensor * hit_normals_masked, dim=1), 0)
+                #energy = torch.clamp(energy, 0, 1)
                 
                 # range
                 # for values going into energy_range_values, add time it takes to get back to camera
@@ -283,5 +278,6 @@ class Scene:
                     camera_hits = torch.sum(hit_mask_all[start:end]).item()
                     new_camera_ray_numbers.append(camera_hits)
                 camera_ray_numbers = new_camera_ray_numbers
+                assert sum(camera_ray_numbers) == all_ray_origins.shape[0], "Mismatch in total number of rays."
             
         return energy_range_values

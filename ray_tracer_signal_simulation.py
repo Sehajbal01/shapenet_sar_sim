@@ -11,13 +11,16 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 
 
 
-def accumulate_scatters(target_poses, object_filename,
-               azimuth_spread=15, n_pulses=30,
-               use_ground=True, debug_gif=False, num_bounces=1,
-               wavelength = None,
-               grid_width=1, grid_height=1,
-               n_ray_width=1, n_ray_height=1,
-               ):
+def accumulate_scatters(target_poses, 
+                        mesh, face_normals, material_properties,
+                        azimuth_spread=15, n_pulses=30,
+                        wavelength=None,
+                        debug_gif=False,
+                        grid_width=1, grid_height=1,
+                        n_ray_width=1, n_ray_height=1,
+
+                        num_bounces=1,
+                    ):
     '''
     returns the energy and range for a bunch of rays for each pulse
 
@@ -37,6 +40,8 @@ def accumulate_scatters(target_poses, object_filename,
         energy (T,P,R): the simulated energy of all the rays
 
     '''
+    scene = mesh
+
     device = target_poses.device
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
@@ -52,14 +57,6 @@ def accumulate_scatters(target_poses, object_filename,
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
     azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
 
-    scene = Scene(
-        obj_filename=object_filename,
-        device=device,
-    )  # will automatically build octree for this mesh
-
-    # add a ground if desired to the mesh
-    if use_ground:
-        scene.add_ground()
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -152,3 +149,32 @@ def accumulate_scatters(target_poses, object_filename,
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
 
 
+def load_mesh_raytracing(  file_name,
+                obj_rsa = (0.3,0.3,0.3),
+                make_ground = True,
+                ground_below = True,
+                ground_rsa = (0.3,0.3,0.3),
+                device = 'cuda',
+        ):  
+    '''
+    Load a mesh from an obj file.
+    Inputs:
+        file_name: str - path to the obj file
+        obj_rsa: tuple - reflectivity, specular, ambient for the object material
+        make_ground: bool - whether to add a ground plane
+        ground_rsa: tuple - roughness, specular, ambient for the ground material
+        device: str - device to load the mesh onto
+    Outputs:
+        mesh: ray_tracer.core.scene.Scene - the loaded mesh with material properties
+    '''
+    scene = Scene(
+        obj_filename=file_name,
+        device=device,
+        obj_rsa=obj_rsa,
+    )  # will automatically build octree for this mesh
+
+    # add a ground if desired to the mesh
+    if make_ground:
+        scene.add_ground(ground_below=ground_below, ground_rsa=ground_rsa)
+
+    return scene
