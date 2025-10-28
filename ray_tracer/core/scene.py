@@ -63,7 +63,7 @@ class Scene:
         self.trimesh.triangles_normal = torch.linalg.cross(self.trimesh.triangles_edge1, self.trimesh.triangles_edge2, dim=1)
         self.trimesh.triangles_normal = self.trimesh.triangles_normal / torch.norm(self.trimesh.triangles_normal, dim=1, keepdim=True)
         self.trimesh.triangles_rsa = torch.cat([self.trimesh.triangles_rsa,
-                                                torch.tensor(ground_rsa, dtype=torch.float32).repeat(2, 1)], dim=0)  # add rsa for ground triangles
+                                                torch.tensor(ground_rsa, dtype=torch.float32).repeat(2, 1).to(self.trimesh.triangles_rsa.device)], dim=0)  # add rsa for ground triangles
         # add them to octree
         num_trigs = len(self.trimesh.triangles_A)
         last_two_indices = torch.tensor([num_trigs - 2, num_trigs - 1], device=self.device)
@@ -168,6 +168,7 @@ class Scene:
 
         # initialize cumulative distance (range) tracker for each ray
         cumulative_distances = torch.zeros(all_ray_origins.shape[0], device=self.device)
+        energy_in = torch.ones(all_ray_origins.shape[0], device=self.device)  # initial energy for each ray
 
         for bounce_index in range(num_bounces):
             ray_hit_times, ray_hit_triangle_ids = self.octree.intersect_rays(all_ray_origins, all_ray_directions)
@@ -188,10 +189,12 @@ class Scene:
                 camera_ray_hit_times = ray_hit_times[start:end][hit_mask]
                 camera_ray_hit_triangle_ids = ray_hit_triangle_ids[start:end][hit_mask]
                 camera_cumulative_distances = cumulative_distances[start:end][hit_mask]
+                camera_energy_in = energy_in[start:end][hit_mask]
 
                 # energy
                 # 1. compute useful values
                 hit_triangle_normals = self.trimesh.triangles_normal[camera_ray_hit_triangle_ids]  # normals of the hit triangles
+                hit_triangle_rsa = self.trimesh.triangles_rsa[camera_ray_hit_triangle_ids]  # rsa of the hit triangles
                 # make sure normals point in opposite direction of incident ray
                 # incident_directions = camera_ray_directions
                 hit_triangle_normals[torch.sum(hit_triangle_normals * camera_ray_directions, dim=1) > 0] *= -1
@@ -228,8 +231,10 @@ class Scene:
                 # 5. compute energy based on angle between surface normal and direction to camera
                 # (similar to diffuse computation but for the direction back to camera)
                 hit_normals_masked = hit_triangle_normals[camera_ray_hit_mask][not_blocked_mask]
-                energy = torch.clamp(torch.sum(direction_to_sensor * hit_normals_masked, dim=1), min=0)
-                #energy = torch.clamp(energy, 0, 1)
+                hit_rsa_masked = hit_triangle_rsa[camera_ray_hit_mask][not_blocked_mask]
+                energy = torch.clamp(torch.sum(direction_to_sensor * hit_normals_masked, dim=1), min=0)  # (N,)
+                # multiply by material scatter and energy in
+                energy = energy * hit_rsa_masked[:, 1] * camera_energy_in[camera_ray_hit_mask][not_blocked_mask]
                 
                 # range
                 # for values going into energy_range_values, add time it takes to get back to camera
@@ -250,6 +255,7 @@ class Scene:
                 
                 # Get normals of hit triangles
                 hit_normals = self.trimesh.triangles_normal[ray_hit_triangle_ids[hit_mask_all]]
+                hit_rsa = self.trimesh.triangles_rsa[ray_hit_triangle_ids[hit_mask_all]]
                 incident_directions = all_ray_directions[hit_mask_all]
                 
                 # Flip normals if they are pointing away from the incident ray
@@ -269,6 +275,9 @@ class Scene:
                 
                 # Update cumulative distances to only keep distances for rays that hit something
                 cumulative_distances = cumulative_distances[hit_mask_all]
+
+                # Update energy_in to only keep energies for rays that hit something
+                energy_in = energy[hit_mask_all] * hit_rsa[:, 0]  # multiply by reflectivity for next bounce
                 
                 # Update camera_ray_numbers to track how many rays each camera has after hits
                 new_camera_ray_numbers = []

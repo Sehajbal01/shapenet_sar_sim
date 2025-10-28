@@ -92,5 +92,6 @@ class TriMesh:
         self.triangles_edge1 = self.triangles_edge1.to(device)
         self.triangles_edge2 = self.triangles_edge2.to(device)
         self.triangles_normal = self.triangles_normal.to(device)
+        self.triangles_rsa = self.triangles_rsa.to(device)
 
         return self
