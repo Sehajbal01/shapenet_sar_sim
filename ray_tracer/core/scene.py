@@ -203,7 +203,7 @@ class Scene:
                 # for orthographic camera, the direction back to sensor plane is simply the negative camera direction
                 direction_to_sensor = -camera.direction.to(camera_ray_hit_pos.device)
                 
-                # first, find intersection with camera sensor plane
+                # first, find intersection back to camera sensor plane
                 # camera sensor plane is at camera.position with normal = camera.direction
                 # ray equation: hit_pos + t * direction_to_sensor
                 # plane equation: all xyz that satisfies (x,y,z) . normal = camera.position . normal
@@ -215,8 +215,8 @@ class Scene:
                 camera_pos = camera.position.to(camera_ray_hit_pos.device)
                 camera_dir = camera.direction.to(camera_ray_hit_pos.device)
                 # calculate t parameter for intersection with sensor plane
-                numerator = torch.sum((camera_pos - camera_ray_hit_pos) * camera_dir, dim=1)
-                denominator = torch.sum(direction_to_sensor * camera_dir)
+                numerator = torch.sum((camera_pos - camera_ray_hit_pos) * camera_dir.unsqueeze(0), dim=1)
+                denominator = torch.sum(direction_to_sensor.unsqueeze(0) * camera_dir.unsqueeze(0), dim=1)
                 t_intersect = numerator / denominator
                 
                 camera_ray_hit_mask = (t_intersect > 0)  # just check that intersection is in forward direction, there is no such thing as sensor bounds for radar
@@ -225,6 +225,7 @@ class Scene:
                 # create rays from hit positions towards camera sensor
                 rays_to_camera_origins = camera_ray_hit_pos[camera_ray_hit_mask]
                 rays_to_camera_directions = direction_to_sensor.expand_as(rays_to_camera_origins)
+                rays_to_camera_origins = rays_to_camera_origins + EPSILON * rays_to_camera_directions  # offset a bit to avoid self-intersection
                 _, blocked_ids = self.octree.intersect_rays(rays_to_camera_origins, rays_to_camera_directions)
                 not_blocked_mask = blocked_ids == -1  # keep energy values that don't get blocked by any triangles
 
