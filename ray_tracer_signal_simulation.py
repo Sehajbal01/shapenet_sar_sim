@@ -144,7 +144,7 @@ def accumulate_scatters(target_poses,
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
 
-    if debug_gif:
+    if debug_gif and num_bounces == 1:
         # convert range energy to images for visualization/debugging
         print('scatter_ranges.shape, scatter_energies.shape:', scatter_ranges.shape, scatter_energies.shape)
 

@@ -283,6 +283,8 @@ class Scene:
                 # Update ray arrays for next bounce
                 all_ray_origins = new_ray_origins + EPSILON * new_ray_directions  # offset a bit to avoid self-intersection
                 all_ray_directions = new_ray_directions
+                # normalize to be safe
+                all_ray_directions = all_ray_directions / torch.norm(all_ray_directions, dim=1, keepdim=True)
                 
                 # Update cumulative distances to only keep distances for rays that hit something
                 cumulative_distances = cumulative_distances[hit_mask_all]
