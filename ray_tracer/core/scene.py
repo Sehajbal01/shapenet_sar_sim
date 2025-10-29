@@ -136,7 +136,7 @@ class Scene:
 
         return depth_image, diffuse_image
 
-    def get_energy_range_values(self, cameras, num_bounces=1):
+    def get_energy_range_values(self, cameras, num_bounces=1, debug=False):
         """
         Trace rays to compute energy range values for each camera for multiple bounces.
 
@@ -240,6 +240,16 @@ class Scene:
                 # range
                 # for values going into energy_range_values, add time it takes to get back to camera
                 range_values = camera_cumulative_distances[camera_ray_hit_mask][not_blocked_mask] + t_intersect[camera_ray_hit_mask][not_blocked_mask]
+
+                if debug:
+                    # add back the missed rays as 0 range 0 energy
+                    range_values = camera_cumulative_distances + t_intersect
+                    range_values[camera_ray_hit_mask][not_blocked_mask] = 0
+                    tmp_energy = energy
+                    energy = torch.zeros_like(range_values, dtype=tmp_energy.dtype)
+                    combined_mask = torch.zeros_like(camera_ray_hit_mask, dtype=torch.bool)
+                    combined_mask[camera_ray_hit_mask] = not_blocked_mask
+                    energy[combined_mask] = tmp_energy
 
                 # store energy and range values
                 if range_values.shape[0] > 0:

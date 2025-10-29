@@ -97,7 +97,7 @@ def accumulate_scatters(target_poses,
             num_cams_at_once = int(5 / (num_bounces+1))
             energy_range_values = []
             for i in range(0, len(cameras), num_cams_at_once):
-                energy_range_values.extend(scene.get_energy_range_values(cameras[i:i+num_cams_at_once], num_bounces=num_bounces))
+                energy_range_values.extend(scene.get_energy_range_values(cameras[i:i+num_cams_at_once], num_bounces=num_bounces, debug=debug_gif))
 
         if debug_gif:
             os.makedirs('figures/tmp_ray_tracer', exist_ok=True)
@@ -133,7 +133,6 @@ def accumulate_scatters(target_poses,
             e_r_values = energy_range_values[p]
             scatter_ranges[t][p, :e_r_values.shape[0]] = e_r_values[:, 0]
             scatter_energies[t][p, :e_r_values.shape[0]] = e_r_values[:, 1]
-
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
@@ -144,6 +143,34 @@ def accumulate_scatters(target_poses,
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
+
+    if debug_gif:
+        # convert range energy to images for visualization/debugging
+        print('scatter_ranges.shape, scatter_energies.shape:', scatter_ranges.shape, scatter_energies.shape)
+
+        # turn them into images and save them
+        scatter_ranges_images = []
+        scatter_energies_images = []
+        for p in range(P):
+            range_image = scatter_ranges[0, p, :].cpu().numpy()  # (65536,)
+            energy_image = scatter_energies[0, p, :].cpu().numpy()  # (65536,)
+            range_image = range_image.reshape((n_ray_height, n_ray_width))
+            energy_image = energy_image.reshape((n_ray_height, n_ray_width))
+            energy_image = np.abs(energy_image)  # because energy is complex valued
+            # normalize to 0-255
+            range_image = (range_image / np.max(range_image)) * 255
+            energy_image = (energy_image / np.max(energy_image)) * 255
+            range_image = range_image.astype(np.uint8)
+            energy_image = energy_image.astype(np.uint8)
+            scatter_ranges_images.append(range_image)
+            scatter_energies_images.append(energy_image)
+        scatter_ranges_images = np.concatenate(scatter_ranges_images, axis=1)  # (h, P*w)
+        scatter_energies_images = np.concatenate(scatter_energies_images, axis=1)  # (h, P*w)
+        os.makedirs('figures/tmp_ray_tracer', exist_ok=True)
+        path = get_next_path(f'figures/tmp_ray_tracer/scatter_ranges.png')
+        imageio.imwrite(path, scatter_ranges_images)
+        path = get_next_path(f'figures/tmp_ray_tracer/scatter_energies.png')
+        imageio.imwrite(path, scatter_energies_images)
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
     #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
