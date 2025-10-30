@@ -14,6 +14,7 @@ class TriMesh:
             self.triangles_edge1 (torch.Tensor): (N, 3) tensor of triangle edges 1.
             self.triangles_edge2 (torch.Tensor): (N, 3) tensor of triangle edges 2.
             self.triangle_normal (torch.Tensor): (N, 3) tensor of triangle normals.
+            self.triangles_rsa (torch.Tensor): (N, 3) tensor of triangle reflectivity, specular, ambient.
         """
         self.triangles_A = None
         self.triangles_B = None
@@ -21,13 +22,15 @@ class TriMesh:
         self.triangles_edge1 = None
         self.triangles_edge2 = None
         self.triangles_normal = None
+        self.triangles_rsa = None  # reflectivity, specular, ambient
 
-    def load_obj_file(self, filename):
+    def load_obj_file(self, filename, object_rsa):
         """
         Loads all the triangles from an obj file.
 
         Args:
             filename (str): path to the obj file.
+            object_rsa (tuple): reflectivity, specular, ambient for the object material.
 
         Returns:
             None
@@ -60,6 +63,9 @@ class TriMesh:
         self.triangles_normal = torch.cross(self.triangles_edge1, self.triangles_edge2, dim=1)
         self.triangles_normal = self.triangles_normal / torch.norm(self.triangles_normal, dim=1, keepdim=True)
 
+        N = self.triangles_A.shape[0]
+        self.triangles_rsa = torch.tensor(object_rsa, dtype=torch.float32).repeat(N, 1)  # (N, 3)
+
     def get_bounds(self):
         """
         Get the axis-aligned bounding box bounds of the mesh.
@@ -86,5 +92,6 @@ class TriMesh:
         self.triangles_edge1 = self.triangles_edge1.to(device)
         self.triangles_edge2 = self.triangles_edge2.to(device)
         self.triangles_normal = self.triangles_normal.to(device)
+        self.triangles_rsa = self.triangles_rsa.to(device)
 
         return self

@@ -14,6 +14,7 @@ from signal_simulation import interpolate_signal, apply_snr, load_mesh
 
 from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
 from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
+from ray_tracer_signal_simulation import load_mesh_raytracing
 
 
 
@@ -53,7 +54,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
     # load the mesh and hardcode the material properties
-    mesh, normals, material_properties = load_mesh(file_name, device=device,)
+    if render_method == 'rasterization':
+        mesh, normals, material_properties = load_mesh(file_name, device=device,)
+    elif render_method == 'raytracing':
+        mesh = load_mesh_raytracing(file_name, device=device,)
+        normals, material_properties = None, None  # embedded into each triangle of the mesh object
+    else:
+        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
     # SAR raytracing / rasterization
     if verbose:
