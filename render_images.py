@@ -109,17 +109,19 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # Compute sar image
     if verbose:
         print('Computing SAR image...')
-    sar_image = convolutional_back_projection( signals, 
-                                               sample_z, 
-                                               forward_vectors, 
-                                               cam_azimuth, 
-                                               cam_distance, 
-                                               spatial_fs,
-                                               image_width = image_width,
-                                               image_height = image_height,
-                                               image_plane_width = image_plane_width,
-                                               image_plane_height = image_plane_height,
-                                              )
+    # sar_image = convolutional_back_projection( 
+    sar_image = projected_CBP(
+        signals, 
+        sample_z, 
+        forward_vectors, 
+        cam_azimuth, 
+        cam_distance, 
+        spatial_fs,
+        image_width = image_width,
+        image_height = image_height,
+        image_plane_width = image_plane_width,
+        image_plane_height = image_plane_height,
+    )
     if verbose:
         print('done.')
 
@@ -191,6 +193,138 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     # reshape and convert to real-valued images
     image = image.reshape(T,image_height,image_width) # (T,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
+
+
+def projected_CBP(
+    signal,
+    sample_z,
+    forward_vector,
+    cam_azimuth,
+    cam_distance,
+    spatial_fs,
+    image_width = 64,
+    image_height = 64,
+    image_plane_width = 1,
+    image_plane_height = 1,
+):
+    '''
+    does some projection then runs the 2D convolutional back projection algorithm
+    
+    inputs:
+        signal: (T,P,Z) - the signal to be back projected
+        sample_z: (Z,) - the range samples
+        forward_vector: (T,P,3) - the forward vector for each ray
+        cam_azimuth: (T,) - the azimuth angle of the camera
+        cam_distance: (T,) - the distance of the camera from the origin
+        spatial_fs: float - the spatial frequency sampling rate
+    outputs:
+        image: (T,H,W) - the computed image
+    '''
+    # gather shape constants
+    T,P,Z = signal.shape
+
+    # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
+    ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
+
+    # calculate projected r from sample_z
+    sample_r = sample_z.reshape(1,1,Z) - cam_distance.reshape(T,1,1) # (T,1,Z)
+    projected_r = sample_r / ground_vec_mag # (T,P,Z)
+
+    # calculate the forward vector on the x-y plane
+    line_vector = forward_vector[...,:2] / ground_vec_mag # (T,P,2)
+
+    # convert azimuth to image plane rotation
+    image_plane_rotation = cam_azimuth + 90
+
+    # convert to ground plane fs
+    projected_fs = spatial_fs * ground_vec_mag.reshape(T,P) # (T,P,1)
+
+    # run the 2D CBP
+    sar_image = CBP_2D(
+        signal, 
+        projected_r,
+        line_vector,
+        projected_fs,
+        image_plane_rotation_deg = image_plane_rotation,
+        image_width              = image_width,
+        image_height             = image_height,
+        image_plane_width        = image_plane_width,
+        image_plane_height       = image_plane_height,
+    ) # (T,H,W)
+    
+    return sar_image
+
+
+def CBP_2D( pf,
+            r,
+            line_vector,
+            interpolation_fs,
+            image_plane_rotation_deg = 0,
+            image_width = 64,
+            image_height = 64,
+            image_plane_width = 1,
+            image_plane_height = 1,
+    ):
+    '''
+    Convolutional back projection algorithm in 2D
+
+    inputs:
+        pf: (N,P,R) - the projection functions
+        r: (N,P,R) - the radial distance of each sample in the projection functions
+        line_vector: (N,P,2) - the vector of the origin crossing line that each projection function corresponds to
+        interpolation_fs: (N,P) - the spatial frequency sampling rate of the projection functions
+        image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+
+    outputs:
+        image: (N,H,W) - the computed image
+
+    Dimensions:
+        N: number of images
+        P: number of projection functions
+        R: number of radial samples per projection function
+        H: image height
+        W: image width
+        T: number of target image pixels (H*W)
+    '''
+    # Get shapes
+    N,P,R = pf.shape
+    H = image_height
+    W = image_width
+    T = H * W
+    device = pf.device
+
+    # filter with |r| in frequency domain (equation 2.30)
+    pf_freq = torch.fft.fftshift(torch.fft.fft(pf, dim=-1), dim=-1)  # (N,P,R)
+    filtered_pf_freq = pf_freq * torch.abs(r.reshape(N,P,R)) # (N,P,R)
+    filtered_pf = torch.fft.ifft(torch.fft.ifftshift(filtered_pf_freq, dim=-1), dim=-1)  # (N,P,R)
+
+    # create grid of target image cooordinates on the ground plane
+    x_coord,y_coord = torch.meshgrid(   torch.linspace(-image_plane_width/2, image_plane_width/2, image_width, device=device, dtype=r.dtype),
+                                        torch.linspace(image_plane_height/2 , -image_plane_height/2 , image_height , device=device, dtype=r.dtype),
+                                        indexing='xy')  # (H,W)
+    coord_grid = torch.stack((x_coord, y_coord), dim=-1).float() # (H,W,2)
+
+    # rotate the image plane according to the desired rotation angle
+    rotation_rad = image_plane_rotation_deg * (np.pi / 180.0)  # convert to radians
+    rotation_matrix = torch.stack([
+        torch.cos(rotation_rad), -torch.sin(rotation_rad), torch.sin(rotation_rad), torch.cos(rotation_rad)
+    ], dim=-1) # (N,4)
+    coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
+
+    # interpolate pixel coordinated projected onto the filtered signal
+    line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
+    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T,1)
+    interpolated_r_points = torch.sum(  filtered_pf.reshape(N,P,1,R) * \
+                                        torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
+                                        dim=-1
+                                    ) # (N,P,T)
+    
+    # integrate over theta (eqation 2.31)
+    image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
+
+    # reshape and convert to real-valued images
+    image = image.reshape(N,image_height,image_width) # (N,H,W)
+    return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
@@ -329,7 +463,7 @@ def render_random_image(
     mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
     rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
     pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-
+    
     # get azimuth, elevation, and distance from the pose
     target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
     # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)

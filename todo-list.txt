@@ -5,18 +5,24 @@ DONE - get rid of the ring effect by increasing the signal length in space
     DONE - in ray_tracer_signal_simulation.py
     DONE - in signal_simulation.py
 
-- adjust ground plane projection such that it falls in line with the projection function along the ground plane, not just projection.
+DONE - adjust ground plane projection such that it falls in line with the projection function along the ground plane, not just projection.
+    DONE - make the CBP function exclusively 2D
+    DONE - set up projection functions outside CBP
+    DONE - get the image rotation correct
 
-- integrate ray tracing module
+DONE - integrate ray tracing module
     DONE - include option for the ray tracing vs rasterization
-    - debug ray tracing OOM
+    DONE - debug ray tracing OOM
 
-- should i adjust the r-points interpolation in the CBP function?
+DONE - should i adjust the r-points interpolation in the CBP function?
+    DONE - yes, because the projection effectively adjusts the spacing between spatial samples
 
 DONE - refine energy equation
     DONE - hardcode rsa
     DONE - incorporate r, s, a components into the mesh
     DONE - load mesh before accumulate scatters
+
+- merge jhihyang's working ray tracer
 
 # after the paper is submitted to radar conf 2026
 - manual trajectory input

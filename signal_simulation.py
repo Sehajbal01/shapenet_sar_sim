@@ -248,61 +248,61 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         signal = torch.cat(signal, dim=1) # (N, Z)
 
-    ########################################### plot the first scatter and sig ###########################################
-    all_energies = scatter_e.reshape(N,R)
-    all_ranges   = scatter_z.reshape(N,R)
-    signals      = signal.reshape(N,Z)
-    if signals.dtype.is_complex:
-        signals = torch.abs(signals)
-    if all_energies.dtype.is_complex:
-        all_energies = torch.abs(all_energies)
+    # ########################################### plot the first scatter and sig ###########################################
+    # all_energies = scatter_e.reshape(N,R)
+    # all_ranges   = scatter_z.reshape(N,R)
+    # signals      = signal.reshape(N,Z)
+    # if signals.dtype.is_complex:
+    #     signals = torch.abs(signals)
+    # if all_energies.dtype.is_complex:
+    #     all_energies = torch.abs(all_energies)
 
-    # plot the signal and scatters for every pulse
-    sig_max = signals.max().item()
-    sig_min = signals.min().item()
-    energy_max = all_energies.max().item()
-    energy_min = all_energies.min().item()
-    p = N//2
-    plt.figure(figsize=(12, 6))
+    # # plot the signal and scatters for every pulse
+    # sig_max = signals.max().item()
+    # sig_min = signals.min().item()
+    # energy_max = all_energies.max().item()
+    # energy_min = all_energies.min().item()
+    # p = N//2
+    # plt.figure(figsize=(12, 6))
 
-    # plot the scatters
-    plt.subplot(1, 3, 1)
-    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    plt.title('Scatters')
-    plt.xlabel('Range')
-    plt.ylabel('Energy')
-    plt.xlim(range_near, range_far)
-    plt.ylim(energy_min, energy_max)
+    # # plot the scatters
+    # plt.subplot(1, 3, 1)
+    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    # plt.title('Scatters')
+    # plt.xlabel('Range')
+    # plt.ylabel('Energy')
+    # plt.xlim(range_near, range_far)
+    # plt.ylim(energy_min, energy_max)
 
-    # plot the signal
-    plt.subplot(1, 3, 2)
-    plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
-    plt.title('Signal')
-    plt.xlabel('Range')
-    plt.ylabel('Amplitude')
-    plt.xlim(range_near, range_far)
-    plt.ylim(sig_min, sig_max)
+    # # plot the signal
+    # plt.subplot(1, 3, 2)
+    # plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
+    # plt.title('Signal')
+    # plt.xlabel('Range')
+    # plt.ylabel('Amplitude')
+    # plt.xlim(range_near, range_far)
+    # plt.ylim(sig_min, sig_max)
 
-    # plot the interpolating sinc pulse function along with the scatters
-    window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
-    plt.subplot(1, 3, 3)
-    plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-    for sz in sample_z:
-        window_pulse = window(window_range - sz)
-        plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
-    plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
-    plt.title('Window Pulse')
-    plt.xlabel('Range')
-    plt.ylabel('Energy')
-    mid_z = (range_near + range_far) / 2
-    plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
-    plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
+    # # plot the interpolating sinc pulse function along with the scatters
+    # window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
+    # plt.subplot(1, 3, 3)
+    # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
+    # for sz in sample_z:
+    #     window_pulse = window(window_range - sz)
+    #     plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
+    # plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
+    # plt.title('Window Pulse')
+    # plt.xlabel('Range')
+    # plt.ylabel('Energy')
+    # mid_z = (range_near + range_far) / 2
+    # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
+    # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
 
-    path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
-    savefig(path)
-    print('Figure saved to %s' % path)
-    ########################################### plot the first scatter and sig ###########################################
+    # path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
+    # savefig(path)
+    # print('Figure saved to %s' % path)
+    # ########################################### plot the first scatter and sig ###########################################
 
     # return stuff
     signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
