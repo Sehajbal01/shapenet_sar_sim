@@ -530,7 +530,7 @@ def render_random_image(
 
 
 
-def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134):
+def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None):
     """
     A modular function to run experiments by varying multiple parameters together
     
@@ -555,6 +555,25 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         if experiment_name in f:
             os.remove(os.path.join('figures', f))
 
+    # create strings to title each experiment
+    if custom_title_strings is None:
+        experiment_strings = []
+        for i in range(n_experiments):
+            param_str_parts = []
+            for param_name, param_vals in param_dict.items():
+                try:
+                    # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+                    try:
+                        param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+                    except(ValueError):
+                        param_str_parts.append(f"{param_name}{param_vals[i]}")
+
+                except(TypeError):
+                    param_str_parts.append(f"{param_name}{param_vals[i]}")
+            experiment_strings.append('_'.join(param_str_parts))
+    else:
+        experiment_strings = custom_title_strings
+
     # generate the images for each parameter combination
     for i in range(n_experiments):
         # set the random seed
@@ -563,21 +582,11 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
 
         # update the kwargs with the current parameter values
         kwargs = default_kwargs.copy()
-        param_str_parts = []
         for param_name, param_vals in param_dict.items():
             kwargs[param_name] = param_vals[i]
-            try:
-                # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
-                try:
-                    param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
-                except(ValueError):
-                    param_str_parts.append(f"{param_name}{param_vals[i]}")
 
-            except(TypeError):
-                param_str_parts.append(f"{param_name}{param_vals[i]}")
-        
         # Add a numeric ID to ensure correct sorting
-        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{'_'.join(param_str_parts)}"
+        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{experiment_strings[i]}"
         
         # render the image with the current parameters
         render_random_image(**kwargs)
@@ -598,20 +607,19 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         cropped = img.crop((128, 0, img.width, img.height))
         draw = ImageDraw.Draw(cropped)
         
-        # Create label with all parameter values
-        label_parts = []
-        for param_name, param_vals in param_dict.items():
-            try:
-                label_parts.append("%s: %.2f"%(param_name, param_vals[i]))
-            except(TypeError):
-                label_parts.append(f"{param_name}: {param_vals[i]}")
-        label = ", ".join(label_parts)
-        
-        draw.text((10, 10), label, fill=(255, 255, 255))
+        draw.text((10, 10), experiment_strings[i], fill=(255, 255, 255))
         cropped_images.append(np.array(cropped))
 
     # Stitch horizontally
-    stitched = np.hstack(cropped_images)
+    # if divisible by 2, split into 2 rows
+    n_image = len(cropped_images)
+    if n_image%2 == 0 and n_image > 4:
+        stitched = np.vstack([
+            np.hstack(cropped_images[:n_image//2 ]),
+            np.hstack(cropped_images[ n_image//2:]),
+        ])
+    else:
+        stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
     path = f'figures/sar_{experiment_name}_stitched.png'
     stitched_img.save(path)
@@ -740,16 +748,119 @@ if __name__ == '__main__':
     # }
     # multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")
 
-    # variable ray grid size experiment
+    # # render method
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'render_method': ['rasterization', 'raytracing'],
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "render_method_experiment")
+
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+
+    # # azimuth spread
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     # 'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'azimuth_spread': np.linspace(0,360,8).tolist(),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "az_spread")
+
+    # # num pulses
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     # 'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'num_pulse': np.linspace(2,32,8).astype(np.int32).tolist(),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "num_pulse")
+
+    # bw/fs
     default_kwargs = {
         'debug_gif': True,
         'num_pulse': 32,
-        'azimuth_spread': 100,
-        'spatial_bw': 128,
-        'spatial_fs': 128,
-        'wavelength': 0.3,
+        'azimuth_spread': 90,
+        # 'spatial_bw': 90,
+        # 'spatial_fs': 90,
+        'wavelength': 0.5,
         'use_sig_magnitude': True,
-        'snr_db': 30,
+        'snr_db': 50,
 
         'image_width'        : 128,
         'image_height'       : 128,
@@ -763,9 +874,14 @@ if __name__ == '__main__':
         'range_far'          : 2.1,
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
+
+        'render_method': 'rasterization',
+        # 'render_method': 'raytracing',
     }
     # a sensible example
     vary_kwargs = {
-        'render_method': ['rasterization', 'raytracing'],
+        'spatial_bw': [8,16,32,64,128,256,512,1024],
+        'spatial_fs': [8,16,32,64,128,256,512,1024],
     }
-    multi_param_experiment(vary_kwargs, default_kwargs, "render_method_experiment")
+    custom_title_strings = [ 'fs: 8', 'fs: 16', 'fs: 32', 'fs: 64', 'fs: 128', 'fs: 256', 'fs: 512', 'fs: 1024']
+    multi_param_experiment(vary_kwargs, default_kwargs, "fsbw",custom_title_strings = custom_title_strings)

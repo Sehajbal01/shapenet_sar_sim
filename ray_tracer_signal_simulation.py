@@ -19,7 +19,7 @@ def accumulate_scatters(target_poses,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
 
-                        num_bounces=1,
+                        num_bounces=2,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -49,9 +49,6 @@ def accumulate_scatters(target_poses,
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #           (T,)          (T,)           (T,)
-    print('Camera azimuth:   ', cam_azimuth)
-    print('Camera elevation: ', cam_elevation)
-    print('Camera distance:  ', cam_distance)
 
     # Spread the pulses across a small range of azimuth angles
     azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)

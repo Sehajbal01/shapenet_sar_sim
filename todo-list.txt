@@ -22,7 +22,15 @@ DONE - refine energy equation
     DONE - incorporate r, s, a components into the mesh
     DONE - load mesh before accumulate scatters
 
-- merge jhihyang's working ray tracer
+DONE - merge jhihyang's working ray tracer
+
+- Run experiments for the paper
+    DONE - azimuth spread
+    DONE - num pulses
+    - noise
+    - Fs/BW
+    - leads into ray density
+
 
 # after the paper is submitted to radar conf 2026
 - manual trajectory input
