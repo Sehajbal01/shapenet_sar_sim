@@ -92,7 +92,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     signals, sample_z = interpolate_signal(all_ranges/2, all_energies, # divide ranges by 2 to convert to spatial range
             range_near = range_near, range_far = range_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-            batch_size = None,
+            batch_size = None, debug = debug_gif,
     )
     if verbose:
         print('done.')
@@ -133,8 +133,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         print('done.')
 
     # make a gif if desired
-    # if debug_gif:
-    #     signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix =debug_gif_suffix)
+    if debug_gif:
+        signal_gif(signals, all_ranges, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
 
     return sar_image
 
@@ -338,11 +338,8 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
 
 
     # convert to amplitude
-    try:
-        signals = torch.sqrt(signals.real**2 + signals.imag**2)
-        all_energies = torch.sqrt(all_energies.real**2 + all_energies.imag**2)
-    except(RuntimeError):
-        pass
+    signals      = torch.abs(signals     )
+    all_energies = torch.abs(all_energies)
 
     # plot the signal and scatters for every pulse
     sig_max = signals.max().item()
@@ -787,7 +784,7 @@ if __name__ == '__main__':
 
     # # azimuth spread
     # default_kwargs = {
-    #     'debug_gif': True,
+    #     'debug_gif': False,
     #     'num_pulse': 32,
     #     # 'azimuth_spread': 90,
     #     'spatial_bw': 90,
@@ -812,7 +809,6 @@ if __name__ == '__main__':
     #     # 'render_method': 'rasterization',
     #     'render_method': 'raytracing',
     # }
-    # # a sensible example
     # vary_kwargs = {
     #     'azimuth_spread': np.linspace(0,360,8).tolist(),
     # }
@@ -820,7 +816,7 @@ if __name__ == '__main__':
 
     # # num pulses
     # default_kwargs = {
-    #     'debug_gif': True,
+    #     'debug_gif': False,
     #     # 'num_pulse': 32,
     #     'azimuth_spread': 90,
     #     'spatial_bw': 90,
@@ -845,16 +841,184 @@ if __name__ == '__main__':
     #     # 'render_method': 'rasterization',
     #     'render_method': 'raytracing',
     # }
-    # # a sensible example
     # vary_kwargs = {
     #     'num_pulse': np.linspace(2,32,8).astype(np.int32).tolist(),
     # }
     # multi_param_experiment(vary_kwargs, default_kwargs, "num_pulse")
 
-    # bw/fs
+    # # bw/fs
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     # 'spatial_bw': 90,
+    #     # 'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'spatial_bw': [4,8,16,32,64,128,256,512],
+    #     'spatial_fs': [4,8,16,32,64,128,256,512],
+    # }
+    # custom_title_strings = [ 'Fs: 4', 'Fs: 8', 'Fs: 16', 'Fs: 32', 'Fs: 64', 'Fs: 128', 'Fs: 256', 'Fs: 512']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "fsbw",custom_title_strings = custom_title_strings)
+
+    # # Noise
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     # 'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # snr_db = np.linspace(0,22,8).tolist()
+    # vary_kwargs = {
+    #     'snr_db': snr_db
+    # }
+    # custom_title_strings = ['SNR dB: %.1f'%s for s in snr_db]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "snrdb", custom_title_strings=custom_title_strings)
+
+    # # render method
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'render_method': ['rasterization','raytracing']
+    # }
+    # custom_title_strings = ['Rasterization','Ray Tracing']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "rendermethod", custom_title_strings=custom_title_strings)
+
+    # # wavelength magnitude
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     # 'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'wavelength': [0.01, 0.02, 0.05, 0.1]
+    # }
+    # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthmagnitude", custom_title_strings=custom_title_strings)
+
+    # # wavelength complex
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     # 'wavelength': 0.5,
+    #     'use_sig_magnitude': False,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'wavelength': [0.01, 0.02, 0.05, 0.1]
+    # }
+    # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthcomplex", custom_title_strings=custom_title_strings)
+
+    # idk
     default_kwargs = {
+        # 'debug_gif': False,
         'debug_gif': True,
-        'num_pulse': 32,
+        # 'num_pulse': 32,
+        'num_pulse': 1,
         'azimuth_spread': 90,
         # 'spatial_bw': 90,
         # 'spatial_fs': 90,
@@ -875,13 +1039,12 @@ if __name__ == '__main__':
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
-        'render_method': 'rasterization',
-        # 'render_method': 'raytracing',
+        # 'render_method': 'rasterization',
+        'render_method': 'raytracing',
     }
-    # a sensible example
     vary_kwargs = {
-        'spatial_bw': [8,16,32,64,128,256,512,1024],
-        'spatial_fs': [8,16,32,64,128,256,512,1024],
+        'spatial_bw': [90,128,512],
+        'spatial_fs': [90,128,512],
     }
-    custom_title_strings = [ 'fs: 8', 'fs: 16', 'fs: 32', 'fs: 64', 'fs: 128', 'fs: 256', 'fs: 512', 'fs: 1024']
-    multi_param_experiment(vary_kwargs, default_kwargs, "fsbw",custom_title_strings = custom_title_strings)
+    custom_title_strings = ['','','']
+    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
