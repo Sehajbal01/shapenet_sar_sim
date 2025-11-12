@@ -281,7 +281,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
-        plt.ylabel('Amplitude')
+        plt.ylabel('Magnitude')
         plt.xlim(range_near, range_far)
         plt.ylim(sig_min, sig_max)
 
@@ -300,7 +300,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
         # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
-        path = get_next_path('figures/scatters_signal_fs%d_bw%d.pdf'%(int(spatial_fs), int(spatial_bw)))
+        path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
         savefig(path)
         print('Figure saved to %s' % path)
 
@@ -391,10 +391,10 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_rsa = (0.3,0.3,0.3),
+                obj_rsa = (0.7,0.15,0.15),
                 make_ground = True,
                 ground_below = True,
-                ground_rsa = (0.3,0.3,0.3),
+                ground_rsa = (0.15,0.7,0.15),
                 device = 'cuda',
         ):  
     '''
@@ -442,6 +442,9 @@ def load_mesh(  file_name,
     v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
     face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+
+    # ensure material properties adds up to 1
+    rsa = torch.nn.functional.normalize(rsa,dim=1) # (F,3)
 
     return mesh, face_normals, rsa
 
