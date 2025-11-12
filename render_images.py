@@ -9,45 +9,98 @@ from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
-from signal_simulation import accumulate_scatters, interpolate_signal
-# from signal_simulation import accumulate_scatters, interpolate_signal
+
+from signal_simulation import interpolate_signal, apply_snr, load_mesh
+
+from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
+from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
+from ray_tracer_signal_simulation import load_mesh_raytracing
 
 
 
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
-                        z_near = 0.8,
-                        z_far  = 1.8,
                         spatial_bw = 64,
                         spatial_fs = 64,
                         debug_gif = False,
                         debug_gif_suffix = None,
-                        image_size = 128,
-                        n_rays_per_side = 128,
+                        snr_db = None,
+                        wavelength = None,
+                        use_sig_magnitude = True,
+                        verbose = False,
+                        render_method = 'rasterization',
+                        
+                        # image size stuff
+                        image_width = 64,
+                        image_height = 64,
+                        image_plane_width = 1,
+                        image_plane_height = 1,
+                        grid_width = 1,
+                        grid_height = 1,
+                        n_ray_width = 1,
+                        n_ray_height = 1,
+                        range_near = 1,
+                        range_far = 1,
     ):
 
     # set device
     device = 'cuda'
 
-    # SAR raytracing 
-    print('Accumulating scatters...')
+    # select the function for accumulating scatters
+    if render_method == 'rasterization':
+        accumulate_scatters_fn = accumulate_scatters_rasterization
+    elif render_method == 'raytracing':
+        accumulate_scatters_fn = accumulate_scatters_raytracing
+    else:
+        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
+
+    # load the mesh and hardcode the material properties
+    if render_method == 'rasterization':
+        mesh, normals, material_properties = load_mesh(file_name, device=device,)
+    elif render_method == 'raytracing':
+        mesh = load_mesh_raytracing(file_name, device=device,)
+        normals, material_properties = None, None  # embedded into each triangle of the mesh object
+    else:
+        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
+
+    # SAR raytracing / rasterization
+    if verbose:
+        print('Accumulating scatters...')
+
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
-    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters(
-        poses.to(device), z_near, z_far, file_name,
-        azimuth_spread=az_spread,
-        n_pulses=num_pulses,
-        n_rays_per_side=n_rays_per_side,
-        debug_gif=debug_gif,
+    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
+        poses.to(device),
+        mesh, normals, material_properties,
+
+        azimuth_spread = az_spread,
+        n_pulses       = num_pulses,
+        wavelength     = wavelength,
+        debug_gif      = debug_gif,
+
+        # image size stuff
+        grid_width     = grid_width,
+        grid_height    = grid_height,
+        n_ray_width    = n_ray_width,
+        n_ray_height   = n_ray_height,
     )
-    print('done.')
+    if verbose:
+        print('done.')
 
     # Generate signal
     # (T,P,Z) (Z,)
-    print('Interpolating signal...')
-    signals, sample_z = interpolate_signal(all_ranges, all_energies, z_near, z_far,
+    if verbose:
+        print('Interpolating signal...')
+    signals, sample_z = interpolate_signal(all_ranges/2, all_energies, # divide ranges by 2 to convert to spatial range
+            range_near = range_near, range_far = range_far,
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-            batch_size = None,
+            batch_size = None, debug = debug_gif,
     )
-    print('done.')
+    if verbose:
+        print('done.')
+
+    # apply SNR
+    if snr_db is not None:
+        T,P,Z = signals.shape
+        signals = apply_snr(signals.reshape(T,P*Z), snr_db).reshape(T,P,Z)
 
     # compute forward vectors from azimuth and elevation angles
     forward_vectors = -torch.stack([
@@ -56,19 +109,42 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         torch.sin(3.14159/180*elevation),
     ], dim=-1)  # (T, P, 3)
 
+    # convert to signal magnitude if desired
+    if use_sig_magnitude:
+        signals = signals.abs()
+
     # Compute sar image
-    print('Computing SAR image...')
-    sar_image = convolutional_back_projection(signals, sample_z, forward_vectors, cam_azimuth, cam_distance, z_near-z_far, spatial_fs, image_size, image_size)
-    print('done.')
+    if verbose:
+        print('Computing SAR image...')
+    # sar_image = convolutional_back_projection( 
+    sar_image = projected_CBP(
+        signals, 
+        sample_z, 
+        forward_vectors, 
+        cam_azimuth, 
+        cam_distance, 
+        spatial_fs,
+        image_width = image_width,
+        image_height = image_height,
+        image_plane_width = image_plane_width,
+        image_plane_height = image_plane_height,
+    )
+    if verbose:
+        print('done.')
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix =debug_gif_suffix)
+        signal_gif(signals, all_ranges, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
 
     return sar_image
 
 
-def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, side_len, spatial_fs, H, W):
+def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, spatial_fs,
+                        image_width = 64,
+                        image_height = 64,
+                        image_plane_width = 1,
+                        image_plane_height = 1,
+    ):
     '''
     Convolutional back projection for SAR imaging.
 
@@ -78,17 +154,14 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
         forward_vector: (T,P,3) - the forward vector for each ray
         cam_azimuth: (T,) - the azimuth angle of the camera
         cam_distance: (T,) - the distance of the camera from the origin
-        side_len: float - the length of the side of the image plane
         spatial_fs: float - the spatial frequency sampling rate
-        H: int - the height of the target image
-        W: int - the width of the target image
 
     outputs:
         image: (T,H,W) - the computed image
     '''
     # Get shapes
     T,P,Z = signal.shape
-    I = H * W
+    I = image_height * image_width
     device = signal.device
 
     # filter with |r| in frequency domain (equation 2.30)
@@ -98,8 +171,8 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
 
     # create grid of target image cooordinates on the ground plane
-    h_coord,w_coord = torch.meshgrid(   torch.linspace(-side_len/2, side_len/2, H, device=device, dtype=sample_z.dtype),
-                                        torch.linspace(-side_len/2, side_len/2, W, device=device, dtype=sample_z.dtype),
+    h_coord,w_coord = torch.meshgrid(   torch.linspace(-image_plane_height/2, image_plane_height/2, image_height, device=device, dtype=sample_z.dtype),
+                                        torch.linspace(-image_plane_width/2 , image_plane_width/2 , image_width , device=device, dtype=sample_z.dtype),
                                         indexing='ij')  # (H,W)
     h_coord = h_coord.float()  # (H,W)
     w_coord = w_coord.float()  # (H,W)
@@ -107,7 +180,7 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     # rotate the image plane according to the azimuth angle of the target pose
     # we want the SAR image to look as if we took the current camera position and moved up in elevation
     # so the top pixel should be in the up vector direction projected onto the ground plane
-    coord_grid = torch.stack((-h_coord, -w_coord), dim=-1) # (H,W,2)
+    coord_grid = torch.stack((h_coord, w_coord), dim=-1) # (H,W,2)
     cam_azimuth_rad = cam_azimuth * (np.pi / 180.0)  # convert to radians
     rotation_matrix = torch.stack([
         torch.cos(cam_azimuth_rad), -torch.sin(cam_azimuth_rad), torch.sin(cam_azimuth_rad), torch.cos(cam_azimuth_rad)
@@ -125,18 +198,148 @@ def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth,
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (T,I)
 
     # reshape and convert to real-valued images
-    image = image.reshape(T,H,W)
+    image = image.reshape(T,image_height,image_width) # (T,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
+
+
+def projected_CBP(
+    signal,
+    sample_z,
+    forward_vector,
+    cam_azimuth,
+    cam_distance,
+    spatial_fs,
+    image_width = 64,
+    image_height = 64,
+    image_plane_width = 1,
+    image_plane_height = 1,
+):
+    '''
+    does some projection then runs the 2D convolutional back projection algorithm
+    
+    inputs:
+        signal: (T,P,Z) - the signal to be back projected
+        sample_z: (Z,) - the range samples
+        forward_vector: (T,P,3) - the forward vector for each ray
+        cam_azimuth: (T,) - the azimuth angle of the camera
+        cam_distance: (T,) - the distance of the camera from the origin
+        spatial_fs: float - the spatial frequency sampling rate
+    outputs:
+        image: (T,H,W) - the computed image
+    '''
+    # gather shape constants
+    T,P,Z = signal.shape
+
+    # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
+    ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
+
+    # calculate projected r from sample_z
+    sample_r = sample_z.reshape(1,1,Z) - cam_distance.reshape(T,1,1) # (T,1,Z)
+    projected_r = sample_r / ground_vec_mag # (T,P,Z)
+
+    # calculate the forward vector on the x-y plane
+    line_vector = forward_vector[...,:2] / ground_vec_mag # (T,P,2)
+
+    # convert azimuth to image plane rotation
+    image_plane_rotation = cam_azimuth + 90
+
+    # convert to ground plane fs
+    projected_fs = spatial_fs * ground_vec_mag.reshape(T,P) # (T,P,1)
+
+    # run the 2D CBP
+    sar_image = CBP_2D(
+        signal, 
+        projected_r,
+        line_vector,
+        projected_fs,
+        image_plane_rotation_deg = image_plane_rotation,
+        image_width              = image_width,
+        image_height             = image_height,
+        image_plane_width        = image_plane_width,
+        image_plane_height       = image_plane_height,
+    ) # (T,H,W)
+    
+    return sar_image
+
+
+def CBP_2D( pf,
+            r,
+            line_vector,
+            interpolation_fs,
+            image_plane_rotation_deg = 0,
+            image_width = 64,
+            image_height = 64,
+            image_plane_width = 1,
+            image_plane_height = 1,
+    ):
+    '''
+    Convolutional back projection algorithm in 2D
+
+    inputs:
+        pf: (N,P,R) - the projection functions
+        r: (N,P,R) - the radial distance of each sample in the projection functions
+        line_vector: (N,P,2) - the vector of the origin crossing line that each projection function corresponds to
+        interpolation_fs: (N,P) - the spatial frequency sampling rate of the projection functions
+        image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+
+    outputs:
+        image: (N,H,W) - the computed image
+
+    Dimensions:
+        N: number of images
+        P: number of projection functions
+        R: number of radial samples per projection function
+        H: image height
+        W: image width
+        T: number of target image pixels (H*W)
+    '''
+    # Get shapes
+    N,P,R = pf.shape
+    H = image_height
+    W = image_width
+    T = H * W
+    device = pf.device
+
+    # filter with |r| in frequency domain (equation 2.30)
+    pf_freq = torch.fft.fftshift(torch.fft.fft(pf, dim=-1), dim=-1)  # (N,P,R)
+    filtered_pf_freq = pf_freq * torch.abs(r.reshape(N,P,R)) # (N,P,R)
+    filtered_pf = torch.fft.ifft(torch.fft.ifftshift(filtered_pf_freq, dim=-1), dim=-1)  # (N,P,R)
+
+    # create grid of target image cooordinates on the ground plane
+    x_coord,y_coord = torch.meshgrid(   torch.linspace(-image_plane_width/2, image_plane_width/2, image_width, device=device, dtype=r.dtype),
+                                        torch.linspace(image_plane_height/2 , -image_plane_height/2 , image_height , device=device, dtype=r.dtype),
+                                        indexing='xy')  # (H,W)
+    coord_grid = torch.stack((x_coord, y_coord), dim=-1).float() # (H,W,2)
+
+    # rotate the image plane according to the desired rotation angle
+    rotation_rad = image_plane_rotation_deg * (np.pi / 180.0)  # convert to radians
+    rotation_matrix = torch.stack([
+        torch.cos(rotation_rad), -torch.sin(rotation_rad), torch.sin(rotation_rad), torch.cos(rotation_rad)
+    ], dim=-1) # (N,4)
+    coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
+
+    # interpolate pixel coordinated projected onto the filtered signal
+    line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
+    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T,1)
+    interpolated_r_points = torch.sum(  filtered_pf.reshape(N,P,1,R) * \
+                                        torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
+                                        dim=-1
+                                    ) # (N,P,T)
+    
+    # integrate over theta (eqation 2.31)
+    image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
+
+    # reshape and convert to real-valued images
+    image = image.reshape(N,image_height,image_width) # (N,H,W)
+    return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
 
 
     # convert to amplitude
-    try:
-        signals = torch.sqrt(signals.real**2 + signals.imag**2)
-    except(RuntimeError):
-        pass
+    signals      = torch.abs(signals     )
+    all_energies = torch.abs(all_energies)
 
     # plot the signal and scatters for every pulse
     sig_max = signals.max().item()
@@ -159,6 +362,7 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         plt.ylabel('Amplitude')
         plt.xlim(z_near, z_far)
         plt.ylim(sig_min, sig_max)
+
 
         path = get_next_path('figures/tmp/scatters_signal.png')
         savefig(path)
@@ -218,7 +422,33 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
     print('GIF saved to: ', path)
 
 
-def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fsbw = 64, suffix = None):
+def render_random_image( 
+        debug_gif = False, 
+        num_pulse = 120,
+        azimuth_spread = 180,
+        spatial_fs = 64, 
+        spatial_bw = 64,
+        snr_db = None,
+        wavelength = None,
+        use_sig_magnitude=True,
+        suffix = None,
+        render_method = 'rasterization',
+
+        image_plane_width = 1,
+        image_plane_height = 1,
+        image_width = 64,
+        image_height = 64, 
+        grid_width = 1,
+        grid_height = 1,
+        n_ray_width = 1,
+        n_ray_height = 1, 
+        range_near = 1,
+        range_far = 1,
+    ):
+    """
+    Renders a random image from the ShapeNet dataset using SAR simulation.
+    """
+
     all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -237,7 +467,7 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
     mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
     rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
     pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-
+    
     # get azimuth, elevation, and distance from the pose
     target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
     # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
@@ -248,15 +478,28 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
                             target_poses, # poses
                             azimuth_spread, # azimuth spread
 
-                            z_near = 0.8,
-                            z_far  = 1.8,
-                            spatial_bw = fsbw,
-                            spatial_fs = fsbw,
-                            image_size = 64,
-                            n_rays_per_side = 128,
+                            spatial_bw = spatial_bw,
+                            spatial_fs = spatial_fs,
+                            snr_db = snr_db,
+                            wavelength=wavelength,
+                            use_sig_magnitude=use_sig_magnitude,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
+
+                            render_method=render_method,
+
+                            # image size stuff
+                            image_width = image_width,
+                            image_height = image_height,
+                            image_plane_width = image_plane_width,
+                            image_plane_height = image_plane_height,
+                            grid_width = grid_width,
+                            grid_height = grid_height,
+                            n_ray_width = n_ray_width,
+                            n_ray_height = n_ray_height,
+                            range_near = range_near,
+                            range_far = range_far,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -282,133 +525,526 @@ def render_random_image(debug_gif=False, num_pulse=120, azimuth_spread = 180, fs
     print('Saved SAR and RGB image to: ', path)
 
 
-def az_spread_experiment():
 
-    seed = 8134
 
-    # remove all files in figures with *spread*
+def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None):
+    """
+    A modular function to run experiments by varying multiple parameters together
+    
+    Args:
+        param_dict (dict): Dictionary where each key is a parameter name and value is a list/array of values.
+                          All lists/arrays must have the same length.
+        default_kwargs (dict): Default arguments for render_random_image
+        experiment_name (str): Name of the experiment for saving files
+        seed (int): Random seed for reproducibility
+    """
+    # Verify all parameter arrays have the same length
+    lengths = [len(vals) for vals in param_dict.values()]
+    if not all(l == lengths[0] for l in lengths):
+        raise ValueError("All parameter arrays must have the same length")
+    n_experiments = lengths[0]
+    
+    # Create parameter names string for labeling
+    param_names = "_".join(param_dict.keys())
+
+    # remove all files in figures with the experiment name
     for f in os.listdir('figures'):
-        if 'spread' in f:
+        if experiment_name in f:
             os.remove(os.path.join('figures', f))
 
-    # generate the images for each azspread
-    for azimuth_spread in torch.arange(0, 361, 30).numpy():
+    # create strings to title each experiment
+    if custom_title_strings is None:
+        experiment_strings = []
+        for i in range(n_experiments):
+            param_str_parts = []
+            for param_name, param_vals in param_dict.items():
+                try:
+                    # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
+                    try:
+                        param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+                    except(ValueError):
+                        param_str_parts.append(f"{param_name}{param_vals[i]}")
 
+                except(TypeError):
+                    param_str_parts.append(f"{param_name}{param_vals[i]}")
+            experiment_strings.append('_'.join(param_str_parts))
+    else:
+        experiment_strings = custom_title_strings
+
+    # generate the images for each parameter combination
+    for i in range(n_experiments):
         # set the random seed
         np.random.seed(seed)
         torch.manual_seed(seed)
 
-        render_random_image(debug_gif=False, num_pulse=50, azimuth_spread=azimuth_spread, suffix='spread%d'%azimuth_spread)
+        # update the kwargs with the current parameter values
+        kwargs = default_kwargs.copy()
+        for param_name, param_vals in param_dict.items():
+            kwargs[param_name] = param_vals[i]
 
-    # find all files in figures that have 'spread' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'spread' in f]
-    figure_num = [int(f.split('spread')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by spread number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
+        # Add a numeric ID to ensure correct sorting
+        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{experiment_strings[i]}"
+        
+        # render the image with the current parameters
+        render_random_image(**kwargs)
 
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for fname in sorted_files:
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        cropped_images.append(np.array(cropped))
-
-    # Stitch horizontally
-    stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_spread_stitched.png')
-
-
-def pulse_experiment():
-
-    seed = 8134
-
-    # remove all files in figures with *spread*
-    for f in os.listdir('figures'):
-        if 'pulses' in f:
-            os.remove(os.path.join('figures', f))
-
-    n_pulse_vals = torch.arange(2, 101, 5).numpy()
-
-    # generate the images for each azspread
-    for n_pulse in n_pulse_vals:
-
-        # set the random seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-        render_random_image(debug_gif=False, num_pulse=n_pulse, azimuth_spread=100, suffix='pulses%d'%n_pulse)
-
-    # find all files in figures that have 'pulses' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'pulses' in f]
-    figure_num = [int(f.split('pulses')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by pulses number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
+    # find all files in figures that have the experiment name
+    figure_files = [f for f in os.listdir('figures') if f'sar_rgb_image_{experiment_name}' in f]
+    
+    # Extract the figure ID (the 3-digit number after experiment_name_)
+    figure_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in figure_files]
+    
+    # Sort files by the figure ID
+    sorted_files = [f for _, f in sorted(zip(figure_ids, figure_files))]
 
     # Load images, crop left 128 columns, and collect
     cropped_images = []
-    for i,fname in enumerate(sorted_files):
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        draw = ImageDraw.Draw(cropped)
-        draw.text((10, 10), 'Pulses: %d'%n_pulse_vals[i], fill=(255, 255, 255))
-        cropped_images.append(np.array(cropped))
-
-    # Stitch horizontally
-    stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_pulses_stitched.png')
-
-
-def bw_experiment():
-
-    seed = 8134
-
-    # remove all files in figures with *spread*
-    for f in os.listdir('figures'):
-        if 'bw' in f:
-            os.remove(os.path.join('figures', f))
-
-    bw_vals = 2**np.arange(13)
-
-    # generate the images for each azspread
-    for bw in bw_vals:
-
-        # set the random seed
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-        render_random_image(debug_gif=False, num_pulse=32, azimuth_spread=100, fsbw=bw, suffix='bw%d'%bw)
-
-    # find all files in figures that have 'bw' in the name and remove the left 128 columns, and stich them into 1 wide image
-    figure_files = [f for f in os.listdir('figures') if 'bw' in f]
-    figure_num = [int(f.split('bw')[-1].split('.')[0]) for f in figure_files]
-    # Sort files by bw number
-    sorted_files = [f for _, f in sorted(zip(figure_num, figure_files))]
-
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for i,fname in enumerate(sorted_files):
+    for i, fname in enumerate(sorted_files):
         img = PIL.Image.open(os.path.join('figures', fname))
         cropped = img.crop((128, 0, img.width, img.height))
         draw = ImageDraw.Draw(cropped)
-        draw.text((10, 10), 'BW: %d'%bw_vals[i], fill=(255, 255, 255))
+        
+        draw.text((10, 10), experiment_strings[i], fill=(255, 255, 255))
         cropped_images.append(np.array(cropped))
 
     # Stitch horizontally
-    stitched = np.hstack(cropped_images)
+    # if divisible by 2, split into 2 rows
+    n_image = len(cropped_images)
+    if n_image%2 == 0 and n_image > 4:
+        stitched = np.vstack([
+            np.hstack(cropped_images[:n_image//2 ]),
+            np.hstack(cropped_images[ n_image//2:]),
+        ])
+    else:
+        stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
-    stitched_img.save('figures/sar_bw_stitched.png')
-
+    path = f'figures/sar_{experiment_name}_stitched.png'
+    stitched_img.save(path)
+    print('Saved stitched image to: %s' % path)
 
 
 if __name__ == '__main__':
-    # # select random seed
-    # seed = np.random.randint(0, 10000)
-    # seed = 8134
-    # print('Random seed: ', seed)
+    
+    # # Bandwidth experiment
+    # bw_vals = torch.tensor(np.linspace(128, 256, 10,endpoint=True))
+    # # bw_vals = 2**torch.arange(3, 11)
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
 
-    # # for i in range(10):
-    bw_experiment()
+    # }
+    # multi_param_experiment({'bw': bw_vals, 'fs': bw_vals}, default_kwargs, "bw_experiment")
 
+    # # ray density experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 170.7,
+    #     'spatial_fs': 170.7,
+    # }
+    # vary_kwargs = {
+    #     'n_rays_per_side': np.linspace(133,140, 8,endpoint=True).astype(np.int32).tolist()
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "ray_density_experiment")
 
+    # # Azimuth spread experiment
+    # n_vals = 5  # number of parameter combinations
+    # spread_vals = torch.linspace(60, 180, n_vals)
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'fs': 64,
+    #     'bw': 64,
+    # }
+    # param_dict = {
+    #     'azimuth_spread': spread_vals
+    # }
+    # multi_param_experiment(param_dict, default_kwargs, "spread_experiment")
+
+    # # SNR experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 200,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30
+    # }
+    # vary_kwargs = {
+    #     'grid_size': np.linspace(0,30, 9,endpoint=True).tolist()+[None]
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "snr_experiment")
+
+    # # wavelength experiment WITH magnitude of signal used for CBP
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 500,
+    #     'snr_db': None,
+    #     'use_sig_magnitude': True,
+    # }
+    # vary_kwargs = {
+    #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    # }
+    # print('vary_kwargs:', vary_kwargs)
+    # multi_param_experiment(vary_kwargs, default_kwargs, "mag_wavelength_experiment")
+
+    # # wavelength experiment WITHOUT magnitude of signal used for CBP
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'n_rays_per_side': 500,
+    #     'snr_db': None,
+    #     'use_sig_magnitude': False,
+    # }
+    # vary_kwargs = {
+    #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    # }
+    # print('vary_kwargs:', vary_kwargs)
+    #
+
+    # # variable ray grid size experiment
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'grid_width'         : np.linspace(0.5, 1.2, 6, endpoint=True),
+    #     'grid_height'        : np.linspace(0.5, 1.2, 6, endpoint=True),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "var_image_size_stuff")
+
+    # # render method
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 128,
+    #     'spatial_fs': 128,
+    #     'wavelength': 0.3,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 30,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+    # }
+    # # a sensible example
+    # vary_kwargs = {
+    #     'render_method': ['rasterization', 'raytracing'],
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "render_method_experiment")
+
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+    ####################################### PAPER RESULTS #######################################
+
+    # # azimuth spread
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     # 'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'azimuth_spread': np.linspace(0,360,8).tolist(),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "az_spread")
+
+    # # num pulses
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     # 'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'num_pulse': np.linspace(2,32,8).astype(np.int32).tolist(),
+    # }
+    # multi_param_experiment(vary_kwargs, default_kwargs, "num_pulse")
+
+    # # bw/fs
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     # 'spatial_bw': 90,
+    #     # 'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'spatial_bw': [4,8,16,32,64,128,256,512],
+    #     'spatial_fs': [4,8,16,32,64,128,256,512],
+    # }
+    # custom_title_strings = [ 'Fs: 4', 'Fs: 8', 'Fs: 16', 'Fs: 32', 'Fs: 64', 'Fs: 128', 'Fs: 256', 'Fs: 512']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "fsbw",custom_title_strings = custom_title_strings)
+
+    # # Noise
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     # 'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # snr_db = np.linspace(0,22,8).tolist()
+    # vary_kwargs = {
+    #     'snr_db': snr_db
+    # }
+    # custom_title_strings = ['SNR dB: %.1f'%s for s in snr_db]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "snrdb", custom_title_strings=custom_title_strings)
+
+    # # render method
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'render_method': ['rasterization','raytracing']
+    # }
+    # custom_title_strings = ['Rasterization','Ray Tracing']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "rendermethod", custom_title_strings=custom_title_strings)
+
+    # # wavelength magnitude
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     # 'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'wavelength': [0.01, 0.02, 0.05, 0.1]
+    # }
+    # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthmagnitude", custom_title_strings=custom_title_strings)
+
+    # # wavelength complex
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     # 'wavelength': 0.5,
+    #     'use_sig_magnitude': False,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'wavelength': [0.01, 0.02, 0.05, 0.1]
+    # }
+    # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthcomplex", custom_title_strings=custom_title_strings)
+
+    # idk
+    default_kwargs = {
+        # 'debug_gif': False,
+        'debug_gif': True,
+        # 'num_pulse': 32,
+        'num_pulse': 1,
+        'azimuth_spread': 90,
+        # 'spatial_bw': 90,
+        # 'spatial_fs': 90,
+        'wavelength': 0.5,
+        'use_sig_magnitude': True,
+        'snr_db': 50,
+
+        'image_width'        : 128,
+        'image_height'       : 128,
+        'image_plane_width'  : 1,
+        'image_plane_height' : 1,
+        'grid_width'         : 2,
+        'grid_height'        : 2,
+        'n_ray_width'        : 256,
+        'n_ray_height'       : 256,
+        'range_near'         : 0.5,
+        'range_far'          : 2.1,
+        'grid_width'         : 1.2,
+        'grid_height'        : 1.2,
+
+        # 'render_method': 'rasterization',
+        'render_method': 'raytracing',
+    }
+    vary_kwargs = {
+        'spatial_bw': [90,128,512],
+        'spatial_fs': [90,128,512],
+    }
+    custom_title_strings = ['','','']
+    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

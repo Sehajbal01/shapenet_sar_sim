@@ -1,9 +1,9 @@
 #! /bin/bash
 
 rm figures/tmp/*.png
+rm figures/tmp_ray_tracer/*.png
 
-# CUDA_VISIBLE_DEVICES=3 python mesh.py
-CUDA_VISIBLE_DEVICES=2 python render_images.py
-# CUDA_VISIBLE_DEVICES=3 python utils.py
+CUDA_VISIBLE_DEVICES=1 python3.8 render_images.py
 
-rm figures/tmp/*.png
+# rm figures/tmp/*.png
+# rm figures/tmp_ray_tracer/*.png

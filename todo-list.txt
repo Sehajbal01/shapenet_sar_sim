@@ -1,0 +1,15 @@
+- manual trajectory input
+    - currently accumulate_scatters comes up with all the locations of the synthetic aperture via the "azimuth_spread" parameter
+    - we want to calculate the locations OUTSIDE the accumulate scatters function
+    - we want straight-line trajectory, curves, etc
+    - we want the ability to add noise to the trajectory, like turbulance irl
+
+- add option for LFM pulse in accumulate_scatters
+    - this is needed for strip-map mode sar
+
+- use jhihyangs mesh loader instead of the load_mesh function in signal simulation . py
+    - extract normals and material_properties from the mesh
+        normals = mesh.trimesh.triangles_normal  # (num_triangles, 3)
+        material_properties = mesh.trimesh.triangles_rsa  # (num_triangles, 3)
+
+- allow for different material properties in the ground in load_mesh
