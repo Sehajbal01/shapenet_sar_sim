@@ -116,7 +116,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # Compute sar image
     if verbose:
         print('Computing SAR image...')
-    # sar_image = convolutional_back_projection( 
     sar_image = projected_CBP(
         signals, 
         sample_z, 
@@ -138,68 +137,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     return sar_image
 
-
-def convolutional_back_projection(signal, sample_z, forward_vector, cam_azimuth, cam_distance, spatial_fs,
-                        image_width = 64,
-                        image_height = 64,
-                        image_plane_width = 1,
-                        image_plane_height = 1,
-    ):
-    '''
-    Convolutional back projection for SAR imaging.
-
-    inputs:
-        signal: (T,P,Z) - the signal to be back projected
-        sample_z: (Z,) - the range samples
-        forward_vector: (T,P,3) - the forward vector for each ray
-        cam_azimuth: (T,) - the azimuth angle of the camera
-        cam_distance: (T,) - the distance of the camera from the origin
-        spatial_fs: float - the spatial frequency sampling rate
-
-    outputs:
-        image: (T,H,W) - the computed image
-    '''
-    # Get shapes
-    T,P,Z = signal.shape
-    I = image_height * image_width
-    device = signal.device
-
-    # filter with |r| in frequency domain (equation 2.30)
-    sample_r = sample_z - cam_distance.reshape(T,1)  # (T,Z)
-    signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (T,P,Z)
-    filtered_signal_freq = signal_freq * torch.abs(sample_r.reshape(T,1,Z)) # (T,P,Z)
-    filtered_signal = torch.fft.ifft(torch.fft.ifftshift(filtered_signal_freq, dim=-1), dim=-1)  # (T,P,Z)
-
-    # create grid of target image cooordinates on the ground plane
-    h_coord,w_coord = torch.meshgrid(   torch.linspace(-image_plane_height/2, image_plane_height/2, image_height, device=device, dtype=sample_z.dtype),
-                                        torch.linspace(-image_plane_width/2 , image_plane_width/2 , image_width , device=device, dtype=sample_z.dtype),
-                                        indexing='ij')  # (H,W)
-    h_coord = h_coord.float()  # (H,W)
-    w_coord = w_coord.float()  # (H,W)
-
-    # rotate the image plane according to the azimuth angle of the target pose
-    # we want the SAR image to look as if we took the current camera position and moved up in elevation
-    # so the top pixel should be in the up vector direction projected onto the ground plane
-    coord_grid = torch.stack((h_coord, w_coord), dim=-1) # (H,W,2)
-    cam_azimuth_rad = cam_azimuth * (np.pi / 180.0)  # convert to radians
-    rotation_matrix = torch.stack([
-        torch.cos(cam_azimuth_rad), -torch.sin(cam_azimuth_rad), torch.sin(cam_azimuth_rad), torch.cos(cam_azimuth_rad)
-    ], dim=-1) # (T,4)
-    coord_grid = rotation_matrix.reshape(T,1,2,2) @ coord_grid.reshape(1,I,2,1)  # (T,I,2,1)
-
-    # interpolate pixel coordinated projected onto the filtered signal
-    r_coord = torch.sum(forward_vector[...,:2].reshape(T,P,1,2) * coord_grid.reshape(T,1,I,2), dim=-1)  # (T,P,I,2)
-    interpolated_r_points = torch.sum( filtered_signal.reshape(T,P,1,Z) * \
-                                    torch.sinc( spatial_fs * (r_coord.reshape(T,P,I,1) - sample_r.reshape(1,1,1,Z)) ), # (T,P,I,Z)
-                                    dim=-1
-                                    ) # (T,P,I)
-    
-    # integrate over theta (eqation 2.31)
-    image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (T,I)
-
-    # reshape and convert to real-valued images
-    image = image.reshape(T,image_height,image_width) # (T,H,W)
-    return torch.sqrt(image.real**2 + image.imag**2)  # (T,H,W)
 
 
 def projected_CBP(
@@ -332,6 +269,65 @@ def CBP_2D( pf,
     # reshape and convert to real-valued images
     image = image.reshape(N,image_height,image_width) # (N,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
+
+
+def strip_map_imaging(
+    signal,
+    wavelength,
+    attenuation_coeff,
+    trajectory,
+    sample_dist,
+    interpolation_fs,
+    image_plane_rotation_deg = 0,
+    image_width = 64,
+    image_height = 64,
+    image_plane_width = 1,
+    image_plane_height = 1,
+):
+    '''
+    Strip map imaging algorithm, we only render the ground 
+    plane and assume the image plane is about the origin.
+
+    inputs:
+        signal: (N,P,D) - the signal to be back projected
+        wavelength: float - the wavelength
+        attenuation_coeff: float - the attenuation coefficient of the medium
+        trajectory: (P,3) - the trajectory of the sensor
+        sample_dist: (D,) - the distance samples
+        interpolation_fs: float - the spatial frequency sampling rate
+        image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+
+    outputs:
+        image: (N,H,W) - the computed image
+
+    Dimensions:
+        N: number of images
+        P: number of pulses
+        D: number of distance samples per pulse
+        H: image height
+        W: image width
+        T: number of target image pixels (H*W)
+    '''
+    # reflectivity at point x is given by 
+    # avg_over_pulses{ signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) * exp(-j*4*pi/wavelength*distance_to_x) }
+    # we need to interpolate the signal at distance_to_x for each pulse's signal
+
+    # create grid of target image cooordinates on the ground plane
+    x_coord,y_coord = torch.meshgrid(   torch.linspace(-image_plane_width/2, image_plane_width/2, image_width, device=device, dtype=r.dtype),
+                                        torch.linspace(image_plane_height/2 , -image_plane_height/2 , image_height , device=device, dtype=r.dtype),
+                                        indexing='xy')  # (H,W)
+    coord_grid = torch.stack((x_coord, y_coord), dim=-1).float() # (H,W,2)
+
+    # rotate the image plane according to the desired rotation angle
+    rotation_rad = image_plane_rotation_deg * (np.pi / 180.0)  # convert to radians
+    rotation_matrix = torch.stack([
+        torch.cos(rotation_rad), -torch.sin(rotation_rad), torch.sin(rotation_rad), torch.cos(rotation_rad)
+    ], dim=-1) # (N,4)
+    coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
+
+
+
+
 
 
 def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
