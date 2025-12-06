@@ -28,6 +28,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         use_sig_magnitude = True,
                         verbose = False,
                         render_method = 'rasterization',
+                        imaging_algorithm = 'projected_CBP',
                         
                         # image size stuff
                         image_width = 64,
@@ -116,18 +117,35 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # Compute sar image
     if verbose:
         print('Computing SAR image...')
-    sar_image = projected_CBP(
-        signals, 
-        sample_z, 
-        forward_vectors, 
-        cam_azimuth, 
-        cam_distance, 
-        spatial_fs,
-        image_width = image_width,
-        image_height = image_height,
-        image_plane_width = image_plane_width,
-        image_plane_height = image_plane_height,
-    )
+    if imaging_algorithm == 'projected_CBP':
+        sar_image = projected_CBP(
+            signals, 
+            sample_z, 
+            forward_vectors, 
+            cam_azimuth, 
+            cam_distance, 
+            spatial_fs,
+            image_width = image_width,
+            image_height = image_height,
+            image_plane_width = image_plane_width,
+            image_plane_height = image_plane_height,
+        )
+    elif imaging_algorithm == 'strip_map_imaging':
+        trajectory = cam_distance.reshape(-1,1,1) * (-forward_vectors)  # (T,P,3)
+        sar_image = strip_map_imaging(
+            signals,
+            wavelength,
+            trajectory,
+            sample_z,
+            spatial_fs,
+            image_plane_rotation_deg = cam_azimuth+90,
+            image_width = image_width,
+            image_height = image_height,
+            image_plane_width = image_plane_width,
+            image_plane_height = image_plane_height,
+        )
+    else:
+        raise ValueError('Invalid imaging algorithm \'%s\', expected \'projected_CBP\' or \'strip_map_imaging\''%imaging_algorithm)
     if verbose:
         print('done.')
 
@@ -464,6 +482,7 @@ def render_random_image(
         use_sig_magnitude=True,
         suffix = None,
         render_method = 'rasterization',
+        imaging_algorithm = 'projected_CBP',
 
         image_plane_width = 1,
         image_plane_height = 1,
@@ -519,6 +538,7 @@ def render_random_image(
                             debug_gif_suffix = suffix,
 
                             render_method=render_method,
+                            imaging_algorithm=imaging_algorithm,
 
                             # image size stuff
                             image_width = image_width,
@@ -1048,11 +1068,11 @@ if __name__ == '__main__':
     default_kwargs = {
         # 'debug_gif': False,
         'debug_gif': True,
-        # 'num_pulse': 32,
+        'num_pulse': 32,
         'num_pulse': 1,
         'azimuth_spread': 90,
-        # 'spatial_bw': 90,
-        # 'spatial_fs': 90,
+        'spatial_bw': 90,
+        'spatial_fs': 90,
         'wavelength': 0.5,
         'use_sig_magnitude': True,
         'snr_db': 50,
@@ -1070,12 +1090,12 @@ if __name__ == '__main__':
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
-        # 'render_method': 'rasterization',
-        'render_method': 'raytracing',
+        'render_method': 'rasterization',
+        # 'render_method': 'raytracing',
+        'imaging_algorithm': 'strip_map_imaging',
     }
     vary_kwargs = {
-        'spatial_bw': [90,128,512],
-        'spatial_fs': [90,128,512],
+        'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
     }
     custom_title_strings = ['','','']
     multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
