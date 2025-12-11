@@ -294,7 +294,7 @@ def strip_map_imaging(  signal,
                         trajectory,
                         sample_dist,
                         interpolation_fs,
-                        attenuation_coeff = None,
+                        attenuation_coeff = 0,
                         image_plane_rotation_deg = 0,
                         image_width = 64,
                         image_height = 64,
@@ -311,8 +311,8 @@ def strip_map_imaging(  signal,
 
     inputs:
         signal: (N,P,D) - the signal to be back projected
-        wavelength: (N,) - the wavelength
-        attenuation_coeff: (N,) - the attenuation coefficient of the medium
+        wavelength: - the wavelength
+        attenuation_coeff: - the attenuation coefficient of the medium
         trajectory: (N,P,3) - the trajectory of the sensor
         sample_dist: (D,) - the distance samples
         interpolation_fs: float - the spatial frequency sampling rate
@@ -351,23 +351,22 @@ def strip_map_imaging(  signal,
     coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
 
     # compute distance from each pulse to each pixel
-    coord_grid = torch.cat(coord_grid.reshape(N,T,2), torch.zeros((N,T,1), device=device, dtype=coord_grid.dtype), dim=-1)  # (N,T,3)
+    coord_grid = torch.cat([coord_grid.reshape(N,T,2), torch.zeros((N,T,1), device=device, dtype=coord_grid.dtype)], dim=-1)  # (N,T,3)
     distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
+    print('trajectory: ', trajectory)
 
     # interpolate signal at distance_to_pixel
     signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs.reshape(N,P,1,1) * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(1,1,1,D)) )), # (N,P,T,D)
+                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(1,1,1,D)) )), # (N,P,T,D)
                                     dim=-1
                                 ) # (N,P,T)
     
     # compute estimate of reflectivity
-    if attenuation_coeff is None:
-        attenuation_coeff = torch.zeros((N,), device=device, dtype=signal.dtype)  # (N,)
     reflectivity_estimate = torch.mean( signal_at_distance_to_pixel * \
-                                        distance_to_pixel**2 * \
+                                        # distance_to_pixel**2 * \
                                         torch.exp(
-                                            2*attenuation_coeff.reshape(N,1,1) *distance_to_pixel - \
-                                            1j*4*np.pi*distance_to_pixel/wavelength.reshape(N,1,1)
+                                            2*attenuation_coeff *distance_to_pixel - \
+                                            1j*4*3.14159265358979323846264338427950288*distance_to_pixel/wavelength
                                         )
                                     , dim=1)  # (N,T)
 
@@ -1097,5 +1096,5 @@ if __name__ == '__main__':
     vary_kwargs = {
         'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
     }
-    custom_title_strings = ['','','']
-    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
+    # custom_title_strings = ['','','']
+    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots",)# custom_title_strings=custom_title_strings)
