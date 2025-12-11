@@ -27,6 +27,7 @@ def accumulate_scatters(target_poses,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
+                        planar_wave = True,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse

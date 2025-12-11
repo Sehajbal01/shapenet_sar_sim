@@ -29,6 +29,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         verbose = False,
                         render_method = 'rasterization',
                         imaging_algorithm = 'projected_CBP',
+
+                        planar_wave = True,
                         
                         # image size stuff
                         image_width = 64,
@@ -71,6 +73,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
         poses.to(device),
         mesh, normals, material_properties,
+
+        planar_wave = planar_wave,
 
         azimuth_spread = az_spread,
         n_pulses       = num_pulses,
@@ -138,6 +142,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             trajectory,
             sample_z,
             spatial_fs,
+            planar_wave = planar_wave,
             image_plane_rotation_deg = cam_azimuth+90,
             image_width = image_width,
             image_height = image_height,
@@ -294,6 +299,7 @@ def strip_map_imaging(  signal,
                         trajectory,
                         sample_dist,
                         interpolation_fs,
+                        planar_wave = True,
                         attenuation_coeff = 0,
                         image_plane_rotation_deg = 0,
                         image_width = 64,
@@ -352,7 +358,13 @@ def strip_map_imaging(  signal,
 
     # compute distance from each pulse to each pixel
     coord_grid = torch.cat([coord_grid.reshape(N,T,2), torch.zeros((N,T,1), device=device, dtype=coord_grid.dtype)], dim=-1)  # (N,T,3)
-    distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
+    if planar_wave:
+        mag_trajectory = torch.norm(trajectory, dim=-1, keepdim=True)  # (N,P,1)
+        forward_vector = -trajectory / mag_trajectory  # (N,P,3)
+        distance_to_pixel = torch.sum( trajectory.reshape(N,P,1,3) * forward_vector.reshape(N,P,1,3), dim=-1 )  - mag_trajectory # (N,P,T)
+        print('distance_to_pixel.shape: ', distance_to_pixel.shape)
+    else:
+        distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
     print('trajectory: ', trajectory)
 
     # interpolate signal at distance_to_pixel
@@ -482,6 +494,7 @@ def render_random_image(
         suffix = None,
         render_method = 'rasterization',
         imaging_algorithm = 'projected_CBP',
+        planar_wave = True,
 
         image_plane_width = 1,
         image_plane_height = 1,
@@ -532,6 +545,8 @@ def render_random_image(
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
+
+                            planar_wave=planar_wave,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -1088,6 +1103,8 @@ if __name__ == '__main__':
         'range_far'          : 2.1,
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
+
+        'planar_wave': True,
 
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
