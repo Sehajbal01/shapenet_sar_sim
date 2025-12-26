@@ -25,12 +25,19 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         debug_gif_suffix = None,
                         snr_db = None,
                         wavelength = None,
+                        pulse_type = "cw",
+                        lfm_bandwidth = None,
+                        lfm_pulse_duration = None,
                         use_sig_magnitude = True,
                         verbose = False,
                         render_method = 'rasterization',
                         imaging_algorithm = 'projected_CBP',
 
                         planar_wave = True,
+
+                        pulse_azimuths = None,
+                        pulse_elevations = None,
+                        pulse_distances = None,
                         
                         # image size stuff
                         image_width = 64,
@@ -78,7 +85,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
         azimuth_spread = az_spread,
         n_pulses       = num_pulses,
+        pulse_azimuths = pulse_azimuths,
+        pulse_elevations = pulse_elevations,
+        pulse_distances = pulse_distances,
         wavelength     = wavelength,
+        pulse_type = pulse_type,
+        lfm_bandwidth = lfm_bandwidth,
+        lfm_pulse_duration = lfm_pulse_duration,
         debug_gif      = debug_gif,
 
         # image size stuff
