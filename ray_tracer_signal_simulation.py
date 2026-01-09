@@ -14,7 +14,9 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 def accumulate_scatters(target_poses, 
                         mesh, face_normals, material_properties,
                         azimuth_spread=15, n_pulses=30,
+                        pulse_azimuths=None, pulse_elevations=None, pulse_distances=None,
                         wavelength=None,
+                        pulse_type="cw", lfm_bandwidth=None, lfm_pulse_duration=None, speed_of_light=3e8,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
@@ -50,9 +52,48 @@ def accumulate_scatters(target_poses,
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #           (T,)          (T,)           (T,)
 
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+    def _coerce_pulse_values(values, label):
+        if values is None:
+            return None
+        values = torch.as_tensor(values, device=device)
+        if values.ndim == 1:
+            values = values.reshape(1, -1)
+        if values.ndim != 2:
+            raise ValueError(f"{label} must be 1D or 2D, got shape {values.shape}.")
+        if values.shape[0] == 1 and T > 1:
+            values = values.repeat(T, 1)
+        if values.shape[0] != T:
+            raise ValueError(f"{label} must have shape (T, P) or (P,), got {values.shape}.")
+        return values
+
+    pulse_azimuths = _coerce_pulse_values(pulse_azimuths, "pulse_azimuths")
+    pulse_elevations = _coerce_pulse_values(pulse_elevations, "pulse_elevations")
+    pulse_distances = _coerce_pulse_values(pulse_distances, "pulse_distances")
+
+    if pulse_azimuths is None and pulse_elevations is None and pulse_distances is None:
+        # Spread the pulses across a small range of azimuth angles
+        azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
+        azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+        elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
+        distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
+    else:
+        pulse_shapes = [
+            values.shape[1]
+            for values in (pulse_azimuths, pulse_elevations, pulse_distances)
+            if values is not None
+        ]
+        if len(set(pulse_shapes)) > 1:
+            raise ValueError(f"pulse_* inputs must share the same P dimension, got {pulse_shapes}.")
+        P = pulse_shapes[0]
+        if pulse_azimuths is None:
+            pulse_azimuths = cam_azimuth.reshape(T, 1).repeat(1, P)
+        if pulse_elevations is None:
+            pulse_elevations = cam_elevation.reshape(T, 1).repeat(1, P)
+        if pulse_distances is None:
+            pulse_distances = cam_distance.reshape(T, 1).repeat(1, P)
+        azimuth = pulse_azimuths
+        elevation = pulse_elevations
+        distance = pulse_distances
 
 
     # loop over each pulse and compute the depth map and surface normal
@@ -65,14 +106,14 @@ def accumulate_scatters(target_poses,
         # construct P number of cameras due to azimuth spread
         cameras = []
         for p in range(P):  # for each pulse
-            elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
-            azimuth_ = (90 + azimuth[t][p]) / 180 * torch.pi  # in radians now
+            elevation = elevation[t, p] / 180 * torch.pi  # in radians now
+            azimuth_ = (90 + azimuth[t, p]) / 180 * torch.pi  # in radians now
             position_vector = torch.tensor([
                 torch.cos(elevation) * torch.sin(azimuth_),
                 torch.sin(elevation),
                 torch.cos(elevation) * torch.cos(azimuth_)
             ], device=device)
-            position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
+            position_vector = position_vector / torch.norm(position_vector) * distance[t, p]
             direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
             direction_vector = direction_vector / torch.norm(direction_vector)
             ortho_cam = OrthographicCamera(
@@ -133,13 +174,17 @@ def accumulate_scatters(target_poses,
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
-
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
+    if pulse_type == "lfm":
+        if lfm_bandwidth is None or lfm_pulse_duration is None:
+            raise ValueError("lfm_bandwidth and lfm_pulse_duration must be set when pulse_type='lfm'.")
+        chirp_rate = lfm_bandwidth / lfm_pulse_duration
+        tau = 2 * scatter_ranges / speed_of_light
+        scatter_energies = scatter_energies * torch.exp(1j * np.pi * chirp_rate * tau ** 2)
+    elif pulse_type != "cw":
+        raise ValueError(f"Unsupported pulse_type '{pulse_type}'. Expected 'cw' or 'lfm'.")
 
     if debug_gif and num_bounces == 1:
         # convert range energy to images for visualization/debugging
