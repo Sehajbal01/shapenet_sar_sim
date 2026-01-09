@@ -140,7 +140,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             sample_z, 
             forward_vectors, 
             cam_azimuth, 
-            cam_distance, 
+            distance, 
             spatial_fs,
             image_width = image_width,
             image_height = image_height,
@@ -180,7 +180,7 @@ def projected_CBP(
     sample_z,
     forward_vector,
     cam_azimuth,
-    cam_distance,
+    pulse_distance,
     spatial_fs,
     image_width = 64,
     image_height = 64,
@@ -195,7 +195,7 @@ def projected_CBP(
         sample_z: (Z,) - the range samples
         forward_vector: (T,P,3) - the forward vector for each ray
         cam_azimuth: (T,) - the azimuth angle of the camera
-        cam_distance: (T,) - the distance of the camera from the origin
+        pulse_distance: (T,P) - the distance of each pulse from the origin
         spatial_fs: float - the spatial frequency sampling rate
     outputs:
         image: (T,H,W) - the computed image
@@ -207,7 +207,8 @@ def projected_CBP(
     ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
 
     # calculate projected r from sample_z
-    sample_r = sample_z.reshape(1,1,Z) - cam_distance.reshape(T,1,1) # (T,1,Z)
+    # using per-pulse distances so manual trajectories project correctly
+    sample_r = sample_z.reshape(1,1,Z) - pulse_distance.reshape(T,P,1) # (T,P,Z)
     projected_r = sample_r / ground_vec_mag # (T,P,Z)
 
     # calculate the forward vector on the x-y plane
@@ -299,7 +300,7 @@ def CBP_2D( pf,
                                         dim=-1
                                     ) # (N,P,T)
     
-    # integrate over theta (eqation 2.31)
+    # integrate over theta
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
 
     # reshape and convert to real-valued images
@@ -789,7 +790,7 @@ if __name__ == '__main__':
     # }
     # vary_kwargs = {
     #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
-    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True)).tolist()+[None]
     # }
     # print('vary_kwargs:', vary_kwargs)
     #
