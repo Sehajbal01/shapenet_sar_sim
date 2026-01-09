@@ -48,11 +48,14 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
+    # Pull out camera positions info 
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #           (T,)          (T,)           (T,)
 
     def _coerce_pulse_values(values, label):
+        # Normalized per-pulse inputs to a (T,P) tensor to make life easier
+        # Ques: should we accept lists of (az, el, dist) tuples and split them here
+        # kept this strict on shape so callers immediately see if the trajectory vector is off
         if values is None:
             return None
         values = torch.as_tensor(values, device=device)
@@ -72,11 +75,16 @@ def accumulate_scatters(target_poses,
 
     if pulse_azimuths is None and pulse_elevations is None and pulse_distances is None:
         # Spread the pulses across a small range of azimuth angles
+        # preserve existing SAR spread 
+        # this keeps old behavior so downstream configs don't unregulated
         azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
         azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
         elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
         distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
     else:
+        # Manual trajectory mode: use per-pulse geometry given by the caller (us)
+        # Ques: do we want to warn if only one of az/elev/dist is provided?-unlikely
+ 
         pulse_shapes = [
             values.shape[1]
             for values in (pulse_azimuths, pulse_elevations, pulse_distances)
@@ -106,12 +114,13 @@ def accumulate_scatters(target_poses,
         # construct P number of cameras due to azimuth spread
         cameras = []
         for p in range(P):  # for each pulse
-            elevation = elevation[t, p] / 180 * torch.pi  # in radians now
-            azimuth_ = (90 + azimuth[t, p]) / 180 * torch.pi  # in radians now
+            # building a camera per-pulse so manual trajectories really do place the sensor where you specify.
+            elevation_rad = elevation[t, p] / 180 * torch.pi  # in radians now
+            azimuth_rad = (90 + azimuth[t, p]) / 180 * torch.pi  # in radians now
             position_vector = torch.tensor([
-                torch.cos(elevation) * torch.sin(azimuth_),
-                torch.sin(elevation),
-                torch.cos(elevation) * torch.cos(azimuth_)
+                torch.cos(elevation_rad) * torch.sin(azimuth_rad),
+                torch.sin(elevation_rad),
+                torch.cos(elevation_rad) * torch.cos(azimuth_rad)
             ], device=device)
             position_vector = position_vector / torch.norm(position_vector) * distance[t, p]
             direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
@@ -175,9 +184,12 @@ def accumulate_scatters(target_poses,
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
     # apply complex value to the energy according to wavelength
+    # NOTE: matches the old CW phase behavior 
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
     if pulse_type == "lfm":
+        # LFM/chirp phase term for strip-map style pulses.
+        # Q: should we also window/gate by pulse duration to avoid phase outside the chirp?
         if lfm_bandwidth is None or lfm_pulse_duration is None:
             raise ValueError("lfm_bandwidth and lfm_pulse_duration must be set when pulse_type='lfm'.")
         chirp_rate = lfm_bandwidth / lfm_pulse_duration
