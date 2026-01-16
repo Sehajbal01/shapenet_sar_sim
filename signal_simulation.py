@@ -300,7 +300,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
         # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
 
-        path = get_next_path('figures/scatters_signal_fs%d_bw%d.pdf'%(int(spatial_fs), int(spatial_bw)))
+        path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
         savefig(path)
         print('Figure saved to %s' % path)
 
