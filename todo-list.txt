@@ -1,38 +1,15 @@
-DONE - incorporate 2*distance for the signal samples
-    DONE - this will have to be in jhihyang's stuff
-
-DONE - get rid of the ring effect by increasing the signal length in space
-    DONE - in ray_tracer_signal_simulation.py
-    DONE - in signal_simulation.py
-
-DONE - adjust ground plane projection such that it falls in line with the projection function along the ground plane, not just projection.
-    DONE - make the CBP function exclusively 2D
-    DONE - set up projection functions outside CBP
-    DONE - get the image rotation correct
-
-DONE - integrate ray tracing module
-    DONE - include option for the ray tracing vs rasterization
-    DONE - debug ray tracing OOM
-
-DONE - should i adjust the r-points interpolation in the CBP function?
-    DONE - yes, because the projection effectively adjusts the spacing between spatial samples
-
-DONE - refine energy equation
-    DONE - hardcode rsa
-    DONE - incorporate r, s, a components into the mesh
-    DONE - load mesh before accumulate scatters
-
-DONE - merge jhihyang's working ray tracer
-
-- Run experiments for the paper
-    DONE - azimuth spread
-    DONE - num pulses
-    - noise
-    - Fs/BW
-    - leads into ray density
-
-
-# after the paper is submitted to radar conf 2026
 - manual trajectory input
-    - use stop and hop assumption...
-- implement strip map mode simulation
+    - currently accumulate_scatters comes up with all the locations of the synthetic aperture via the "azimuth_spread" parameter
+    - we want to calculate the locations OUTSIDE the accumulate scatters function
+    - we want straight-line trajectory, curves, etc
+    - we want the ability to add noise to the trajectory, like turbulance irl
+
+- add option for LFM pulse in accumulate_scatters
+    - this is needed for strip-map mode sar
+
+- use jhihyangs mesh loader instead of the load_mesh function in signal simulation . py
+    - extract normals and material_properties from the mesh
+        normals = mesh.trimesh.triangles_normal  # (num_triangles, 3)
+        material_properties = mesh.trimesh.triangles_rsa  # (num_triangles, 3)
+
+- allow for different material properties in the ground in load_mesh

@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 import numpy as np
 from pytorch3d.structures import Meshes
-from pytorch3d.io import load_objs_as_meshes
+from ray_tracer.core.scene import Scene
 from pytorch3d.renderer import (
     look_at_view_transform,
     FoVOrthographicCameras,
@@ -23,10 +23,13 @@ from utils import get_next_path, extract_pose_info
 def accumulate_scatters(target_poses, 
                         mesh, face_normals, material_properties,
                         azimuth_spread=15, n_pulses=30,
+                        pulse_azimuths=None, pulse_elevations=None, pulse_distances=None,
                         wavelength=None,
+                        pulse_type="cw", lfm_bandwidth=None, lfm_pulse_duration=None, speed_of_light=3e8,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
+                        planar_wave = True,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -48,14 +51,61 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
+    # Pull out camera positions info 
     _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
     #           (T,)          (T,)           (T,)
 
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
-    pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
+    def _coerce_pulse_values(values, label):
+        # normalize to a (T,P) tensor for internal use
+        # Ques: should we also accept (P,1) and transpose if detected?
+        # NOTE: the strict shape check here is on purpose so bad trajectories fail fast - seem ok to do.
+        if values is None:
+            return None
+        values = torch.as_tensor(values, device=device)
+        if values.ndim == 1:
+            values = values.reshape(1, -1)
+        if values.ndim != 2:
+            raise ValueError(f"{label} must be 1D or 2D, got shape {values.shape}.")
+        if values.shape[0] == 1 and T > 1:
+            values = values.repeat(T, 1)
+        if values.shape[0] != T:
+            raise ValueError(f"{label} must have shape (T, P) or (P,), got {values.shape}.")
+        return values
+
+    pulse_azimuths = _coerce_pulse_values(pulse_azimuths, "pulse_azimuths")
+    pulse_elevations = _coerce_pulse_values(pulse_elevations, "pulse_elevations")
+    pulse_distances = _coerce_pulse_values(pulse_distances, "pulse_distances")
+
+    if pulse_azimuths is None and pulse_elevations is None and pulse_distances is None:
+        # Spread the pulses across a small range of azimuth angles
+      
+        # this is the same SAR spread behavior as before (if manual pulses not entered obvio)
+        azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
+        azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+        elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
+        distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
+    else:
+        # Manual trajectory mode: caller decided the pulse geometry i.e. line,circle, zig-zag etc
+       
+        pulse_shapes = [
+            values.shape[1]
+            for values in (pulse_azimuths, pulse_elevations, pulse_distances)
+            if values is not None
+        ]
+        if len(set(pulse_shapes)) > 1:
+            raise ValueError(f"pulse_* inputs must share the same P dimension, got {pulse_shapes}.")
+        P = pulse_shapes[0]
+        if pulse_azimuths is None:
+            pulse_azimuths = cam_azimuth.reshape(T, 1).repeat(1, P)
+        if pulse_elevations is None:
+            pulse_elevations = cam_elevation.reshape(T, 1).repeat(1, P)
+        if pulse_distances is None:
+            pulse_distances = cam_distance.reshape(T, 1).repeat(1, P)
+        azimuth = pulse_azimuths
+        elevation = pulse_elevations
+        distance = pulse_distances
+
+    pytorch3d_azimuth = 90 + azimuth # +90 to go from SRN to pytorch3d coord. system
 
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
@@ -64,7 +114,7 @@ def accumulate_scatters(target_poses,
         faces_per_pixel=1, 
 
         bin_size=0,  # or set to a small value
-        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
+        max_faces_per_bin=100000  # can go up-def value
     )
 
     # loop over each pulse and compute the depth map and surface normal
@@ -77,9 +127,10 @@ def accumulate_scatters(target_poses,
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
+            # per-pulse distance/elevation lets manual trajectories move the camera per pulse
             rotation, translation = look_at_view_transform(
-                cam_distance[t],
-                cam_elevation[t],
+                distance[t, p],
+                elevation[t, p],
                 pytorch3d_azimuth[t, p],
                 device=device)
             cameras = FoVOrthographicCameras(
@@ -160,16 +211,24 @@ def accumulate_scatters(target_poses,
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
-
     # apply complex value to the energy according to wavelength
+    # this preserves the CW phase term when wavelength is set.
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
+    if pulse_type == "lfm":
+        # LFM/chirp phase model for strip-map: exp(j*pi*k*tau^2).
+        # Ques: should this also gate by pulse duration i.e. apply only within |tau|<=T/2)?
+        
+        if lfm_bandwidth is None or lfm_pulse_duration is None:
+            raise ValueError("lfm_bandwidth and lfm_pulse_duration must be set when pulse_type='lfm'.")
+        chirp_rate = lfm_bandwidth / lfm_pulse_duration
+        tau = 2 * scatter_ranges / speed_of_light
+        scatter_energies = scatter_energies * torch.exp(1j * np.pi * chirp_rate * tau ** 2)
+    elif pulse_type != "cw":
+        raise ValueError(f"Unsupported pulse_type '{pulse_type}'. Expected 'cw' or 'lfm'.")
 
     return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
+    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)
 
 
 
@@ -281,7 +340,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
-        plt.ylabel('Amplitude')
+        plt.ylabel('Magnitude')
         plt.xlim(range_near, range_far)
         plt.ylim(sig_min, sig_max)
 
@@ -391,10 +450,10 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_rsa = (0.3,0.3,0.3),
+                obj_rsa = (0.7,0.15,0.15),
                 make_ground = True,
                 ground_below = True,
-                ground_rsa = (0.3,0.3,0.3),
+                ground_rsa = (0.15,0.7,0.15),
                 device = 'cuda',
         ):  
     '''
@@ -410,38 +469,23 @@ def load_mesh(  file_name,
         face_normals: (F, 3) - the face normals
         rsa: (F, 3) - the material properties for each face in Reflectivity, Scatter, Absorption
     '''
-    # load verts and faces
-    mesh = load_objs_as_meshes([file_name], device=device)
-    verts = mesh.verts_packed()  # (V, 3)
-    faces = mesh.faces_packed()  # (F, 3)
-
-    # set material properties for each face
-    rsa = torch.tensor(obj_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(faces.shape[0], 1)  # (F, 3)
-
-    # add a ground if desired to the mesh
+    scene = Scene(
+        obj_filename=file_name,
+        device=device,
+        obj_rsa=obj_rsa,
+    )
     if make_ground:
-        ground_buffer = 0.001
-        if ground_below:
-            ground_y  = verts[:, 1].min().item() - ground_buffer
-        else:
-            ground_y = verts[:, 1].max().item() + ground_buffer
+        scene.add_ground(ground_below=ground_below, ground_rsa=ground_rsa)
 
-        ground_size = 100
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y, max_triangle_len = ground_size/100.0, device = device )
-        num_verts_before = verts.shape[0]
-        verts = torch.cat([verts, ground_verts], dim=0)
-        faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
-        mesh = Meshes(verts=[verts], faces=[faces])
+    triangles_a = scene.trimesh.triangles_A
+    triangles_b = scene.trimesh.triangles_B
+    triangles_c = scene.trimesh.triangles_C
+    verts = torch.cat([triangles_a, triangles_b, triangles_c], dim=0)
+    faces = torch.arange(verts.shape[0], device=device).reshape(-1, 3)
+    mesh = Meshes(verts=[verts], faces=[faces])
 
-        # set ground material properties
-        ground_properties = torch.tensor(ground_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(ground_faces.shape[0], 1)  # (F_g, 3)
-        rsa = torch.cat([rsa, ground_properties], dim=0)  # (F, 3)
-
-    # calculate the normals
-    face_verts = verts[faces]  # (F, 3, 3)
-    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+    face_normals = scene.trimesh.triangles_normal  # (F, 3)
+    rsa = scene.trimesh.triangles_rsa  # (F, 3)
 
     return mesh, face_normals, rsa
 
