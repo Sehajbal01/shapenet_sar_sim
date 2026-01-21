@@ -16,6 +16,8 @@ from signal_simulation import accumulate_scatters as accumulate_scatters_rasteri
 from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
 from ray_tracer_signal_simulation import load_mesh_raytracing
 
+from imaging_algorithms import projected_CBP, strip_map_imaging
+
 
 
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
@@ -31,13 +33,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         use_sig_magnitude = True,
                         verbose = False,
                         render_method = 'rasterization',
-                        imaging_algorithm = 'projected_CBP',
-
-                        planar_wave = True,
-
-                        pulse_azimuths = None,
-                        pulse_elevations = None,
-                        pulse_distances = None,
+                        imaging_algorithm = 'cbp',
                         
                         # image size stuff
                         image_width = 64,
@@ -129,33 +125,34 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # convert to signal magnitude if desired
     if use_sig_magnitude:
+        complex_signals = signals
         signals = signals.abs()
 
     # Compute sar image
     if verbose:
         print('Computing SAR image...')
-    if imaging_algorithm == 'projected_CBP':
+    if imaging_algorithm == 'cbp':
         sar_image = projected_CBP(
             signals, 
             sample_z, 
             forward_vectors, 
             cam_azimuth, 
-            distance, 
+            cam_distance, 
             spatial_fs,
             image_width = image_width,
             image_height = image_height,
             image_plane_width = image_plane_width,
             image_plane_height = image_plane_height,
         )
-    elif imaging_algorithm == 'strip_map_imaging':
+    elif imaging_algorithm == 'stripmap':
         trajectory = cam_distance.reshape(-1,1,1) * (-forward_vectors)  # (T,P,3)
         sar_image = strip_map_imaging(
-            signals,
+            complex_signals,
             wavelength,
             trajectory,
             sample_z,
             spatial_fs,
-            planar_wave = planar_wave,
+            planar_wave = False,
             image_plane_rotation_deg = cam_azimuth+90,
             image_width = image_width,
             image_height = image_height,
@@ -163,7 +160,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             image_plane_height = image_plane_height,
         )
     else:
-        raise ValueError('Invalid imaging algorithm \'%s\', expected \'projected_CBP\' or \'strip_map_imaging\''%imaging_algorithm)
+        raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%imaging_algorithm)
     if verbose:
         print('done.')
 
@@ -174,138 +171,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     return sar_image
 
 
-
-def projected_CBP(
-    signal,
-    sample_z,
-    forward_vector,
-    cam_azimuth,
-    pulse_distance,
-    spatial_fs,
-    image_width = 64,
-    image_height = 64,
-    image_plane_width = 1,
-    image_plane_height = 1,
-):
-    '''
-    does some projection then runs the 2D convolutional back projection algorithm
-    
-    inputs:
-        signal: (T,P,Z) - the signal to be back projected
-        sample_z: (Z,) - the range samples
-        forward_vector: (T,P,3) - the forward vector for each ray
-        cam_azimuth: (T,) - the azimuth angle of the camera
-        pulse_distance: (T,P) - the distance of each pulse from the origin
-        spatial_fs: float - the spatial frequency sampling rate
-    outputs:
-        image: (T,H,W) - the computed image
-    '''
-    # gather shape constants
-    T,P,Z = signal.shape
-
-    # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
-    ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
-
-    # calculate projected r from sample_z
-    # using per-pulse distances so manual trajectories project correctly
-    sample_r = sample_z.reshape(1,1,Z) - pulse_distance.reshape(T,P,1) # (T,P,Z)
-    projected_r = sample_r / ground_vec_mag # (T,P,Z)
-
-    # calculate the forward vector on the x-y plane
-    line_vector = forward_vector[...,:2] / ground_vec_mag # (T,P,2)
-
-    # convert azimuth to image plane rotation
-    image_plane_rotation = cam_azimuth + 90
-
-    # convert to ground plane fs
-    projected_fs = spatial_fs * ground_vec_mag.reshape(T,P) # (T,P,1)
-
-    # run the 2D CBP
-    sar_image = CBP_2D(
-        signal, 
-        projected_r,
-        line_vector,
-        projected_fs,
-        image_plane_rotation_deg = image_plane_rotation,
-        image_width              = image_width,
-        image_height             = image_height,
-        image_plane_width        = image_plane_width,
-        image_plane_height       = image_plane_height,
-    ) # (T,H,W)
-    
-    return sar_image
-
-
-def CBP_2D( pf,
-            r,
-            line_vector,
-            interpolation_fs,
-            image_plane_rotation_deg = 0,
-            image_width = 64,
-            image_height = 64,
-            image_plane_width = 1,
-            image_plane_height = 1,
-    ):
-    '''
-    Convolutional back projection algorithm in 2D
-
-    inputs:
-        pf: (N,P,R) - the projection functions
-        r: (N,P,R) - the radial distance of each sample in the projection functions
-        line_vector: (N,P,2) - the vector of the origin crossing line that each projection function corresponds to
-        interpolation_fs: (N,P) - the spatial frequency sampling rate of the projection functions
-        image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
-
-    outputs:
-        image: (N,H,W) - the computed image
-
-    Dimensions:
-        N: number of images
-        P: number of projection functions
-        R: number of radial samples per projection function
-        H: image height
-        W: image width
-        T: number of target image pixels (H*W)
-    '''
-    # Get shapes
-    N,P,R = pf.shape
-    H = image_height
-    W = image_width
-    T = H * W
-    device = pf.device
-
-    # filter with |r| in frequency domain (equation 2.30)
-    pf_freq = torch.fft.fftshift(torch.fft.fft(pf, dim=-1), dim=-1)  # (N,P,R)
-    filtered_pf_freq = pf_freq * torch.abs(r.reshape(N,P,R)) # (N,P,R)
-    filtered_pf = torch.fft.ifft(torch.fft.ifftshift(filtered_pf_freq, dim=-1), dim=-1)  # (N,P,R)
-
-    # create grid of target image cooordinates on the ground plane
-    x_coord,y_coord = torch.meshgrid(   torch.linspace(-image_plane_width/2, image_plane_width/2, image_width, device=device, dtype=r.dtype),
-                                        torch.linspace(image_plane_height/2 , -image_plane_height/2 , image_height , device=device, dtype=r.dtype),
-                                        indexing='xy')  # (H,W)
-    coord_grid = torch.stack((x_coord, y_coord), dim=-1).float() # (H,W,2)
-
-    # rotate the image plane according to the desired rotation angle
-    rotation_rad = image_plane_rotation_deg * (np.pi / 180.0)  # convert to radians
-    rotation_matrix = torch.stack([
-        torch.cos(rotation_rad), -torch.sin(rotation_rad), torch.sin(rotation_rad), torch.cos(rotation_rad)
-    ], dim=-1) # (N,4)
-    coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
-
-    # interpolate pixel coordinated projected onto the filtered signal
-    line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
-    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T,1)
-    interpolated_r_points = torch.sum(  filtered_pf.reshape(N,P,1,R) * \
-                                        torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
-                                        dim=-1
-                                    ) # (N,P,T)
-    
-    # integrate over theta (eqation 2.31)
-    image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
-
-    # reshape and convert to real-valued images
-    image = image.reshape(N,image_height,image_width) # (N,H,W)
-    return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
 
 
 def strip_map_imaging(  signal,
@@ -507,8 +372,7 @@ def render_random_image(
         use_sig_magnitude=True,
         suffix = None,
         render_method = 'rasterization',
-        imaging_algorithm = 'projected_CBP',
-        planar_wave = True,
+        imaging_algorithm = 'cbp',
 
         image_plane_width = 1,
         image_plane_height = 1,
@@ -566,6 +430,8 @@ def render_random_image(
                             debug_gif_suffix = suffix,
 
                             render_method=render_method,
+                            imaging_algorithm=imaging_algorithm,
+
                             imaging_algorithm=imaging_algorithm,
 
                             # image size stuff
@@ -1094,14 +960,13 @@ if __name__ == '__main__':
 
     # idk
     default_kwargs = {
-        # 'debug_gif': False,
-        'debug_gif': True,
+        'debug_gif': False,
+        # 'debug_gif': True,
         'num_pulse': 32,
-        'num_pulse': 1,
-        'azimuth_spread': 90,
+        'azimuth_spread': 360,
         'spatial_bw': 90,
         'spatial_fs': 90,
-        'wavelength': 0.5,
+        # 'wavelength': 0.5,
         'use_sig_magnitude': True,
         'snr_db': 50,
 
@@ -1118,14 +983,14 @@ if __name__ == '__main__':
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
-        'planar_wave': True,
-
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
-        'imaging_algorithm': 'strip_map_imaging',
+
+        'imaging_algorithm': 'stripmap',
+
     }
     vary_kwargs = {
-        'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0]
+        'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0],
     }
-    # custom_title_strings = ['','','']
-    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots",)# custom_title_strings=custom_title_strings)
+    custom_title_strings = None
+    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
