@@ -1,47 +1,36 @@
 import os
-import sys
 
-# Get chunk file path from command-line args
-chunk_file = sys.argv[1]
+# This is where we’ll build the new dataset structure
+target_base = '/workspace/sehajdeepbal/create_dataset'
 
-# Read the list of object IDs assigned to this GPU/process
-with open(chunk_file, 'r') as f:
-    obj_ids = [line.strip() for line in f if line.strip()]
 
-# source and target directories
-source_base = '/workspace/data/srncars/02958343'
-target_base = '/workspace/sehajdeepbal/create_dataset/cars_train'
+for split in ['cars_train', 'cars_val', 'cars_test']:
+    os.makedirs(os.path.join(target_base, split), exist_ok=True)
 
-# Loop through each object in this chunk
-for obj_id in obj_ids:
-    # Path to the .obj file (3D geometry)
-    obj_path = os.path.join(source_base, obj_id, 'models', 'model_normalized.obj')
+# Looping through just the dataset we care about (cars_train)
+for subdataset in ['cars_train']:
+    # Define where the source data is and where we’re writing new output
+    source_base = os.path.join('/workspace/data/srncars', subdataset)
+    target_split_path = os.path.join(target_base, subdataset)
 
-    # Path to pose .txt files (camera positions)
-    pose_dir = os.path.join(source_base, obj_id, 'pose')
+    # Grab all the object IDs (each is a folder)
+    obj_ids = os.listdir(source_base)
 
-    # Output directory for rendered images
-    output_dir = os.path.join(target_base, obj_id, 'shapenet_sar')
-    os.makedirs(output_dir, exist_ok=True)
+    for obj_id in obj_ids:
+        # Defining the full path to this object’s folder in both source and target
+        src_obj_path = os.path.join(source_base, obj_id)
+        tgt_obj_path = os.path.join(target_split_path, obj_id)
 
-    # Check if both required inputs exist
-    if not os.path.isfile(obj_path):
-        print(f"[WARNING] Missing .obj for {obj_id}")
-        continue
+        # Inside the object folder, we’ll make a subfolder called "shapenet_sar"
+        shapenet_sar_path = os.path.join(tgt_obj_path, 'shapenet_sar')
+        os.makedirs(shapenet_sar_path, exist_ok=True)
 
-    if not os.path.isdir(pose_dir):
-        print(f"[WARNING] Missing pose directory for {obj_id}")
-        continue
-
-    # Loop through all pose files for this object
-    pose_files = sorted([f for f in os.listdir(pose_dir) if f.endswith('.txt')])
-    for pose_file in pose_files:
-        pose_path = os.path.join(pose_dir, pose_file)
-
-        # This is where you’d call your renderer: obj_path + pose_path → png
-        # For now, we simulate this by creating an empty .png file
-        output_filename = pose_file.replace('.txt', '.png')
-        output_path = os.path.join(output_dir, output_filename)
-
-        # Replace this with actual rendering call later
-        open(output_path, 'a').close()  # placeholder for rendered image
+        # Checking if this object has an "images" folder in the source
+        img_dir = os.path.join(src_obj_path, 'images')
+        if os.path.isdir(img_dir):
+            # Loop through all the files in the images folder
+            for fname in os.listdir(img_dir):
+                if fname.endswith('.png'):
+                    # Instead of copying the real image, we just create an empty placeholder with the same name (Not sure if this is what we want? lmk)
+                    placeholder_path = os.path.join(shapenet_sar_path, fname)
+                    open(placeholder_path, 'a').close()  # creates an empty .png file

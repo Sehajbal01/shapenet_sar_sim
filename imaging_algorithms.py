@@ -204,7 +204,6 @@ def strip_map_imaging(  signal,
         print('distance_to_pixel.shape: ', distance_to_pixel.shape)
     else:
         distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
-    print('trajectory: ', trajectory)
 
     # interpolate signal at distance_to_pixel
     signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \

@@ -27,9 +27,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         debug_gif_suffix = None,
                         snr_db = None,
                         wavelength = None,
-                        pulse_type = "cw",
-                        lfm_bandwidth = None,
-                        lfm_pulse_duration = None,
                         use_sig_magnitude = True,
                         verbose = False,
                         render_method = 'rasterization',
@@ -77,17 +74,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         poses.to(device),
         mesh, normals, material_properties,
 
-        planar_wave = planar_wave,
-
         azimuth_spread = az_spread,
         n_pulses       = num_pulses,
-        pulse_azimuths = pulse_azimuths,
-        pulse_elevations = pulse_elevations,
-        pulse_distances = pulse_distances,
         wavelength     = wavelength,
-        pulse_type = pulse_type,
-        lfm_bandwidth = lfm_bandwidth,
-        lfm_pulse_duration = lfm_pulse_duration,
         debug_gif      = debug_gif,
 
         # image size stuff
@@ -169,106 +158,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         signal_gif(signals, all_ranges, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
 
     return sar_image
-
-
-
-
-def strip_map_imaging(  signal,
-                        wavelength,
-                        trajectory,
-                        sample_dist,
-                        interpolation_fs,
-                        planar_wave = True,
-                        attenuation_coeff = 0,
-                        image_plane_rotation_deg = 0,
-                        image_width = 64,
-                        image_height = 64,
-                        image_plane_width = 1,
-                        image_plane_height = 1,
-    ):
-    '''
-    Strip map imaging algorithm, we only render the ground 
-    plane and assume the image plane is about the origin.
-
-    reflectivity at point x is given by 
-    avg_over_pulses{ signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) * exp(-j*4*pi/wavelength*distance_to_x) }
-    we need to interpolate the signal at distance_to_x for each pulse's signal
-
-    inputs:
-        signal: (N,P,D) - the signal to be back projected
-        wavelength: - the wavelength
-        attenuation_coeff: - the attenuation coefficient of the medium
-        trajectory: (N,P,3) - the trajectory of the sensor
-        sample_dist: (D,) - the distance samples
-        interpolation_fs: float - the spatial frequency sampling rate
-        image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
-
-    outputs:
-        image: (N,H,W) - the computed image
-
-    Dimensions:
-        N: number of images
-        P: number of pulses
-        D: number of distance samples per pulse
-        H: image height
-        W: image width
-        T: number of target image pixels (H*W)
-    '''
-    # get shapes
-    N,P,D = signal.shape
-    H = image_height
-    W = image_width
-    T = H * W
-    device = signal.device
-
-    # create grid of target image cooordinates on the ground plane
-    dtype = sample_dist.dtype
-    x_coord,y_coord = torch.meshgrid(   torch.linspace(-image_plane_width/2, image_plane_width/2, image_width, device=device, dtype=dtype),
-                                        torch.linspace(image_plane_height/2 , -image_plane_height/2 , image_height , device=device, dtype=dtype),
-                                        indexing='xy')  # (H,W)
-    coord_grid = torch.stack((x_coord, y_coord), dim=-1).float() # (H,W,2)
-
-    # rotate the image plane according to the desired rotation angle
-    rotation_rad = image_plane_rotation_deg * (np.pi / 180.0)  # convert to radians
-    rotation_matrix = torch.stack([
-        torch.cos(rotation_rad), -torch.sin(rotation_rad), torch.sin(rotation_rad), torch.cos(rotation_rad)
-    ], dim=-1) # (N,4)
-    coord_grid = rotation_matrix.reshape(N,1,2,2) @ coord_grid.reshape(1,T,2,1)  # (N,T,2,1)
-
-    # compute distance from each pulse to each pixel
-    coord_grid = torch.cat([coord_grid.reshape(N,T,2), torch.zeros((N,T,1), device=device, dtype=coord_grid.dtype)], dim=-1)  # (N,T,3)
-    if planar_wave:
-        mag_trajectory = torch.norm(trajectory, dim=-1, keepdim=True)  # (N,P,1)
-        forward_vector = -trajectory / mag_trajectory  # (N,P,3)
-        distance_to_pixel = torch.sum( trajectory.reshape(N,P,1,3) * forward_vector.reshape(N,P,1,3), dim=-1 )  - mag_trajectory # (N,P,T)
-        print('distance_to_pixel.shape: ', distance_to_pixel.shape)
-    else:
-        distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
-    print('trajectory: ', trajectory)
-
-    # interpolate signal at distance_to_pixel
-    signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(1,1,1,D)) )), # (N,P,T,D)
-                                    dim=-1
-                                ) # (N,P,T)
-    
-    # compute estimate of reflectivity
-    reflectivity_estimate = torch.mean( signal_at_distance_to_pixel * \
-                                        # distance_to_pixel**2 * \
-                                        torch.exp(
-                                            2*attenuation_coeff *distance_to_pixel - \
-                                            1j*4*3.14159265358979323846264338427950288*distance_to_pixel/wavelength
-                                        )
-                                    , dim=1)  # (N,T)
-
-    # reshape and convert to real-valued images
-    image = reflectivity_estimate.reshape(N,image_height,image_width) # (N,H,W)
-    return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
-
-
-
-
-
 
 
 
@@ -423,8 +312,6 @@ def render_random_image(
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
-
-                            planar_wave=planar_wave,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -655,7 +542,7 @@ if __name__ == '__main__':
     # }
     # vary_kwargs = {
     #     'wavelength': (10**np.linspace(np.log10(0.01), np.log10(2), 8, endpoint=True)).tolist()
-    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True)).tolist()+[None]
+    #     # 'wavelength': np.linspace(0.01, 0.1, 10, endpoint=True).tolist()+[None]
     # }
     # print('vary_kwargs:', vary_kwargs)
     #

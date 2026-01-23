@@ -62,12 +62,8 @@ class Scene:
         self.trimesh.triangles_edge2 = self.trimesh.triangles_C - self.trimesh.triangles_A
         self.trimesh.triangles_normal = torch.linalg.cross(self.trimesh.triangles_edge1, self.trimesh.triangles_edge2, dim=1)
         self.trimesh.triangles_normal = self.trimesh.triangles_normal / torch.norm(self.trimesh.triangles_normal, dim=1, keepdim=True)
-        ground_rsa_tensor = torch.tensor(ground_rsa, dtype=torch.float32, device=self.trimesh.triangles_rsa.device)
-        if ground_rsa_tensor.shape == (3,):
-            ground_rsa_tensor = ground_rsa_tensor.repeat(2, 1)
-        elif ground_rsa_tensor.shape != (2, 3):
-            raise ValueError(f"ground_rsa must be shape (3,) or (2, 3), got {ground_rsa_tensor.shape}.")
-        self.trimesh.triangles_rsa = torch.cat([self.trimesh.triangles_rsa, ground_rsa_tensor], dim=0)  # add rsa for ground triangles
+        self.trimesh.triangles_rsa = torch.cat([self.trimesh.triangles_rsa,
+                                                torch.tensor(ground_rsa, dtype=torch.float32).repeat(2, 1).to(self.trimesh.triangles_rsa.device)], dim=0)  # add rsa for ground triangles
         # add them to octree
         num_trigs = len(self.trimesh.triangles_A)
         last_two_indices = torch.tensor([num_trigs - 2, num_trigs - 1], device=self.device)
