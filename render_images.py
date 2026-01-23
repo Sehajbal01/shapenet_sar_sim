@@ -430,7 +430,6 @@ def render_random_image(
                             debug_gif_suffix = suffix,
 
                             render_method=render_method,
-                            imaging_algorithm=imaging_algorithm,
 
                             imaging_algorithm=imaging_algorithm,
 

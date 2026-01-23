@@ -1,5 +1,6 @@
 #! /bin/bash
 
+mkdir -p figures figures/tmp figures/tmp_ray_tracer
 rm figures/tmp/*.png
 rm figures/tmp_ray_tracer/*.png
 
