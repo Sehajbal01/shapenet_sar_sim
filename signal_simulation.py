@@ -16,7 +16,7 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info
+from utils import get_next_path, trajectory_to_angles
 
 
 
@@ -27,6 +27,7 @@ def accumulate_scatters(target_poses,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
+                        trajectory=None,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -34,11 +35,11 @@ def accumulate_scatters(target_poses,
     inputs:
         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
         object_filename (str): path to the .obj file
-        azimuth_spread (float): the range of azimuth angles for sar rendering
+        azimuth_spread (float): unused when trajectory is provided
         n_pulses (int): the number of pulses for sar rendering
         wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         debug_gif (bool): whether to save a gif of the depth and energy images
-
+         trajectory (T,P,3): optional manual camera positions per pulse
     outputs:
         range (T,P,R): the range of all the rays
         energy (T,P,R): the simulated energy of all the rays
@@ -48,13 +49,14 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
-    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #           (T,)          (T,)           (T,)
-
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+     if trajectory is None:
+        raise ValueError("trajectory must be provided. Build it outside accumulate_scatters.")
+    trajectory = trajectory.to(device)
+    if trajectory.shape != (T, P, 3):
+        raise ValueError(f"trajectory must have shape (T,P,3), got {trajectory.shape}")
+    azimuth, elevation, distance = trajectory_to_angles(trajectory)
+    cam_azimuth = azimuth[:, 0]
+    cam_distance = distance[:, 0]
     pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
 
     # prepare rasterization settings
@@ -78,8 +80,8 @@ def accumulate_scatters(target_poses,
 
             # perform rasterization to find where the rays hit the mesh
             rotation, translation = look_at_view_transform(
-                cam_distance[t],
-                cam_elevation[t],
+                distance[t, p],
+                elevation[t, p],
                 pytorch3d_azimuth[t, p],
                 device=device)
             cameras = FoVOrthographicCameras(
@@ -160,9 +162,7 @@ def accumulate_scatters(target_poses,
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
+    
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
