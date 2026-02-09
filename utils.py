@@ -128,7 +128,102 @@ def generate_pose_mat(azimuth,elevation,distance,device='cpu',format='srn_cars')
 
     else:
         raise NotImplementedError("Unknown format for generate_pose_mat(): %s" % format)
+        
+def build_azimuth_spread_trajectory(target_poses, n_pulses, azimuth_spread):
+    """
+    Build a per-pulse trajectory from base poses and azimuth spread.
 
+    inputs:
+        target_poses (T,4,4): input poses
+        n_pulses (int): number of pulses
+        azimuth_spread (float): azimuth spread in degrees
+    outputs:
+        trajectory (T,P,3): camera positions per pulse
+    """
+    device = target_poses.device
+    T = target_poses.shape[0]
+    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
+    P = n_pulses
+    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device)
+    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P)
+    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))
+    distance = torch.tile(cam_distance.reshape(T, 1), (1, P))
+
+    azimuth_rad = azimuth * np.pi / 180
+    elevation_rad = elevation * np.pi / 180
+    x = distance * torch.cos(elevation_rad) * torch.cos(azimuth_rad)
+    y = distance * torch.cos(elevation_rad) * torch.sin(azimuth_rad)
+    z = distance * torch.sin(elevation_rad)
+    return torch.stack([x, y, z], dim=-1)
+
+def trajectory_to_angles(trajectory):
+    """
+    Convert camera trajectory positions to azimuth/elevation/distance.
+
+    inputs:
+        trajectory (...,3): camera pos
+    outputs:
+        azimuth: azimuth in degrees
+        elevation: elevation in degrees
+        distance: distance from origin
+    """
+    distance = torch.norm(trajectory, dim=-1)
+    planar = torch.sqrt(trajectory[..., 0] ** 2 + trajectory[..., 1] ** 2)
+    elevation = torch.atan2(trajectory[..., 2], planar)
+    azimuth = torch.atan2(trajectory[..., 1], trajectory[..., 0])
+    return azimuth * 180 / np.pi, elevation * 180 / np.pi, distance
+
+
+def apply_trajectory_noise(trajectory, noise_std, seed=None):
+    """
+    Add Gaussian noise to a trajectory. (ok - not as hard i thought it'd be lol)
+
+    inputs:
+        trajectory (...,3): camera positions
+        noise_std (float): standard deviation of perturbation
+        seed (int or None): random seed
+    outputs:
+        noisy_trajectory (...,3): perturbed camera positions
+    """
+    if seed is not None:
+        generator = torch.Generator(device=trajectory.device)
+        generator.manual_seed(seed)
+        noise = torch.randn(trajectory.shape, device=trajectory.device, dtype=trajectory.dtype, generator=generator)
+    else:
+        noise = torch.randn_like(trajectory)
+    return trajectory + noise_std * noise
+
+
+def generate_linear_trajectory(start, end, num_pulses, num_views=1, device=None, dtype=torch.float32):
+    """
+    Generate a straight-line trajectory.
+
+    outputs:
+        trajectory (num_views,num_pulses,3)
+    """
+    start_t = torch.tensor(start, device=device, dtype=dtype)
+    end_t = torch.tensor(end, device=device, dtype=dtype)
+    alpha = torch.linspace(0, 1, num_pulses, device=device, dtype=dtype).reshape(1, num_pulses, 1)
+    base = start_t.reshape(1,1,3) + alpha * (end_t - start_t).reshape(1,1,3)
+    return base.repeat(num_views, 1, 1)
+
+
+def generate_circular_trajectory(radius, num_pulses, elevation=0.0, center=(0, 0, 0),
+                                 start_azimuth=0.0, end_azimuth=360.0,
+                                 num_views=1, device=None, dtype=torch.float32):
+    """
+    Generate a circular traj
+
+    outputs:
+        trajectory (num_views,num_pulses,3)
+    """
+    azimuth = torch.linspace(start_azimuth, end_azimuth, num_pulses, device=device, dtype=dtype) * np.pi / 180
+    x = radius * torch.cos(azimuth)
+    y = radius * torch.sin(azimuth)
+    z = torch.full_like(x, elevation)
+    center_t = torch.tensor(center, device=device, dtype=dtype)
+    base = torch.stack([x, y, z], dim=-1).reshape(1, num_pulses, 3) + center_t.reshape(1,1,3)
+    return base.repeat(num_views, 1, 1)
 
 if __name__ == '__main__':
     # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
