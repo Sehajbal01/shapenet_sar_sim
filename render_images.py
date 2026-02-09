@@ -5,7 +5,7 @@ from PIL import ImageDraw
 import imageio
 import cv2
 import os
-from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
+from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info, apply_trajectory_noise, build_azimuth_spread_trajectory
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
@@ -31,7 +31,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         verbose = False,
                         render_method = 'rasterization',
                         imaging_algorithm = 'cbp',
-                        
+                        trajectory = None,
+                        trajectory_noise_std = None,
+                        trajectory_noise_seed = None,
+                     
                         # image size stuff
                         image_width = 64,
                         image_height = 64,
@@ -70,20 +73,33 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         print('Accumulating scatters...')
 
     # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
-    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
-        poses.to(device),
-        mesh, normals, material_properties,
+   poses_device = poses.to(device)
+    if trajectory is None:
+        trajectory = build_azimuth_spread_trajectory(poses_device, num_pulses, az_spread)
+    else:
+        trajectory = trajectory.to(device)
+
+    if trajectory_noise_std is not None:
+        trajectory = apply_trajectory_noise(trajectory, trajectory_noise_std, seed=trajectory_noise_seed)
+
+    accumulate_kwargs = dict(
 
         azimuth_spread = az_spread,
         n_pulses       = num_pulses,
         wavelength     = wavelength,
         debug_gif      = debug_gif,
 
-        # image size stuff
+       
         grid_width     = grid_width,
         grid_height    = grid_height,
         n_ray_width    = n_ray_width,
         n_ray_height   = n_ray_height,
+        trajectory     = trajectory,
+    )
+    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
+        poses_device,
+        mesh, normals, material_properties,
+        **accumulate_kwargs,
     )
     if verbose:
         print('done.')
@@ -134,11 +150,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             image_plane_height = image_plane_height,
         )
     elif imaging_algorithm == 'stripmap':
-        trajectory = cam_distance.reshape(-1,1,1) * (-forward_vectors)  # (T,P,3)
+        stripmap_trajectory = trajectory
+        if stripmap_trajectory is None:
+            stripmap_trajectory = cam_distance.reshape(-1,1,1) * (-forward_vectors)  # (T,P,3)
         sar_image = strip_map_imaging(
             complex_signals,
             wavelength,
-            trajectory,
+            stripmap_trajectory,
             sample_z,
             spatial_fs,
             planar_wave = False,
@@ -879,4 +897,4 @@ if __name__ == '__main__':
         'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0],
     }
     custom_title_strings = None
-    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
+     multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
