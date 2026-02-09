@@ -4,7 +4,7 @@ import imageio
 import torch
 import numpy as np
 
-from utils import get_next_path, extract_pose_info
+from utils import get_next_path, trajectory_to_angles
 from ray_tracer.core.scene import Scene
 from ray_tracer.camera.orthographic import OrthographicCamera
 
@@ -18,7 +18,7 @@ def accumulate_scatters(target_poses,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
-
+                        trajectory=None,
                         num_bounces=2,
                     ):
     '''
@@ -27,7 +27,7 @@ def accumulate_scatters(target_poses,
     inputs:
         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
         object_filename (str): path to the .obj file
-        azimuth_spread (float): the range of azimuth angles for sar rendering
+        azimuth_spread (float): unused when trajectory is provided (I left it here for compatibility)
         n_pulses (int): the number of pulses for sar rendering
         alpha_1 (float): scaling factor for the energy return
         alpha_2 (float): offset for the energy return
@@ -46,14 +46,14 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
-    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #           (T,)          (T,)           (T,)
-
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
-
+     if trajectory is None:
+        raise ValueError("trajectory must be provided. Build it outside accumulate_scatters.")
+    trajectory = trajectory.to(device)
+    if trajectory.shape != (T, P, 3):
+        raise ValueError(f"trajectory must have shape (T,P,3), got {trajectory.shape}")
+    azimuth, elevation, distance = trajectory_to_angles(trajectory)
+    cam_azimuth = azimuth[:, 0]
+    cam_distance = distance[:, 0]
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -65,14 +65,14 @@ def accumulate_scatters(target_poses,
         # construct P number of cameras due to azimuth spread
         cameras = []
         for p in range(P):  # for each pulse
-            elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
+            elevation_rad = elevation[t, p] / 180 * torch.pi  # in radians now
             azimuth_ = (90 + azimuth[t][p]) / 180 * torch.pi  # in radians now
             position_vector = torch.tensor([
-                torch.cos(elevation) * torch.sin(azimuth_),
-                torch.sin(elevation),
-                torch.cos(elevation) * torch.cos(azimuth_)
+               torch.cos(elevation_rad) * torch.sin(azimuth_),
+                torch.sin(elevation_rad),
+                torch.cos(elevation_rad) * torch.cos(azimuth_)
             ], device=device)
-            position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
+           position_vector = position_vector / torch.norm(position_vector) * distance[t, p]
             direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
             direction_vector = direction_vector / torch.norm(direction_vector)
             ortho_cam = OrthographicCamera(
@@ -132,10 +132,6 @@ def accumulate_scatters(target_poses,
             scatter_energies[t][p, :e_r_values.shape[0]] = e_r_values[:, 1]
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
-
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
