@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
-from signal_simulation import interpolate_signal, apply_snr, load_mesh
+from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
 
 from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
 from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
@@ -31,6 +31,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         verbose = False,
                         render_method = 'rasterization',
                         imaging_algorithm = 'cbp',
+                        trajectory_type = 'circular',
                         
                         # image size stuff
                         image_width = 64,
@@ -64,6 +65,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         normals, material_properties = None, None  # embedded into each triangle of the mesh object
     else:
         raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
+
+    trajectory = generate_trajectory(poses, type=trajectory_type, num_points=num_pulses, azimuth_spread=az_spread,)
 
     # SAR raytracing / rasterization
     if verbose:
@@ -262,6 +265,7 @@ def render_random_image(
         suffix = None,
         render_method = 'rasterization',
         imaging_algorithm = 'cbp',
+        trajectory_type = 'circular',
 
         image_plane_width = 1,
         image_plane_height = 1,
@@ -319,6 +323,7 @@ def render_random_image(
                             render_method=render_method,
 
                             imaging_algorithm=imaging_algorithm,
+                            trajectory_type=trajectory_type,
 
                             # image size stuff
                             image_width = image_width,
@@ -852,7 +857,7 @@ if __name__ == '__main__':
         'azimuth_spread': 360,
         'spatial_bw': 90,
         'spatial_fs': 90,
-        # 'wavelength': 0.5,
+        'wavelength': 0.5,
         'use_sig_magnitude': True,
         'snr_db': 50,
 
@@ -874,9 +879,10 @@ if __name__ == '__main__':
 
         'imaging_algorithm': 'stripmap',
 
+
     }
     vary_kwargs = {
-        'wavelength': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0],
+        'trajectory_type': ['circular','linear']
     }
-    custom_title_strings = None
+    custom_title_strings = ['Circular Trajectory','Linear Trajectory']
     multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

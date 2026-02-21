@@ -16,7 +16,68 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info
+from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat
+
+
+
+def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_spread_deg=None, debug=False):
+    '''
+    Generate a trajectory for multiple poses based on a single pose. The pose is the middle of the trajectory.
+    '''
+    assert(azimuth_spread_deg >= 0  ), 'the azimuth cannot be negative'
+
+    device = pose.device
+    T = pose.shape[0]  # no. of camera views
+    P = n_pulses               # no. of pulses per view
+
+    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
+    cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation_deg, cam_azimuth_deg = extract_pose_info(pose)
+    #  (T,3)       (T,3)      (T,3)    (T,3)        (T,)           (T,)              (T,)
+   
+
+    if trajectory_type == 'circular':
+        # Spread the pulses across a small range of azimuth angles
+        azimuth_offsets = torch.linspace(-azimuth_spread_deg / 2, azimuth_spread_deg / 2, P, device=device) # (P,)
+        azimuth_deg = cam_azimuth_deg.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+        elevation_deg = cam_elevation_deg.reshape(T, 1).repeat(1, P) # (T,P)
+        distance = cam_distance.reshape(T, 1).repeat(1, P) # (T,P)
+        trajectory = spherical_to_cartesian(azimuth_deg, elevation_deg, distance) # (T,P,3)
+
+    elif trajectory_type == 'linear':
+
+        assert(azimuth_spread_deg < 180), 'with a linear trajectory, the azimuth cannot be greater than 180 degrees'
+        mag_ground_pos = cam_center[:,:2].norm(dim=-1)  # (T,) magnitude of the ground position
+        dist_from_center = mag_ground_pos * np.tan(azimuth_spread_deg/2 * np.pi/180)  # (T,) distance from the center position for the first and last pulse
+        start_pos = cam_center - dist_from_center.reshape(T,1) * cam_right # (T,3) starting position for the first pulse
+
+        trajectory = torch.linspace(0,1, P, device=device).reshape(1, P, 1) * \
+                     cam_right.reshape(T, 1, 3) * \
+                     (2*dist_from_center).reshape(T, 1, 1) + \
+                     start_pos.reshape(T, 1, 3)
+        # (T,P,3) trajectory of the camera for each pulse
+
+    else:
+        raise ValueError('trajectory_type should be either circular or linear, but got %s' % trajectory_type)
+
+    if debug:
+        # plot the trajectory for debugging
+        plt.figure(figsize=(6,6))
+        min_z = trajectory[:,:,2].min().item()
+        max_z = trajectory[:,:,2].max().item()
+        plt.scatter(trajectory[0,:,0].cpu().numpy(), trajectory[0,:,1].cpu().numpy())
+        plt.title('Camera Trajectory\ntrajectory trajectory_type: %s\nazimuth spread: %d degrees\nz-range: %.2f - %.2f'%(trajectory_type, azimuth_spread_deg, min_z, max_z))
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        path = get_next_path('figures/camera_trajectory.png')
+        savefig(path)
+        
+    return trajectory
+        
+
+
+
+
+
 
 
 
@@ -47,15 +108,6 @@ def accumulate_scatters(target_poses,
     device = target_poses.device
     T = target_poses.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
-
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
-    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #           (T,)          (T,)           (T,)
-
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
-    pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
 
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
@@ -489,3 +541,17 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
 
     # return the mesh
     return verts,faces
+
+
+if __name__ == '__main__':
+    # test the trajectory generation
+    device = 'cuda'
+    T = 1
+    center_az = 45
+    center_el = 45
+    n_pulses = 30
+    azimuth_spread_deg = 120
+    pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
+    trajectory = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg)  # (T,P,3)
+    print('Trajectory:', trajectory)
+    print('Trajectory shape:', trajectory.shape)

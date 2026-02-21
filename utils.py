@@ -14,6 +14,28 @@ from pytorch3d.renderer import (
 )
 
 
+def spherical_to_cartesian(azimuth_deg, elevation_deg, distance):
+    """
+    Convert spherical coordinates to Cartesian coordinates.
+
+    Parameters:
+    - azimuth: (...,) The azimuth angle in degrees.
+    - elevation: (...,) The elevation angle in degrees.
+    - distance: (...,) The distance from the origin.
+
+    Returns:
+    - cartesian: (...,3) The tensor containing the Cartesian coordinates (x, y, z).
+    """
+    azimuth_rad = azimuth_deg * np.pi / 180
+    elevation_rad = elevation_deg * np.pi / 180
+
+    x = distance * torch.cos(elevation_rad) * torch.cos(azimuth_rad)
+    y = distance * torch.cos(elevation_rad) * torch.sin(azimuth_rad)
+    z = distance * torch.sin(elevation_rad)
+
+    cartesian = torch.stack((x, y, z), dim=-1)
+    return cartesian
+
 def savefig(path):
     plt.tight_layout()
     plt.savefig(path)
