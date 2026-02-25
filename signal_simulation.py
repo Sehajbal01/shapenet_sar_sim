@@ -16,7 +16,7 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat
+from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
 
 
 
@@ -71,7 +71,7 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
         path = get_next_path('figures/camera_trajectory.png')
         savefig(path)
         
-    return trajectory
+    return trajectory,cam_azimuth_deg
         
 
 
@@ -83,7 +83,7 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
 
 def accumulate_scatters(target_poses, 
                         mesh, face_normals, material_properties,
-                        azimuth_spread=15, n_pulses=30,
+                        trajectory,
                         wavelength=None,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
@@ -95,8 +95,7 @@ def accumulate_scatters(target_poses,
     inputs:
         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
         object_filename (str): path to the .obj file
-        azimuth_spread (float): the range of azimuth angles for sar rendering
-        n_pulses (int): the number of pulses for sar rendering
+        trajectory (T,P,3): the locations of the sensor for each pulse for each target scene
         wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         debug_gif (bool): whether to save a gif of the depth and energy images
 
@@ -107,7 +106,7 @@ def accumulate_scatters(target_poses,
     '''
     device = target_poses.device
     T = target_poses.shape[0]  # no. of camera views
-    P = n_pulses               # no. of pulses per view
+    P = trajectory.shape[1]    # no. of pulses per view
 
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
@@ -129,10 +128,12 @@ def accumulate_scatters(target_poses,
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
+            cam_azimuth_deg, cam_elevation_deg, cam_distance = cartesian_to_spherical(trajectory[t,p])
+
             rotation, translation = look_at_view_transform(
-                cam_distance[t],
-                cam_elevation[t],
-                pytorch3d_azimuth[t, p],
+                cam_distance,
+                cam_elevation_deg,
+                cam_azimuth_deg+90,
                 device=device)
             cameras = FoVOrthographicCameras(
                 device = device, R = rotation, T = translation, 
@@ -212,16 +213,13 @@ def accumulate_scatters(target_poses,
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
 
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
+    return scatter_ranges, scatter_energies 
+    #      (T, P, R)       (T, P, R)         
 
 
 
@@ -552,6 +550,6 @@ if __name__ == '__main__':
     n_pulses = 30
     azimuth_spread_deg = 120
     pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
-    trajectory = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg)  # (T,P,3)
+    trajectory = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg,debug=True)  # (T,P,3)
     print('Trajectory:', trajectory)
     print('Trajectory shape:', trajectory.shape)

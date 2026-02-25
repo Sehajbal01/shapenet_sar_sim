@@ -4,10 +4,9 @@ import torch
 def projected_CBP(
     signal,
     sample_z,
-    forward_vector,
-    cam_azimuth,
-    cam_distance,
+    trajectory,
     spatial_fs,
+    image_plane_rotation_deg = 0,
     image_width = 64,
     image_height = 64,
     image_plane_width = 1,
@@ -19,9 +18,8 @@ def projected_CBP(
     inputs:
         signal: (T,P,Z) - the signal to be back projected
         sample_z: (Z,) - the range samples
-        forward_vector: (T,P,3) - the forward vector for each ray
-        cam_azimuth: (T,) - the azimuth angle of the camera
-        cam_distance: (T,) - the distance of the camera from the origin
+        trajectory: (T,P,3) - the location of the sensor for each pulse
+        image_plane_rotation_deg: (T,) - the rotation angle of the image plane in degrees.
         spatial_fs: float - the spatial frequency sampling rate
     outputs:
         image: (T,H,W) - the computed image
@@ -30,17 +28,15 @@ def projected_CBP(
     T,P,Z = signal.shape
 
     # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
+    forward_vector = -trajectory/torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,3)
     ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
 
     # calculate projected r from sample_z
-    sample_r = sample_z.reshape(1,1,Z) - cam_distance.reshape(T,1,1) # (T,1,Z)
+    sample_r = sample_z.reshape(1,1,Z) - torch.linalg.vector_norm(trajectory,dim=-1,keep_dim=True) # (T,P,Z)
     projected_r = sample_r / ground_vec_mag # (T,P,Z)
 
     # calculate the forward vector on the x-y plane
     line_vector = forward_vector[...,:2] / ground_vec_mag # (T,P,2)
-
-    # convert azimuth to image plane rotation
-    image_plane_rotation = cam_azimuth + 90
 
     # convert to ground plane fs
     projected_fs = spatial_fs * ground_vec_mag.reshape(T,P) # (T,P,1)
@@ -51,7 +47,7 @@ def projected_CBP(
         projected_r,
         line_vector,
         projected_fs,
-        image_plane_rotation_deg = image_plane_rotation,
+        image_plane_rotation_deg = image_plane_rotation_deg,
         image_width              = image_width,
         image_height             = image_height,
         image_plane_width        = image_plane_width,

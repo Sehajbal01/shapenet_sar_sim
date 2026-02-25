@@ -36,6 +36,78 @@ def spherical_to_cartesian(azimuth_deg, elevation_deg, distance):
     cartesian = torch.stack((x, y, z), dim=-1)
     return cartesian
 
+
+def cartesian_to_spherical(cartesian):
+    """
+    Convert Cartesian coordinates to spherical coordinates.
+
+    Parameters:
+    - cartesian: (...,3) The tensor containing the Cartesian coordinates (x, y, z).
+
+    Returns:
+    - azimuth_deg: (...,) The azimuth angle in degrees.
+    - elevation_deg: (...,) The elevation angle in degrees.
+    - distance: (...,) The distance from the origin.
+    """
+    x = cartesian[..., 0]
+    y = cartesian[..., 1]
+    z = cartesian[..., 2]
+
+    distance = torch.sqrt(x**2 + y**2 + z**2)
+
+    azimuth_rad = torch.atan2(y, x)
+    elevation_rad = torch.atan2(z, torch.sqrt(x**2 + y**2))
+
+    azimuth_deg = azimuth_rad * 180 / np.pi
+    elevation_deg = elevation_rad * 180 / np.pi
+
+    return azimuth_deg, elevation_deg, distance
+
+
+
+def test_spherical_cartesian_consistency(num_points=100000, tol=1e-3):
+    """
+    Test spherical_to_cartesian and cartesian_to_spherical by converting
+    random Cartesian points to spherical coordinates and back.
+
+    Parameters
+    ----------
+    num_points : int
+        Number of random points to generate.
+    tol : float
+        Allowed reconstruction error.
+    """
+
+    # Generate random 3D points across a wide range
+    cartesian_original = torch.randn(num_points, 3) * 100
+
+    # Convert to spherical
+    azimuth_deg, elevation_deg, distance = cartesian_to_spherical(cartesian_original)
+
+    # Convert back to Cartesian
+    cartesian_reconstructed = spherical_to_cartesian(
+        azimuth_deg,
+        elevation_deg,
+        distance
+    )
+
+    # Compute reconstruction error
+    error = torch.norm(cartesian_original - cartesian_reconstructed, dim=-1)
+    max_error = error.max()
+    mean_error = error.mean()
+
+    print(f"Tested {num_points} random points")
+    print(f"Max reconstruction error: {max_error}")
+    print(f"Mean reconstruction error: {mean_error}")
+
+    if max_error < tol:
+        print("PASS: spherical/cartesian conversions are consistent")
+        return True
+    else:
+        print("FAIL: reconstruction error exceeds tolerance")
+        return False
+
+
 def savefig(path):
     plt.tight_layout()
     plt.savefig(path)
@@ -153,180 +225,182 @@ def generate_pose_mat(azimuth,elevation,distance,device='cpu',format='srn_cars')
 
 
 if __name__ == '__main__':
-    # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
+    test_spherical_cartesian_consistency()
 
-    # constants
-    device          = 'cuda'
-    half_side_len   = 0.5
-    n_rays_per_side = 128
-    azimuth_spread  = 0
-    num_pulse       = 1
+    # # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
+
+    # # constants
+    # device          = 'cuda'
+    # half_side_len   = 0.5
+    # n_rays_per_side = 128
+    # azimuth_spread  = 0
+    # num_pulse       = 1
     
-    # get an object and pose
-    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
-    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
-    print('Selected object ID: ', obj_id)
+    # # get an object and pose
+    # all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
+    # obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+    # print('Selected object ID: ', obj_id)
 
-    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
-    all_pose_nums  = os.listdir(all_pose_paths)
-    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
-    print('Selected pose number: ', pose_num)
+    # all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
+    # all_pose_nums  = os.listdir(all_pose_paths)
+    # pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+    # print('Selected pose number: ', pose_num)
 
-    # load image, pose, and mesh
-    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
-    rgb  = np.array(PIL.Image.open(rgb_path))[...,:3][...,:3]
-    pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-    mesh = load_objs_as_meshes([mesh_path], device=device)
+    # # load image, pose, and mesh
+    # rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
+    # pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
+    # mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+    # rgb  = np.array(PIL.Image.open(rgb_path))[...,:3][...,:3]
+    # pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+    # mesh = load_objs_as_meshes([mesh_path], device=device)
 
-    # get azimuth, elevation, and distance from the pose
-    target_poses = torch.tensor(pose, device=device) # (1, 4, 4)
-    cam_center, cam_right, cam_up, cam_forward, distance, elevation, azimuth = extract_pose_info(target_poses, format='srn_cars')
-    # (1,3)     (1,3)      (1,3)   (1,3)        (1,)      (1,)       (1,)
-
-
-    ############################ replicating the srn pose ############################
-    # get verticies
-    verts      = mesh.verts_packed()  # (V, 3)
-    faces      = mesh.faces_packed()  # (F, 3)
-    face_verts = verts[faces]  # (F, 3, 3)
-
-    # compute face normals for all faces
-    v0, v1, v2   = face_verts[:, 0], face_verts[:, 1], face_verts[:,2] # (F, 3), (F, 3), (F, 3)
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
-
-    # prepare rasterization settings
-    raster_settings = RasterizationSettings(
-        image_size=n_rays_per_side, 
-        blur_radius=0.0, 
-        faces_per_pixel=1, 
-
-        bin_size=0,  # or set to a small value
-        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
-    )
+    # # get azimuth, elevation, and distance from the pose
+    # target_poses = torch.tensor(pose, device=device) # (1, 4, 4)
+    # cam_center, cam_right, cam_up, cam_forward, distance, elevation, azimuth = extract_pose_info(target_poses, format='srn_cars')
+    # # (1,3)     (1,3)      (1,3)   (1,3)        (1,)      (1,)       (1,)
 
 
-    # perform rasterization to find where the rays hit the mesh
-    rotation, translation = look_at_view_transform(distance.item(), elevation.item(), 90+azimuth.item(), device=device) # distance, elevation, azimuth
-    cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
-                                 min_x = -half_side_len, max_x = half_side_len,
-                                 min_y = -half_side_len, max_y = half_side_len,
-                                 )
-    rasterizer = MeshRasterizer(
-        cameras=cameras,
-        raster_settings=raster_settings
-    )
-    fragments = rasterizer(mesh)
+    # ############################ replicating the srn pose ############################
+    # # get verticies
+    # verts      = mesh.verts_packed()  # (V, 3)
+    # faces      = mesh.faces_packed()  # (F, 3)
+    # face_verts = verts[faces]  # (F, 3, 3)
 
-    # get depth map
-    depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+    # # compute face normals for all faces
+    # v0, v1, v2   = face_verts[:, 0], face_verts[:, 1], face_verts[:,2] # (F, 3), (F, 3), (F, 3)
+    # face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+    # face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
 
-    # compute surface normals from face indices and mesh vertices/faces
-    face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-    hit = (depth_map >= 0) # (r, r) valid hits
+    # # prepare rasterization settings
+    # raster_settings = RasterizationSettings(
+    #     image_size=n_rays_per_side, 
+    #     blur_radius=0.0, 
+    #     faces_per_pixel=1, 
+
+    #     bin_size=0,  # or set to a small value
+    #     max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
+    # )
+
+
+    # # perform rasterization to find where the rays hit the mesh
+    # rotation, translation = look_at_view_transform(distance.item(), elevation.item(), 90+azimuth.item(), device=device) # distance, elevation, azimuth
+    # cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
+    #                              min_x = -half_side_len, max_x = half_side_len,
+    #                              min_y = -half_side_len, max_y = half_side_len,
+    #                              )
+    # rasterizer = MeshRasterizer(
+    #     cameras=cameras,
+    #     raster_settings=raster_settings
+    # )
+    # fragments = rasterizer(mesh)
+
+    # # get depth map
+    # depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+
+    # # compute surface normals from face indices and mesh vertices/faces
+    # face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
+    # hit = (depth_map >= 0) # (r, r) valid hits
     
-    # create normal map by indexing face normals with face IDs
-    valid_face_ids = face_ids[hit] # (R',)
+    # # create normal map by indexing face normals with face IDs
+    # valid_face_ids = face_ids[hit] # (R',)
 
-    # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-    # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-    forward_vector = rotation[0,:,2] # (3,)
-    energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-    energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
+    # # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
+    # # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
+    # forward_vector = rotation[0,:,2] # (3,)
+    # energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
+    # energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
 
-    # produce a frame of the depth and energy maps
-    masked_dm = depth_map[hit]
-    masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-    masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-    masked_dm = 1 - masked_dm  # invert the depth map
-    dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-    dm_im[hit] = masked_dm  # apply the mask
+    # # produce a frame of the depth and energy maps
+    # masked_dm = depth_map[hit]
+    # masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
+    # masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
+    # masked_dm = 1 - masked_dm  # invert the depth map
+    # dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
+    # dm_im[hit] = masked_dm  # apply the mask
 
-    masked_e = energy_map[hit]
-    masked_e = masked_e - masked_e.min()  # shift to start from 0
-    masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-    e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-    e_im[hit] = masked_e  # apply the mask
+    # masked_e = energy_map[hit]
+    # masked_e = masked_e - masked_e.min()  # shift to start from 0
+    # masked_e = masked_e / masked_e.max()  # normalize to [0,1]
+    # e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
+    # e_im[hit] = masked_e  # apply the mask
 
-    # normalize the depth, energy, and RGB images
-    e_im = e_im.cpu().numpy()  # convert to numpy for saving
-    dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-    dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-    dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
+    # # normalize the depth, energy, and RGB images
+    # e_im = e_im.cpu().numpy()  # convert to numpy for saving
+    # dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
+    # dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
+    # dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
 
-    # repeat for 3 channels and concatenate the rgb image
-    dm_e_im = np.tile(dm_e_im[..., np.newaxis], (1, 1, 3))  # (r, r, 3)
-    print('rgb.dtype: ', rgb.dtype)
-    print('rgb.shape: ', rgb.shape)
-    dm_e_rgb_im = np.concatenate((dm_e_im, rgb.astype(np.uint8)), axis=1)
-    PIL.Image.fromarray(dm_e_rgb_im).save(get_next_path('figures/depth_energy_rgb.png'))  # save the image
-    ############################ replicating the srn pose ############################
-
-
+    # # repeat for 3 channels and concatenate the rgb image
+    # dm_e_im = np.tile(dm_e_im[..., np.newaxis], (1, 1, 3))  # (r, r, 3)
+    # print('rgb.dtype: ', rgb.dtype)
+    # print('rgb.shape: ', rgb.shape)
+    # dm_e_rgb_im = np.concatenate((dm_e_im, rgb.astype(np.uint8)), axis=1)
+    # PIL.Image.fromarray(dm_e_rgb_im).save(get_next_path('figures/depth_energy_rgb.png'))  # save the image
+    # ############################ replicating the srn pose ############################
 
 
-    # # sar rendering
-    # all_azimuths = np.linspace(azimuth - azimuth_spread, azimuth + azimuth_spread, num_pulse)  # (num_pulse,)
-    # print('Azimuths: ', all_azimuths)
-    # print('Elevation: ', elevation)
 
-    # images = []
-    # for azimuth in all_azimuths:
 
-    #     # perform rasterization to find where the rays hit the mesh
-    #     rotation, translation = look_at_view_transform(distance, elevation, azimuth, device=device) # distance, elevation, azimuth
-    #     cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
-    #                                  min_x = -half_side_len, max_x = half_side_len,
-    #                                  min_y = -half_side_len, max_y = half_side_len,
-    #                                  )
-    #     rasterizer = MeshRasterizer(
-    #         cameras=cameras,
-    #         raster_settings=raster_settings
-    #     )
-    #     fragments = rasterizer(mesh)
+    # # # sar rendering
+    # # all_azimuths = np.linspace(azimuth - azimuth_spread, azimuth + azimuth_spread, num_pulse)  # (num_pulse,)
+    # # print('Azimuths: ', all_azimuths)
+    # # print('Elevation: ', elevation)
 
-    #     # get depth map
-    #     depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+    # # images = []
+    # # for azimuth in all_azimuths:
 
-    #     # compute surface normals from face indices and mesh vertices/faces
-    #     face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-    #     hit = (depth_map >= 0) # (r, r) valid hits
+    # #     # perform rasterization to find where the rays hit the mesh
+    # #     rotation, translation = look_at_view_transform(distance, elevation, azimuth, device=device) # distance, elevation, azimuth
+    # #     cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
+    # #                                  min_x = -half_side_len, max_x = half_side_len,
+    # #                                  min_y = -half_side_len, max_y = half_side_len,
+    # #                                  )
+    # #     rasterizer = MeshRasterizer(
+    # #         cameras=cameras,
+    # #         raster_settings=raster_settings
+    # #     )
+    # #     fragments = rasterizer(mesh)
+
+    # #     # get depth map
+    # #     depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+
+    # #     # compute surface normals from face indices and mesh vertices/faces
+    # #     face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
+    # #     hit = (depth_map >= 0) # (r, r) valid hits
     
-    #     # create normal map by indexing face normals with face IDs
-    #     valid_face_ids = face_ids[hit] # (R',)
+    # #     # create normal map by indexing face normals with face IDs
+    # #     valid_face_ids = face_ids[hit] # (R',)
 
-    #     # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-    #     # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-    #     forward_vector = rotation[0,:,2] # (3,)
-    #     energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-    #     energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
+    # #     # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
+    # #     # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
+    # #     forward_vector = rotation[0,:,2] # (3,)
+    # #     energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
+    # #     energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
 
-    #     # produce a frame of the depth and energy maps
-    #     masked_dm = depth_map[hit]
-    #     masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-    #     masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-    #     masked_dm = 1 - masked_dm  # invert the depth map
-    #     dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-    #     dm_im[hit] = masked_dm  # apply the mask
+    # #     # produce a frame of the depth and energy maps
+    # #     masked_dm = depth_map[hit]
+    # #     masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
+    # #     masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
+    # #     masked_dm = 1 - masked_dm  # invert the depth map
+    # #     dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
+    # #     dm_im[hit] = masked_dm  # apply the mask
 
-    #     masked_e = energy_map[hit]
-    #     masked_e = masked_e - masked_e.min()  # shift to start from 0
-    #     masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-    #     e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-    #     e_im[hit] = masked_e  # apply the mask
+    # #     masked_e = energy_map[hit]
+    # #     masked_e = masked_e - masked_e.min()  # shift to start from 0
+    # #     masked_e = masked_e / masked_e.max()  # normalize to [0,1]
+    # #     e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
+    # #     e_im[hit] = masked_e  # apply the mask
 
-    #     e_im = e_im.cpu().numpy()  # convert to numpy for saving
-    #     dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-    #     dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-    #     dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
+    # #     e_im = e_im.cpu().numpy()  # convert to numpy for saving
+    # #     dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
+    # #     dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
+    # #     dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
 
-    #     # save the image
-    #     images.append(dm_e_im)
+    # #     # save the image
+    # #     images.append(dm_e_im)
 
-    # # save the images as a gif
-    # gif_path = get_next_path('figures/depth_energy_maps.gif')
-    # fps = len(images) / 15.0
-    # print('Saving GIF with %.1f fps...' % fps)
-    # imageio.mimsave(gif_path, images, fps=fps, format='GIF', loop=0)
+    # # # save the images as a gif
+    # # gif_path = get_next_path('figures/depth_energy_maps.gif')
+    # # fps = len(images) / 15.0
+    # # print('Saving GIF with %.1f fps...' % fps)
+    # # imageio.mimsave(gif_path, images, fps=fps, format='GIF', loop=0)

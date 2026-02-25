@@ -45,7 +45,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         range_near = 1,
                         range_far = 1,
     ):
-
     # set device
     device = 'cuda'
 
@@ -66,19 +65,17 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     else:
         raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
-    trajectory = generate_trajectory(poses, type=trajectory_type, num_points=num_pulses, azimuth_spread=az_spread,)
+    # generate the sensor trajectory for each pose
+    trajectory,cam_azimuth_deg = generate_trajectory(poses, trajectory_type=trajectory_type, n_pulses=num_pulses, azimuth_spread_deg=az_spread,)
 
     # SAR raytracing / rasterization
     if verbose:
         print('Accumulating scatters...')
 
-    # (T,P,R)   (T,P,R)       (T,P)    (T,P)      (T,P)     (T,)         (T,)
-    all_ranges, all_energies, azimuth, elevation, distance, cam_azimuth, cam_distance = accumulate_scatters_fn(
+    # (T,P,R)   (T,P,R)     
+    all_ranges, all_energies = accumulate_scatters_fn(
         poses.to(device),
-        mesh, normals, material_properties,
-
-        azimuth_spread = az_spread,
-        n_pulses       = num_pulses,
+        mesh, normals, material_properties, trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif,
 
@@ -108,16 +105,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         T,P,Z = signals.shape
         signals = apply_snr(signals.reshape(T,P*Z), snr_db).reshape(T,P,Z)
 
-    # compute forward vectors from azimuth and elevation angles
-    forward_vectors = -torch.stack([
-        torch.cos(3.14159/180*azimuth) * torch.cos(3.14159/180*elevation),
-        torch.sin(3.14159/180*azimuth) * torch.cos(3.14159/180*elevation),
-        torch.sin(3.14159/180*elevation),
-    ], dim=-1)  # (T, P, 3)
-
     # convert to signal magnitude if desired
+    complex_signals = signals
     if use_sig_magnitude:
-        complex_signals = signals
         signals = signals.abs()
 
     # Compute sar image
@@ -127,17 +117,15 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         sar_image = projected_CBP(
             signals, 
             sample_z, 
-            forward_vectors, 
-            cam_azimuth, 
-            cam_distance, 
+            trajectory,
             spatial_fs,
+            image_plane_rotation_deg = cam_azimuth_deg+90,
             image_width = image_width,
             image_height = image_height,
             image_plane_width = image_plane_width,
             image_plane_height = image_plane_height,
         )
     elif imaging_algorithm == 'stripmap':
-        trajectory = cam_distance.reshape(-1,1,1) * (-forward_vectors)  # (T,P,3)
         sar_image = strip_map_imaging(
             complex_signals,
             wavelength,
@@ -145,7 +133,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             sample_z,
             spatial_fs,
             planar_wave = False,
-            image_plane_rotation_deg = cam_azimuth+90,
+            image_plane_rotation_deg = cam_azimuth_deg+90,
             image_width = image_width,
             image_height = image_height,
             image_plane_width = image_plane_width,
@@ -851,10 +839,9 @@ if __name__ == '__main__':
 
     # idk
     default_kwargs = {
-        'debug_gif': False,
-        # 'debug_gif': True,
+        'debug_gif': True,
         'num_pulse': 32,
-        'azimuth_spread': 360,
+        'azimuth_spread': 100,
         'spatial_bw': 90,
         'spatial_fs': 90,
         'wavelength': 0.5,
@@ -882,7 +869,7 @@ if __name__ == '__main__':
 
     }
     vary_kwargs = {
-        'trajectory_type': ['circular','linear']
+        'trajectory_type': ['linear','circular']
     }
-    custom_title_strings = ['Circular Trajectory','Linear Trajectory']
+    custom_title_strings = ['Linear Trajectory','Circular Trajectory']
     multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

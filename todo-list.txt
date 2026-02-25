@@ -1,17 +1,26 @@
 
 
 - manual trajectory
-    - add the linear movement mode
-    - make trajectory generation function
+    DONE - add the linear movement mode
+    DONE - make trajectory generation function
     - modify accumulate_scatters to input trajectory
-    - modify imaging functions to input trajectory
-    - add tests
+        DONE - rasterization
+        - ray tracing
+    DONE - modify imaging functions to input trajectory
+    DONE - add tests
+    - noisy trajectory
 
-DONE? - implement strip map mode simulation
+DONE - implement strip map mode simulation
 
 Implement depth map rendering mode
+Implement range-angle imaging that converts to range-range with various beam patterns
+    - cook up some stuff then meet with andy from arete
 
-address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
+- Adress reviewre concerns
+    - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
+    - i have some slides about this in my updates presentation
+        - https://docs.google.com/presentation/d/128WiwIninhMNFE3ZtLbhJNa_3-_SFAs0fCvjq3ALgXU/edit?slide=id.g2ab64a12bdf_0_22#slide=id.g2ab64a12bdf_0_22
+
 
 - address reviewer concerns:
 ****************************************
