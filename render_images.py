@@ -32,6 +32,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         render_method = 'rasterization',
                         imaging_algorithm = 'cbp',
                         trajectory_type = 'circular',
+
+                        override_obj_path = None,
                         
                         # image size stuff
                         image_width = 64,
@@ -45,6 +47,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         range_near = 1,
                         range_far = 1,
     ):
+    
+    # allow overriding the obj path for debugging purposes
+    mesh_scale = None
+    if override_obj_path is not None:
+        file_name = override_obj_path
+        mesh_scale = 0.07
+
     # set device
     device = 'cuda'
 
@@ -58,7 +67,19 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # load the mesh and hardcode the material properties
     if render_method == 'rasterization':
-        mesh, normals, material_properties = load_mesh(file_name, device=device,)
+        mesh, normals, material_properties = load_mesh( file_name,
+                                                        device=device,
+                                                        make_ground=True,
+                                                        scale=mesh_scale,
+                                                    )
+
+        # verts = mesh.verts_packed()
+        # print('filename: ', file_name)
+        # print('mesh min: ', verts.flatten(0).min(dim=0).values)
+        # print('mesh max: ', verts.flatten(0).max(dim=0).values)
+        # print('mesh.shape: ', verts.shape)
+        # sys.exit()
+
     elif render_method == 'raytracing':
         mesh = load_mesh_raytracing(file_name, device=device,)
         normals, material_properties = None, None  # embedded into each triangle of the mesh object
@@ -255,6 +276,8 @@ def render_random_image(
         imaging_algorithm = 'cbp',
         trajectory_type = 'circular',
 
+        override_obj_path = None,
+
         image_plane_width = 1,
         image_plane_height = 1,
         image_width = 64,
@@ -304,6 +327,8 @@ def render_random_image(
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
+
+                            override_obj_path = override_obj_path,
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
@@ -865,11 +890,32 @@ if __name__ == '__main__':
         # 'render_method': 'raytracing',
 
         'imaging_algorithm': 'stripmap',
+        'trajectory_type': 'circular',
+
 
 
     }
+
+    # generate list of all the .obj paths in this folder
+    override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
+    all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
+    # make the title strinks everuything in the .obj filename before the first 0 or _
+    custom_title_strings = []
+    for obj_path in all_obj_paths:
+        filename = os.path.basename(obj_path)
+        if '_' in filename:
+            title = filename.split('_')[0]  # Extract title before first underscore
+        else:
+            title = filename.split('0')[0]  # If no underscore, use a 0
+        custom_title_strings.append(title)
+    print('all obj paths: ', all_obj_paths)
+    print('custom title strings: ', custom_title_strings)
+
+    all_obj_paths = all_obj_paths[:2]
+    custom_title_strings = custom_title_strings[:2]
+
     vary_kwargs = {
-        'trajectory_type': ['linear','circular']
+        'override_obj_path': all_obj_paths
     }
-    custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
     multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

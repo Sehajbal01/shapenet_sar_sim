@@ -446,6 +446,7 @@ def load_mesh(  file_name,
                 ground_below = True,
                 ground_rsa = (0.3,0.3,0.3),
                 device = 'cuda',
+                scale = None,
         ):  
     '''
     Load a mesh from an obj file and compute face normals.
@@ -465,6 +466,10 @@ def load_mesh(  file_name,
     verts = mesh.verts_packed()  # (V, 3)
     faces = mesh.faces_packed()  # (F, 3)
 
+    # optional scaling
+    if scale is not None:
+        verts = verts * scale
+
     # set material properties for each face
     rsa = torch.tensor(obj_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(faces.shape[0], 1)  # (F, 3)
 
@@ -481,7 +486,6 @@ def load_mesh(  file_name,
         num_verts_before = verts.shape[0]
         verts = torch.cat([verts, ground_verts], dim=0)
         faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
-        mesh = Meshes(verts=[verts], faces=[faces])
 
         # set ground material properties
         ground_properties = torch.tensor(ground_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(ground_faces.shape[0], 1)  # (F_g, 3)
@@ -492,6 +496,12 @@ def load_mesh(  file_name,
     v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
     face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
+
+    # normalize the material properties to add to 1 for each face
+    rsa = rsa / rsa.sum(dim=-1, keepdim=True)  # (F, 3)
+
+    # repack the mesh with the new verts and faces
+    mesh = Meshes(verts=[verts], faces=[faces])
 
     return mesh, face_normals, rsa
 
