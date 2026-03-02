@@ -55,7 +55,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         mesh_scale = 0.07
 
     # set device
-    device = 'cuda'
+    device = poses.device
 
     # select the function for accumulating scatters
     if render_method == 'rasterization':
@@ -853,8 +853,8 @@ if __name__ == '__main__':
     #     'grid_width'         : 1.2,
     #     'grid_height'        : 1.2,
 
-    #     # 'render_method': 'rasterization',
-    #     'render_method': 'raytracing',
+    #     'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
     # }
     # vary_kwargs = {
     #     'wavelength': [0.01, 0.02, 0.05, 0.1]
@@ -862,11 +862,11 @@ if __name__ == '__main__':
     # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
     # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthcomplex", custom_title_strings=custom_title_strings)
 
-    # idk
+    # comparing trajectory types
     default_kwargs = {
-        'debug_gif': True,
+        'debug_gif': False,
         'num_pulse': 32,
-        'azimuth_spread': 100,
+        'azimuth_spread': 90,
         'spatial_bw': 90,
         'spatial_fs': 90,
         'wavelength': 0.5,
@@ -888,34 +888,66 @@ if __name__ == '__main__':
 
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
-
-        'imaging_algorithm': 'stripmap',
-        'trajectory_type': 'circular',
-
-
-
     }
-
-    # generate list of all the .obj paths in this folder
-    override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
-    all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
-    # make the title strinks everuything in the .obj filename before the first 0 or _
-    custom_title_strings = []
-    for obj_path in all_obj_paths:
-        filename = os.path.basename(obj_path)
-        if '_' in filename:
-            title = filename.split('_')[0]  # Extract title before first underscore
-        else:
-            title = filename.split('0')[0]  # If no underscore, use a 0
-        custom_title_strings.append(title)
-    print('all obj paths: ', all_obj_paths)
-    print('custom title strings: ', custom_title_strings)
-
-    all_obj_paths = all_obj_paths[:2]
-    custom_title_strings = custom_title_strings[:2]
-
     vary_kwargs = {
-        'override_obj_path': all_obj_paths
+        'trajectory_type': ['linear', 'circular']
     }
-    #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
-    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
+    custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_type", custom_title_strings=custom_title_strings)
+
+
+    # # idk
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 100,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'range_near'         : 0.5,
+    #     'range_far'          : 2.1,
+
+    #     'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
+
+    #     'imaging_algorithm': 'cbp',
+    #     'trajectory_type': 'circular',
+
+
+
+    # }
+
+    # # generate list of all the .obj paths in this folder
+    # override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
+    # all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
+    # # make the title strinks everuything in the .obj filename before the first 0 or _
+    # custom_title_strings = []
+    # for obj_path in all_obj_paths:
+    #     filename = os.path.basename(obj_path)
+    #     if '_' in filename:
+    #         title = filename.split('_')[0]  # Extract title before first underscore
+    #     else:
+    #         title = filename.split('0')[0]  # If no underscore, use a 0
+    #     custom_title_strings.append(title)
+    # print('all obj paths: ', all_obj_paths)
+    # print('custom title strings: ', custom_title_strings)
+
+    # # all_obj_paths = all_obj_paths[:2]
+    # # custom_title_strings = custom_title_strings[:2]
+
+    # vary_kwargs = {
+    #     'override_obj_path': all_obj_paths
+    # }
+    # #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

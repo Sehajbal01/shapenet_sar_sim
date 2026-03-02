@@ -224,8 +224,38 @@ def generate_pose_mat(azimuth,elevation,distance,device='cpu',format='srn_cars')
         raise NotImplementedError("Unknown format for generate_pose_mat(): %s" % format)
 
 
+def plot_angular_response():
+    '''
+    plotting models for returned energy
+    '''
+
+    r = 1 # reflectivity
+    s = 1 # directional dependent scattering
+    a = 1 # absorbtion
+    d = 0 # diffusion scattering
+    i = 1 # directional scattering intensity
+    energy_in = 1
+
+    theta_deg = np.linspace(0,180,1000)
+    theta = theta_deg*np.pi/180
+
+    for i in [.2,.5,1,2,5,10,20,50,100]:
+        # energy_returned = energy_in * (s*(np.cos(theta)**i) + d)
+        # energy_returned = energy_in * (s*(np.cos(theta)+1)**i + d)
+        energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
+        plt.plot(theta_deg, energy_returned, label='$\\alpha$=%.1f'%i)
+    plt.xlabel('Reflected angular difference (degrees)')
+    plt.ylabel('Energy returned')
+    plt.legend()
+    plt.grid()
+    plt.title('Angular response of returned energy for different scattering intensities\n(s=%d, d=%d, r=%d, a=%d)'%(s,d,r,a))
+    savefig(get_next_path('figures/angular_response.png'))
+
+
+
+
 if __name__ == '__main__':
-    test_spherical_cartesian_consistency()
+    plot_angular_response()
 
     # # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
 

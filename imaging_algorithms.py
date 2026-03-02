@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import sys
 
 def projected_CBP(
     signal,
@@ -28,11 +29,11 @@ def projected_CBP(
     T,P,Z = signal.shape
 
     # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
-    forward_vector = -trajectory/torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,3)
+    forward_vector = -trajectory/torch.norm(trajectory,dim=-1,keepdim=True) # (T,P,3)
     ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
 
     # calculate projected r from sample_z
-    sample_r = sample_z.reshape(1,1,Z) - torch.linalg.vector_norm(trajectory,dim=-1,keep_dim=True) # (T,P,Z)
+    sample_r = sample_z.reshape(1,1,Z) - torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,Z)
     projected_r = sample_r / ground_vec_mag # (T,P,Z)
 
     # calculate the forward vector on the x-y plane

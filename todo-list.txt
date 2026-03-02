@@ -1,4 +1,7 @@
+TOP PRIORITY:
+- make height map rendering mode
 
+Others
 
 - manual trajectory
     DONE - add the linear movement mode
@@ -9,8 +12,24 @@
     DONE - modify imaging functions to input trajectory
     DONE - add tests
     - noisy trajectory
+        - imaging function assumes the perfect trajectory
+        - the signals are taken with the noisy trajectory
+    - make image mosaic for the paper
 
-DONE - implement strip map mode simulation
+- simple object imaging
+    - find the right model for r s a d i for CV Domes first
+    - replicate sinc pattern in the image
+    - cube and sphere obj in /workspace/berian
+
+- implement strip map mode simulation
+    DONE - implement the imaging function
+    - make image mosaic for the paper
+
+- Produce images for CV domes object for comparative analysis
+    - play with the model
+    - decide on a new returned energy model
+    - find hyperparameters that best match CVDomes results
+    - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
 
 Implement depth map rendering mode
 Implement range-angle imaging that converts to range-range with various beam patterns
