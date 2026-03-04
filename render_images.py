@@ -167,7 +167,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, all_ranges, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
+        signal_gif(signals, all_ranges/2, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
 
     return sar_image
 
@@ -293,11 +293,14 @@ def render_random_image(
     Renders a random image from the ShapeNet dataset using SAR simulation.
     """
 
-    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
+    # dataset_dir = '/workspace/data/srncars/cars_train/'
+    dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
+    models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
 
-    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
+    all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
     all_pose_nums  = os.listdir(all_pose_paths)
     pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
     print('Selected pose number: ', pose_num)
@@ -306,9 +309,12 @@ def render_random_image(
         suffix = '%s_%s'%(pose_num, obj_id)
 
     # load image, pose, and mesh
-    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+    # rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
+    # pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
+    # mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
+    rgb_path  = os.path.join(dataset_dir, obj_id, 'rgb', '%s.png'%pose_num)
+    pose_path = os.path.join(dataset_dir, obj_id, 'pose', '%s.txt'%pose_num)
+    mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')
     rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
     pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
     
@@ -864,7 +870,7 @@ if __name__ == '__main__':
 
     # comparing trajectory types
     default_kwargs = {
-        'debug_gif': False,
+        'debug_gif': True,
         'num_pulse': 32,
         'azimuth_spread': 90,
         'spatial_bw': 90,
@@ -882,7 +888,8 @@ if __name__ == '__main__':
         'n_ray_width'        : 256,
         'n_ray_height'       : 256,
         'range_near'         : 0.5,
-        'range_far'          : 2.1,
+        # 'range_far'          : 2.1,
+        'range_far'          : 2.7,
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 

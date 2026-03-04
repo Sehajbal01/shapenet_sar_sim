@@ -6,6 +6,8 @@ Others
 - manual trajectory
     DONE - add the linear movement mode
     DONE - make trajectory generation function
+    - make sure considered samples have the object in range
+        - variable z_near,z_far per pulse
     - modify accumulate_scatters to input trajectory
         DONE - rasterization
         - ray tracing
