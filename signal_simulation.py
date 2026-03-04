@@ -223,7 +223,8 @@ def accumulate_scatters(target_poses,
 
 
 
-def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
+def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
+        region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
         batch_size = None, window_func = 'sinc',
         debug = False,
@@ -235,8 +236,10 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     Inputs:
         scatter_z (...,R): the range of each scatter point
         scatter_e (...,R): the energy of each scatter point
-        range_near (float): z near to use when rendering
-        range_far (float): z far to use when rendering
+        # range_near (float): z near to use when rendering
+        # range_far (float): z far to use when rendering
+        region_radius (float): the radius of the region to consider for output signal samples
+        sensor_distance (...,): the distance from the sensor to the origin for each pulse
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
@@ -245,6 +248,8 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     Returns:
         signal (tensor): simulated received signal .shape=(..., Z)
     """
+
+    device = scatter_z.device
 
     # reshaping
     R = scatter_z.shape[-1]  # number of scatter points
@@ -263,11 +268,14 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
 
     # calculate the center of each spatial sample
-    device = scatter_z.device
-    first_z = int(math.ceil(range_near*spatial_fs))
-    last_z =  int(math.floor(range_far*spatial_fs))
-    sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
-    Z = len(sample_z)
+    # first_z = int(math.ceil(range_near*spatial_fs))
+    # last_z =  int(math.floor(range_far*spatial_fs))
+    # sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
+    # Z = len(sample_z)
+    # the new way
+    Z = int(2*region_radius*spatial_fs) + 1
+    sample_z = (torch.linspace(0,1, Z, device=device, dtype=scatter_z.dtype) - 0.5 ) * (Z-1)/spatial_fs # (Z,)
+    sample_z = sensor_distance.reshape(N,1) + sample_z # (N, 1) + (Z,) -> (N, Z)
 
     # calculate the received signal for each pulse
     # signal = sum_over_R_scatters( scatter_e * torch.sinc( spatial_bw * (scatter_z - sample_z) ) )
@@ -275,7 +283,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     if batch_size is None:
         signal = torch.sum(
             scatter_e.reshape(N,R,1) * \
-            window(scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z)),
+            window(scatter_z.reshape(N,R,1) - sample_z.reshape(N,1,Z)),
             dim=1
         ) # (N, Z)
 
@@ -285,7 +293,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         reshaped_scatter_e = scatter_e.reshape(N,R,1)
         reshaped_scatter_z = scatter_z.reshape(N,R,1)
-        reshaped_sample_z  = sample_z.reshape(1,1,Z)
+        reshaped_sample_z  = sample_z.reshape(N,1,Z)
 
         start = 0
         while start < N:
@@ -323,16 +331,16 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         plt.title('Scatters')
         plt.xlabel('Range')
         plt.ylabel('Energy')
-        plt.xlim(range_near, range_far)
+        plt.xlim(-region_radius, region_radius)
         plt.ylim(energy_min, energy_max)
 
         # plot the signal
         plt.subplot(1, 2, 2)
-        plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
+        plt.plot(sample_z[p].cpu().numpy(), signals[p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
         plt.ylabel('Amplitude')
-        plt.xlim(range_near, range_far)
+        plt.xlim(-region_radius, region_radius)
         plt.ylim(sig_min, sig_max)
 
         # # plot the interpolating sinc pulse function along with the scatters
@@ -356,7 +364,9 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
     # return stuff
     signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
-    return signal/R, sample_z # normalize by the number of rays
+    sample_z = sample_z.reshape(*shape_prefix, Z)  # (..., Z)
+    ray_normalized_signal = signal/R # normalize by the number of rays
+    return ray_normalized_signal, sample_z
 
 
 

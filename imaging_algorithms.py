@@ -18,7 +18,7 @@ def projected_CBP(
     
     inputs:
         signal: (T,P,Z) - the signal to be back projected
-        sample_z: (Z,) - the range samples
+        sample_z: (T,P,Z,) - the range samples
         trajectory: (T,P,3) - the location of the sensor for each pulse
         image_plane_rotation_deg: (T,) - the rotation angle of the image plane in degrees.
         spatial_fs: float - the spatial frequency sampling rate
@@ -33,7 +33,7 @@ def projected_CBP(
     ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
 
     # calculate projected r from sample_z
-    sample_r = sample_z.reshape(1,1,Z) - torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,Z)
+    sample_r = sample_z - torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,Z)
     projected_r = sample_r / ground_vec_mag # (T,P,Z)
 
     # calculate the forward vector on the x-y plane
@@ -156,7 +156,7 @@ def strip_map_imaging(  signal,
         wavelength: - the wavelength
         attenuation_coeff: - the attenuation coefficient of the medium
         trajectory: (N,P,3) - the trajectory of the sensor
-        sample_dist: (D,) - the distance samples
+        sample_dist: (N,P,D) - the distance samples
         interpolation_fs: float - the spatial frequency sampling rate
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
 
@@ -204,7 +204,7 @@ def strip_map_imaging(  signal,
 
     # interpolate signal at distance_to_pixel
     signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(1,1,1,D)) )), # (N,P,T,D)
+                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(N,P,1,D)) )), # (N,P,T,D)
                                     dim=-1
                                 ) # (N,P,T)
     

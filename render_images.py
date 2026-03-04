@@ -44,8 +44,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         grid_height = 1,
                         n_ray_width = 1,
                         n_ray_height = 1,
-                        range_near = 1,
-                        range_far = 1,
+                        # range_near = 1,
+                        # range_far = 1,
+                        region_radius = 1.7,
     ):
     
     # allow overriding the obj path for debugging purposes
@@ -113,8 +114,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # (T,P,Z) (Z,)
     if verbose:
         print('Interpolating signal...')
+    # (T,P,Z) (T,P,Z,)
     signals, sample_z = interpolate_signal(all_ranges/2, all_energies, # divide ranges by 2 to convert to spatial range
-            range_near = range_near, range_far = range_far,
+
+            # range_near = range_near, range_far = range_far,
+            region_radius,
+            torch.linalg.norm(trajectory, dim=-1), # (T,P)
+
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
             batch_size = None, debug = debug_gif,
     )
@@ -167,14 +173,14 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, all_ranges/2, all_energies, sample_z, range_near, range_far, suffix =debug_gif_suffix)
+        signal_gif(signals, all_ranges/2, all_energies, sample_z, region_radius, suffix =debug_gif_suffix)
 
     return sar_image
 
 
 
 
-def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffix=None):
+def signal_gif(signals, all_ranges, all_energies, sample_z, region_radius, suffix=None):
 
 
     # convert to amplitude
@@ -193,14 +199,14 @@ def signal_gif(signals, all_ranges, all_energies, sample_z, z_near, z_far, suffi
         plt.title('Scatters')
         plt.xlabel('Range')
         plt.ylabel('Energy')
-        plt.xlim(z_near, z_far)
+        plt.xlim(sample_z.min().item(), sample_z.max().item())
         plt.ylim(energy_min, energy_max)
         plt.subplot(1, 2, 2)
-        plt.plot(sample_z.cpu().numpy(), signals[0,p].cpu().numpy())
+        plt.plot(sample_z[0,p].cpu().numpy(), signals[0,p].cpu().numpy())
         plt.title('Signal')
         plt.xlabel('Range')
         plt.ylabel('Amplitude')
-        plt.xlim(z_near, z_far)
+        plt.xlim(sample_z.min().item(), sample_z.max().item())
         plt.ylim(sig_min, sig_max)
 
 
@@ -286,8 +292,9 @@ def render_random_image(
         grid_height = 1,
         n_ray_width = 1,
         n_ray_height = 1, 
-        range_near = 1,
-        range_far = 1,
+        # range_near = 1,
+        # range_far = 1,
+        region_radius = 1.7,
     ):
     """
     Renders a random image from the ShapeNet dataset using SAR simulation.
@@ -353,8 +360,9 @@ def render_random_image(
                             grid_height = grid_height,
                             n_ray_width = n_ray_width,
                             n_ray_height = n_ray_height,
-                            range_near = range_near,
-                            range_far = range_far,
+                            # range_near = range_near,
+                            # range_far = range_far,
+                            region_radius = region_radius,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -414,7 +422,6 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             param_str_parts = []
             for param_name, param_vals in param_dict.items():
                 try:
-                    # param_str_parts.append(f"{param_name}{int(param_vals[i])}")
                     try:
                         param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
                     except(ValueError):
@@ -887,9 +894,10 @@ if __name__ == '__main__':
         'grid_height'        : 2,
         'n_ray_width'        : 256,
         'n_ray_height'       : 256,
-        'range_near'         : 0.5,
+        # 'range_near'         : 0.5,
         # 'range_far'          : 2.1,
-        'range_far'          : 2.7,
+        # 'range_far'          : 2.7,
+        'region_radius'      : 1.7,
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
