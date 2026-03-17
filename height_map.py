@@ -1,9 +1,11 @@
+import subprocess
 try:
     import torch
 except ImportError:
     print("PyTorch not installed.\nPlease activate your conda environment (e.g. `conda activate sarrender`) and make sure `torch` is available.")
     import sys
     sys.exit(1)
+
 
 from pytorch3d.io import load_objs_as_meshes
 from pytorch3d.renderer import (
@@ -199,3 +201,21 @@ if __name__ == '__main__':
     make_height_map_dataset('/home/berian/Documents/shapenet/cars_test/')
     print('Making height map for val dataset...')
     make_height_map_dataset('/home/berian/Documents/shapenet/cars_val/')
+
+    # i can copy all the data over to the cluster with:
+# rsync -avR \
+# --include='*/' \
+# --include='height_map/***' \
+# --exclude='*' \
+# /home/berian/Documents/shapenet/./ \
+# berian@engr-mahala01s.engr.arizona.edu:/workspace/data/srncars
+    
+    # to run that command here in python, I can do:
+    # subprocess.run([
+    #     'rsync', '-avR',
+    #     '--include=*/',
+    #     '--include=height_map/***',
+    #     '--exclude=*',
+    #     '/home/berian/Documents/shapenet/./',
+    #     'berian@engr-mahala01s.engr.arizona.edu:/workspace/data/srncars',
+    # ])
