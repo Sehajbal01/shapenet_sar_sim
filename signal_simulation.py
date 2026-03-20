@@ -20,7 +20,7 @@ from utils import get_next_path, extract_pose_info, spherical_to_cartesian, gene
 
 
 
-def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_spread_deg=None, debug=False):
+def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_spread_deg=None, trajectory_noise_var=0, debug=False):
     '''
     Generate a trajectory for multiple poses based on a single pose. The pose is the middle of the trajectory.
     '''
@@ -70,8 +70,20 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
         plt.ylabel('Y')
         path = get_next_path('figures/camera_trajectory.png')
         savefig(path)
+
+    # apply trajectory gaussian noise if desired
+    if trajectory_noise_var > 0:
+        noise = torch.randn_like(trajectory) * np.sqrt(trajectory_noise_var)
+        true_trajectory = trajectory + noise
+    else:
+        true_trajectory = trajectory
+    perceived_trajectory = trajectory
+
+    print('trajectory.shape: ', trajectory.shape)
+    print('true_trajectory.shape: ', true_trajectory.shape)
+    print('perceived_trajectory.shape: ', perceived_trajectory.shape)
         
-    return trajectory,cam_azimuth_deg
+    return true_trajectory, perceived_trajectory, cam_azimuth_deg
         
 
 

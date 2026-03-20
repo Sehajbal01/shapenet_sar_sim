@@ -32,6 +32,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         render_method = 'rasterization',
                         imaging_algorithm = 'cbp',
                         trajectory_type = 'circular',
+                        trajectory_noise_var = 0,
 
                         override_obj_path = None,
                         
@@ -88,7 +89,13 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
 
     # generate the sensor trajectory for each pose
-    trajectory,cam_azimuth_deg = generate_trajectory(poses, trajectory_type=trajectory_type, n_pulses=num_pulses, azimuth_spread_deg=az_spread,)
+    # (T,P,3)        (T,P,3)              (T,P)
+    true_trajectory, perceived_trajectory, cam_azimuth_deg = generate_trajectory(   poses,
+                                                        trajectory_type=trajectory_type,
+                                                        n_pulses=num_pulses,
+                                                        azimuth_spread_deg=az_spread,
+                                                        trajectory_noise_var = trajectory_noise_var
+                                                    )
 
     # SAR raytracing / rasterization
     if verbose:
@@ -97,7 +104,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # (T,P,R)   (T,P,R)     
     all_ranges, all_energies = accumulate_scatters_fn(
         poses.to(device),
-        mesh, normals, material_properties, trajectory,
+        mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif,
 
@@ -119,7 +126,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
             # range_near = range_near, range_far = range_far,
             region_radius,
-            torch.linalg.norm(trajectory, dim=-1), # (T,P)
+            torch.linalg.norm(true_trajectory, dim=-1), # (T,P)
 
             spatial_bw = spatial_bw, spatial_fs = spatial_fs,
             batch_size = None, debug = debug_gif,
@@ -144,7 +151,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         sar_image = projected_CBP(
             signals, 
             sample_z, 
-            trajectory,
+            perceived_trajectory,
             spatial_fs,
             image_plane_rotation_deg = cam_azimuth_deg+90,
             image_width = image_width,
@@ -156,7 +163,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         sar_image = strip_map_imaging(
             complex_signals,
             wavelength,
-            trajectory,
+            perceived_trajectory,
             sample_z,
             spatial_fs,
             planar_wave = False,
@@ -281,6 +288,7 @@ def render_random_image(
         render_method = 'rasterization',
         imaging_algorithm = 'cbp',
         trajectory_type = 'circular',
+        trajectory_noise_var = 0,
 
         override_obj_path = None,
 
@@ -350,6 +358,7 @@ def render_random_image(
 
                             imaging_algorithm=imaging_algorithm,
                             trajectory_type=trajectory_type,
+                            trajectory_noise_var = trajectory_noise_var,
 
                             # image size stuff
                             image_width = image_width,
@@ -875,7 +884,42 @@ if __name__ == '__main__':
     # custom_title_strings = ['wavelength: 0.01','wavelength: 0.02','wavelength: 0.05','wavelength: 0.10',]
     # multi_param_experiment(vary_kwargs, default_kwargs, "wavelengthcomplex", custom_title_strings=custom_title_strings)
 
-    # comparing trajectory types
+    # # comparing trajectory types
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     # 'range_near'         : 0.5,
+    #     # 'range_far'          : 2.1,
+    #     # 'range_far'          : 2.7,
+    #     'region_radius'      : 1.7,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'trajectory_type': ['linear', 'circular']
+    # }
+    # custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_type", custom_title_strings=custom_title_strings)
+
+    # Noisy trajectory
     default_kwargs = {
         'debug_gif': True,
         'num_pulse': 32,
@@ -901,14 +945,15 @@ if __name__ == '__main__':
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
+        'trajectory_type': 'circular',
+
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
     }
     vary_kwargs = {
-        'trajectory_type': ['linear', 'circular']
+        'trajectory_noise_var': [0,]+(10**np.linspace(-3,0,7,endpoint=True)).tolist()
     }
-    custom_title_strings = ['Linear Trajectory','Circular Trajectory']
-    multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_type", custom_title_strings=custom_title_strings)
+    multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var")
 
 
     # # idk

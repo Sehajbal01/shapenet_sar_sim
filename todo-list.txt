@@ -1,5 +1,5 @@
 TOP PRIORITY:
-- make height map rendering mode
+DONE - make height map rendering mode
 
 Others
 
