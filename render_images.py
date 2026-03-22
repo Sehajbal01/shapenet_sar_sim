@@ -308,9 +308,14 @@ def render_random_image(
     Renders a random image from the ShapeNet dataset using SAR simulation.
     """
 
-    # dataset_dir = '/workspace/data/srncars/cars_train/'
-    dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
-    models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    # cluster dirs
+    dataset_dir = '/workspace/data/srncars/cars_train/'
+    models_dir = '/workspace/data/srncars/02958343'
+
+    # lab pc dirs
+    # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
+    # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+
     all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
@@ -432,7 +437,11 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             for param_name, param_vals in param_dict.items():
                 try:
                     try:
-                        param_str_parts.append("%s%.2f" % (param_name, float(param_vals[i])))
+                        val = float(param_vals[i])
+                        if val < 0.1:
+                            param_str_parts.append("%s%.2e" % (param_name, val))
+                        else:
+                            param_str_parts.append("%s%.2f" % (param_name, val))
                     except(ValueError):
                         param_str_parts.append(f"{param_name}{param_vals[i]}")
 
@@ -921,7 +930,7 @@ if __name__ == '__main__':
 
     # Noisy trajectory
     default_kwargs = {
-        'debug_gif': True,
+        'debug_gif': False,
         'num_pulse': 32,
         'azimuth_spread': 90,
         'spatial_bw': 90,
@@ -951,9 +960,11 @@ if __name__ == '__main__':
         # 'render_method': 'raytracing',
     }
     vary_kwargs = {
-        'trajectory_noise_var': [0,]+(10**np.linspace(-3,0,7,endpoint=True)).tolist()
+        'trajectory_noise_var': [0,]+(10**np.linspace(-5,-2,7,endpoint=True)).tolist()
     }
-    multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var")
+
+    custom_title_strings = ['%.2e'%v for v in vary_kwargs['trajectory_noise_var']]
+    multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var", custom_title_strings=custom_title_strings)
 
 
     # # idk

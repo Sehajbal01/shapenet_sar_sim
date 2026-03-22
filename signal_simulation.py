@@ -78,10 +78,6 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
     else:
         true_trajectory = trajectory
     perceived_trajectory = trajectory
-
-    print('trajectory.shape: ', trajectory.shape)
-    print('true_trajectory.shape: ', true_trajectory.shape)
-    print('perceived_trajectory.shape: ', perceived_trajectory.shape)
         
     return true_trajectory, perceived_trajectory, cam_azimuth_deg
         
