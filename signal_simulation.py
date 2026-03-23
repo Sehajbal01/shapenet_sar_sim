@@ -175,7 +175,7 @@ def accumulate_scatters(target_poses,
             # calculate returned energy
             # the old equation # energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
             # from the utils file, energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
-            energy_map[hit] = 
+            energy_map[hit] = material_properties[valid_face_ids,4] * torch.linalg.norm(face_normals[valid_face_ids] * forward_vector, dim=-1) ** material_properties[valid_face_ids,2] + material_properties[valid_face_ids,3]
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -467,10 +467,10 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_raids = (1,1,10,1,1),
+                obj_raids = (1,1,10,0,1),
                 make_ground = True,
                 ground_below = True,
-                ground_raids = (1,1,10,1,1),
+                ground_raids = (1,1,1,.9,.1),
                 device = 'cuda',
                 scale = None,
         ):  
@@ -515,7 +515,7 @@ def load_mesh(  file_name,
 
         # set ground material properties
         ground_properties = torch.tensor(ground_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(ground_faces.shape[0], 1)  # (F_g, 5)
-        raids = torch.cat([rsa, ground_properties], dim=0)  # (F, 5)
+        raids = torch.cat([raids, ground_properties], dim=0)  # (F, 5)
 
     # calculate the normals
     face_verts = verts[faces]  # (F, 3, 3)
