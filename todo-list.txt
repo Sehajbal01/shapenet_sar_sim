@@ -13,13 +13,15 @@ Others
         - ray tracing
     DONE - modify imaging functions to input trajectory
     DONE - add tests
-    - noisy trajectory
-        - imaging function assumes the perfect trajectory
-        - the signals are taken with the noisy trajectory
+    DONE - noisy trajectory
+        DONE - imaging function assumes the perfect trajectory
+        DONE - the signals are taken with the noisy trajectory
     - make image mosaic for the paper
 
 - simple object imaging
-    - find the right model for r s a d i for CV Domes first
+    DONE - find the right model for r s a d i for CV Domes first
+        DONE - play around with it in utils
+    - implement the new return model
     - replicate sinc pattern in the image
     - cube and sphere obj in /workspace/berian
 

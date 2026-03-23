@@ -69,6 +69,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # load the mesh and hardcode the material properties
     if render_method == 'rasterization':
+        #obj  (F,3)    (F,5)
         mesh, normals, material_properties = load_mesh( file_name,
                                                         device=device,
                                                         make_ground=True,

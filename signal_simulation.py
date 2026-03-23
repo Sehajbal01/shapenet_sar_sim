@@ -102,10 +102,14 @@ def accumulate_scatters(target_poses,
 
     inputs:
         target_poses (T,4,4): the rgb pose for which we want to get a sar image from
-        object_filename (str): path to the .obj file
+        mesh (obj): pytorch3d mesh object of the 3d model
+        face_normals (F,3): the normal vector of each face on the mesh
+        material_properties (F,5): the r,a,i,d,s of each face of the mesh
         trajectory (T,P,3): the locations of the sensor for each pulse for each target scene
         wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         debug_gif (bool): whether to save a gif of the depth and energy images
+        grid_width/height (float): the size of the ray grid for the orthonormal camera
+        n_ray_width/height (int): the number of rays on the ray grid along the width and height axis.
 
     outputs:
         range (T,P,R): the range of all the rays
@@ -167,7 +171,11 @@ def accumulate_scatters(target_poses,
             # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
             forward_vector = rotation[0,:,2] # (3,)
             energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
-            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
+
+            # calculate returned energy
+            # the old equation # energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
+            # from the utils file, energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
+            energy_map[hit] = 
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -459,10 +467,10 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_rsa = (0.3,0.3,0.3),
+                obj_raids = (1,1,10,1,1),
                 make_ground = True,
                 ground_below = True,
-                ground_rsa = (0.3,0.3,0.3),
+                ground_raids = (1,1,10,1,1),
                 device = 'cuda',
                 scale = None,
         ):  
@@ -471,13 +479,13 @@ def load_mesh(  file_name,
     Inputs:
         file_name: str - path to the obj file
         make_ground: bool - whether to add a ground plane
-        obj_rsa: tuple - roughness, specular, ambient for the object material
-        ground_rsa: tuple - roughness, specular, ambient for the ground material
+        obj_raids: tuple - roughness, specular, ambient for the object material
+        ground_raids: tuple - roughness, specular, ambient for the ground material
         device: str - device to load the mesh onto
     Outputs:
         mesh: Meshes - the loaded mesh with face normals
         face_normals: (F, 3) - the face normals
-        rsa: (F, 3) - the material properties for each face in Reflectivity, Scatter, Absorption
+        raids: (F, 5) - the material properties for each face in Reflectivity, Scatter, Absorption
     '''
     # load verts and faces
     mesh = load_objs_as_meshes([file_name], device=device)
@@ -489,7 +497,7 @@ def load_mesh(  file_name,
         verts = verts * scale
 
     # set material properties for each face
-    rsa = torch.tensor(obj_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(faces.shape[0], 1)  # (F, 3)
+    raids = torch.tensor(obj_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(faces.shape[0], 1)  # (F, 5)
 
     # add a ground if desired to the mesh
     if make_ground:
@@ -506,8 +514,8 @@ def load_mesh(  file_name,
         faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
 
         # set ground material properties
-        ground_properties = torch.tensor(ground_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(ground_faces.shape[0], 1)  # (F_g, 3)
-        rsa = torch.cat([rsa, ground_properties], dim=0)  # (F, 3)
+        ground_properties = torch.tensor(ground_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(ground_faces.shape[0], 1)  # (F_g, 5)
+        raids = torch.cat([rsa, ground_properties], dim=0)  # (F, 5)
 
     # calculate the normals
     face_verts = verts[faces]  # (F, 3, 3)
@@ -515,13 +523,11 @@ def load_mesh(  file_name,
     face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
 
-    # normalize the material properties to add to 1 for each face
-    rsa = rsa / rsa.sum(dim=-1, keepdim=True)  # (F, 3)
-
     # repack the mesh with the new verts and faces
     mesh = Meshes(verts=[verts], faces=[faces])
 
-    return mesh, face_normals, rsa
+    return mesh, face_normals, raids
+    #      obj   (F,3)         (F,5)
 
 
 def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.1, device = 'cpu' ):

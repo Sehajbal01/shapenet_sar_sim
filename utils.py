@@ -1,3 +1,5 @@
+import itertools
+
 import matplotlib.pyplot as plt
 import PIL
 import os
@@ -255,7 +257,11 @@ def plot_angular_response():
 
 
 if __name__ == '__main__':
-    plot_angular_response()
+    # plot_angular_respoimport itertools
+
+    chars = ['r', 's', 'a', 'd', 'i']
+    for perm in itertools.permutations(chars):
+        print(''.join(perm))
 
     # # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
 
