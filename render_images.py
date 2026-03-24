@@ -48,6 +48,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         # range_near = 1,
                         # range_far = 1,
                         region_radius = 1.7,
+
+                        # material properties
+                        obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
+                        ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
     ):
     
     # allow overriding the obj path for debugging purposes
@@ -74,6 +78,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                                                         device=device,
                                                         make_ground=True,
                                                         scale=mesh_scale,
+                                                        obj_raids = obj_raids,
+                                                        ground_raids = ground_raids,
                                                     )
 
         # verts = mesh.verts_packed()
@@ -304,6 +310,10 @@ def render_random_image(
         # range_near = 1,
         # range_far = 1,
         region_radius = 1.7,
+
+        # material properties
+        obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
+        ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
     ):
     """
     Renders a random image from the ShapeNet dataset using SAR simulation.
@@ -378,6 +388,9 @@ def render_random_image(
                             # range_near = range_near,
                             # range_far = range_far,
                             region_radius = region_radius,
+
+                            obj_raids = obj_raids,
+                            ground_raids = ground_raids,
     ) # (1,H,W)
 
     # plot the SAR image next to the RGB image
@@ -929,9 +942,45 @@ if __name__ == '__main__':
     # custom_title_strings = ['Linear Trajectory','Circular Trajectory']
     # multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_type", custom_title_strings=custom_title_strings)
 
-    # Noisy trajectory
+    # # Noisy trajectory
+    # default_kwargs = {
+    #     'debug_gif': False,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 90,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
+
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'region_radius'      : 1.7,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     'trajectory_type': 'circular',
+
+    #     'render_method': 'rasterization',
+    #     # 'render_method': 'raytracing',
+    # }
+    # vary_kwargs = {
+    #     'trajectory_noise_var': [0,]+(10**np.linspace(-5,-2,7,endpoint=True)).tolist()
+    # }
+
+    # custom_title_strings = ['%.2e'%v for v in vary_kwargs['trajectory_noise_var']]
+    # multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var", custom_title_strings=custom_title_strings)
+
+
+    # material properties
     default_kwargs = {
-        'debug_gif': False,
+        'debug_gif': True,
         'num_pulse': 32,
         'azimuth_spread': 90,
         'spatial_bw': 90,
@@ -939,6 +988,7 @@ if __name__ == '__main__':
         'wavelength': 0.5,
         'use_sig_magnitude': True,
         'snr_db': 50,
+        'trajectory_noise_var' : 0,
 
         'image_width'        : 128,
         'image_height'       : 128,
@@ -948,9 +998,6 @@ if __name__ == '__main__':
         'grid_height'        : 2,
         'n_ray_width'        : 256,
         'n_ray_height'       : 256,
-        # 'range_near'         : 0.5,
-        # 'range_far'          : 2.1,
-        # 'range_far'          : 2.7,
         'region_radius'      : 1.7,
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
@@ -959,12 +1006,15 @@ if __name__ == '__main__':
 
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
+
+        'override_obj_path': os.path.join('/','workspace','berian','sphere.obj')
     }
     vary_kwargs = {
-        'trajectory_noise_var': [0,]+(10**np.linspace(-5,-2,7,endpoint=True)).tolist()
+        'obj_raids':    [(1.0, 1.0,  100.0, 0.0, 1.0),],
+        'ground_raids': [(1.0, 1.0,   1.0, 0.9, 0.1)],
     }
 
-    custom_title_strings = ['%.2e'%v for v in vary_kwargs['trajectory_noise_var']]
+    custom_title_strings = (np.arange(len(vary_kwargs['obj_raids']))+1).astype(np.str_).tolist()
     multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var", custom_title_strings=custom_title_strings)
 
 

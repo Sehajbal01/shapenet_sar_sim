@@ -1,5 +1,4 @@
 TOP PRIORITY:
-DONE - make height map rendering mode
 
 Others
 
@@ -16,14 +15,19 @@ Others
     DONE - noisy trajectory
         DONE - imaging function assumes the perfect trajectory
         DONE - the signals are taken with the noisy trajectory
+        look into noise models of trajectory in literature
     - make image mosaic for the paper
 
 - simple object imaging
     DONE - find the right model for r s a d i for CV Domes first
         DONE - play around with it in utils
-    - implement the new return model
+    DONE - implement the new return model
     - replicate sinc pattern in the image
     - cube and sphere obj in /workspace/berian
+    - mosaic for raids
+    - what if i run CBP with the actual object not in the center
+        - i suspect some imaging effects we observe aredue to the CBP running with the object in the center, which is not the case for the real world
+        - they often run CBP on a large swath of land, then chip into individual targets
 
 - implement strip map mode simulation
     DONE - implement the imaging function
@@ -44,6 +48,12 @@ Implement range-angle imaging that converts to range-range with various beam pat
     - i have some slides about this in my updates presentation
         - https://docs.google.com/presentation/d/128WiwIninhMNFE3ZtLbhJNa_3-_SFAs0fCvjq3ALgXU/edit?slide=id.g2ab64a12bdf_0_22#slide=id.g2ab64a12bdf_0_22
 
+- play with different image resolutions
+    - make a mosaic of the results for the paper
+
+
+- submit to https://www.mdpi.com/journal/sensors/special_issues/G617MH56JV
+    - due october
 
 - address reviewer concerns:
 ****************************************

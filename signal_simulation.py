@@ -175,7 +175,10 @@ def accumulate_scatters(target_poses,
             # calculate returned energy
             # the old equation # energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
             # from the utils file, energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
-            energy_map[hit] = material_properties[valid_face_ids,4] * torch.linalg.norm(face_normals[valid_face_ids] * forward_vector, dim=-1) ** material_properties[valid_face_ids,2] + material_properties[valid_face_ids,3]
+            energy_map[hit] = material_properties[valid_face_ids,4] * ( \
+                torch.linalg.norm(face_normals[valid_face_ids] * forward_vector, dim=-1) ** material_properties[valid_face_ids,2] + \
+                material_properties[valid_face_ids,3] \
+            )
 
             # produce a frame of the depth and energy maps
             if debug_gif:
@@ -525,6 +528,9 @@ def load_mesh(  file_name,
 
     # repack the mesh with the new verts and faces
     mesh = Meshes(verts=[verts], faces=[faces])
+
+    # ensure rsa add up to 1
+    raids[:,[0,1,4]] = raids[:,[0,1,4]] / raids[:,[0,1,4]].sum(dim=-1, keepdim=True)
 
     return mesh, face_normals, raids
     #      obj   (F,3)         (F,5)
