@@ -320,12 +320,12 @@ def render_random_image(
     """
 
     # cluster dirs
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    # dataset_dir = '/workspace/data/srncars/cars_train/'
+    # models_dir = '/workspace/data/srncars/02958343'
 
     # lab pc dirs
-    # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
-    # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
+    models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
 
     all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
@@ -1007,11 +1007,12 @@ if __name__ == '__main__':
         'render_method': 'rasterization',
         # 'render_method': 'raytracing',
 
-        'override_obj_path': os.path.join('/','workspace','berian','sphere.obj')
+        # 'override_obj_path': os.path.join('/','workspace','berian','sphere.obj')
+        'override_obj_path': os.path.join('/','home','berian','Documents','sphere.obj')
     }
     vary_kwargs = {
         'obj_raids':    [(1.0, 1.0,  100.0, 0.0, 1.0),],
-        'ground_raids': [(1.0, 1.0,   1.0, 0.9, 0.1)],
+        'ground_raids': [(1.0, 1.0,   1.0, 0.9, 0.0)],
     }
 
     custom_title_strings = (np.arange(len(vary_kwargs['obj_raids']))+1).astype(np.str_).tolist()
