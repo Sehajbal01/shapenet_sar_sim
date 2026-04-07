@@ -173,21 +173,10 @@ def accumulate_scatters(target_poses,
             energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
 
             # calculate returned energy
-            # the old equation # energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
-            # from the utils file, energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
-            # lets take a look at the shapes of everything in the following equation, because it's not working right
-            print('face_normals shape:', face_normals.shape) # (F,3)
-            print('forward_vector shape:', forward_vector.shape) # (3,)
-            print('material_properties shape:', material_properties.shape) # (F,5)
-            print('energy_map shape:', energy_map.shape) # (r,r)
-            print()
-            print('face_normals[valid_face_ids] shape:', face_normals[valid_face_ids].shape) # (R',3)
-            print('material_properties[valid_face_ids] shape:', material_properties[valid_face_ids].shape) # (R',5)
-            print('energy_map[hit] shape:', energy_map[hit].shape) # (R',)
-            print()
-            # shapes look good, but i suspect the values are getting reordered in weird ways, so the energy map is wrong
             energy_map[hit] = material_properties[valid_face_ids,4] * ( \
-                torch.linalg.norm(face_normals[valid_face_ids] * forward_vector, dim=-1) ** material_properties[valid_face_ids,2] + \
+                torch.sum(  torch.linalg.norm(face_normals[valid_face_ids], dim=-1) * \
+                            torch.linalg.norm(forward_vector, dim=-1), 
+                          dim=-1) ** material_properties[valid_face_ids,2] + \
                 material_properties[valid_face_ids,3] \
             )
 
