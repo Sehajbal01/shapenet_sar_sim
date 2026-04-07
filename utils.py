@@ -254,14 +254,70 @@ def plot_angular_response():
     savefig(get_next_path('figures/angular_response.png'))
 
 
+def numerically_analyze_directional_scattering():
+    '''
+    I want to compute how much i should multiply the returned energy ray by such that we satisfy the conservation of energy.
+    This means the diffuse and the directional scattering
+
+    We need to numerically compute the integral of returned energy over a hemisphere for different values of i in np.cos(theta/2)**i
+    the integral may changer with differnt reflected ray directions, so we need to compute it for a bunch of az_r, el_r, i combinations
+    Then we are going to find a good approximation for the multiplier using dot product and some kind of nonlinear function, like an SVM
+    '''
+
+    # integrate over many small rays in the hemisphere
+    n_numer = 1000
+    az = np.linspace(0,2*np.pi,n_numer).reshape(-1, 1, 1, 1) # (n_numer, 1, 1, 1)
+    el = np.linspace(0,np.pi/2,n_numer).reshape( 1,-1, 1, 1) # (1, n_numer, 1, 1)
+
+    # select the values of outgoing ray direction, and i
+    # actually, lets fix i
+    n_r = 1000
+    az_r = np.linspace(0,2*np.pi,n_r).reshape( 1, 1,-1, 1) # (1, 1, n_r, 1)
+    el_r = np.linspace(0,np.pi/2,n_r).reshape( 1, 1, 1,-1) # (1, 1, 1, n_r)
+    i = 100
+
+    # compute the integral for each az_r, el_r combination, without a for loop...
+
+    # useful intermediate function to convert azimuth and elevation to a unit vector
+    def vec(azimuth, elevation):
+        x = np.cos(elevation) * np.cos(azimuth)
+        y = np.cos(elevation) * np.sin(azimuth)
+        z = np.sin(elevation) + np.zeros_like(azimuth)  # add zeros to ensure the shape is correct for broadcasting
+        return np.stack((x, y, z), axis=-1)
+
+    # (n_r, n_r)
+    total_energy =  np.sum(
+                        np.sum(
+                            np.sqrt((1+
+                                np.sum( vec(az,el) * vec(az_r,el_r),axis=-1) # (n_numer, n_numer, n_r, n_r)
+                            )/2)**i * np.cos(el)
+                            , axis= 0
+                        )
+                        ,axis=0
+                    ) * (2*np.pi/n_numer) * (np.pi/2/n_numer) # need to multiply by the width of each tiny rectangle of integration
+    
+    # plot the total_energy as a heat map like confusion matricies are plotted
+    plt.imshow(total_energy, extent=(0,360,0,90), origin='lower')
+    plt.xlabel('Elevation of reflected ray (degrees)')
+    plt.ylabel('Azimuth of reflected ray (degrees)')
+    plt.title('Total returned energy for different reflected ray directions\n(i=%.1f)'% i)
+    plt.colorbar(label='Total returned energy')
+    savefig(get_next_path('figures/total_returned_energy_heatmap.png'))
+
+    # so the azimuth of the reflected ray doesn't matter, but the elevation does, which makes sense because the scattering is symmetric around the normal direction.
+    # we can simply fit a polynomial to the relationship between the elevation of the reflected ray and the total returned energy, and use that as our multiplier for the returned energy ray.
+    
+    
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
-    # plot_angular_respoimport itertools
-
-    chars = ['r', 's', 'a', 'd', 'i']
-    for perm in itertools.permutations(chars):
-        print(''.join(perm))
+    numerically_analyze_directional_scattering()
 
     # # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
 
