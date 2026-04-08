@@ -1,4 +1,4 @@
-from utils import savefig
+from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha100
 import matplotlib.pyplot as plt
 import tqdm
 import os
@@ -173,11 +173,18 @@ def accumulate_scatters(target_poses,
             energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
 
             # calculate returned energy
-            energy_map[hit] = material_properties[valid_face_ids,4] * ( \
-                torch.sum(  torch.linalg.norm(face_normals[valid_face_ids], dim=-1) * \
-                            torch.linalg.norm(forward_vector, dim=-1), 
-                          dim=-1) ** material_properties[valid_face_ids,2] + \
-                material_properties[valid_face_ids,3] \
+            s = material_properties[valid_face_ids,4] 
+            i = material_properties[valid_face_ids,2]
+            d = material_properties[valid_face_ids,3]
+            alpha = 100
+            n = face_normals[valid_face_ids]
+            n = n / torch.linalg.norm(n, dim=-1, keepdim=True) # normalize the normals
+            u_in = forward_vector / torch.linalg.norm(forward_vector, dim=-1, keepdim=True)
+            cos_theta_over_2 = torch.abs(dot_product(n, u_in))
+            energy_map[hit] = s * (
+                (i*cos_theta_over_2**alpha) / \
+                (directional_scatter_polynomial_alpha100(cos_theta_over_2)) + \
+                d/2/np.pi
             )
 
             # produce a frame of the depth and energy maps
@@ -529,8 +536,8 @@ def load_mesh(  file_name,
     # repack the mesh with the new verts and faces
     mesh = Meshes(verts=[verts], faces=[faces])
 
-    # ensure rsa add up to 1
-    raids[:,[0,1,4]] = raids[:,[0,1,4]] / raids[:,[0,1,4]].sum(dim=-1, keepdim=True)
+    # ensure material properties are valid
+    raids = correct_material_properties(raids)
 
     return mesh, face_normals, raids
     #      obj   (F,3)         (F,5)

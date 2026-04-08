@@ -81,6 +81,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                                                         obj_raids = obj_raids,
                                                         ground_raids = ground_raids,
                                                     )
+        
 
         # verts = mesh.verts_packed()
         # print('filename: ', file_name)

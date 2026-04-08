@@ -15,6 +15,53 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 
+def dot_product(a, b, dim = -1):
+    '''
+    compute the dot product between two tensors along a specified dimension, and return a tensor with that dimension removed.
+    For example, if a and b are both (..., 3) and dim=-1, then this function will return a tensor of shape (...) containing the dot product of the last dimension of a and b.
+    '''
+    return torch.sum(a * b, dim=dim)
+
+
+def correct_material_properties(properties):
+    '''
+    make sure that the material properties are valid. Assume it is a tensor of shape (..., 5) where the 5 is
+    r: reflectivity,
+    a: absorption,
+    i: directional scattering portion,
+    d: diffuse scattering portion,
+    s: overall scattering, 
+
+    r+s+a = 1
+    i+d = 1
+
+    if these conditions are not met, we will normalize the properties to make them valid.
+    Throw a warning if the properties are not valid, but still return a corrected version of the properties that is valid.
+    '''
+    # get the properties
+    assert properties.shape[-1] == 5, "Properties should have shape (..., 5)"
+    r, a, i, d, s = properties[..., 0], properties[..., 1], properties[..., 2], properties[..., 3], properties[..., 4]
+
+    # make sure r,s,a adds to 1
+    if not torch.allclose(r + s + a, torch.ones_like(r)):
+        print("Warning: The sum of reflectivity, scattering, and absorption is not 1. Normalizing these properties.")
+        total = r + s + a
+        r = r / total
+        s = s / total
+        a = a / total
+
+    # make sure i,d adds to 1
+    if not torch.allclose(i + d, torch.ones_like(i)):
+        print("Warning: The sum of directional and diffuse scattering is not 1. Normalizing these properties.")
+        total = i + d
+        i = i / total
+        d = d / total
+
+    # stack and return
+    return torch.stack((r, a, i, d, s), dim=-1)
+
+
+
 
 def spherical_to_cartesian(azimuth_deg, elevation_deg, distance):
     """
@@ -266,14 +313,14 @@ def numerically_analyze_directional_scattering():
 
     # integrate over many small rays in the hemisphere
     n_numer = 1000
-    az = np.linspace(0,2*np.pi,n_numer).reshape(-1, 1, 1, 1) # (n_numer, 1, 1, 1)
-    el = np.linspace(0,np.pi/2,n_numer).reshape( 1,-1, 1, 1) # (1, n_numer, 1, 1)
+    az = np.linspace(0,2*np.pi,n_numer).reshape(-1, 1, 1) # (n_numer, 1, 1)
+    el = np.linspace(0,np.pi/2,n_numer).reshape( 1,-1, 1) # (1, n_numer, 1)
 
     # select the values of outgoing ray direction, and i
     # actually, lets fix i
-    n_r = 1000
-    az_r = np.linspace(0,2*np.pi,n_r).reshape( 1, 1,-1, 1) # (1, 1, n_r, 1)
-    el_r = np.linspace(0,np.pi/2,n_r).reshape( 1, 1, 1,-1) # (1, 1, 1, n_r)
+    n_r = 100
+    az_r = 0
+    el_r = np.linspace(0,np.pi/2,n_r).reshape( 1, 1,-1) # (1, 1, n_r)
     i = 100
 
     # compute the integral for each az_r, el_r combination, without a for loop...
@@ -289,7 +336,7 @@ def numerically_analyze_directional_scattering():
     total_energy =  np.sum(
                         np.sum(
                             np.sqrt((1+
-                                np.sum( vec(az,el) * vec(az_r,el_r),axis=-1) # (n_numer, n_numer, n_r, n_r)
+                                np.sum( vec(az,el) * vec(az_r,el_r),axis=-1) # (n_numer, n_numer, n_r)
                             )/2)**i * np.cos(el)
                             , axis= 0
                         )
@@ -297,15 +344,61 @@ def numerically_analyze_directional_scattering():
                     ) * (2*np.pi/n_numer) * (np.pi/2/n_numer) # need to multiply by the width of each tiny rectangle of integration
     
     # plot the total_energy as a heat map like confusion matricies are plotted
-    plt.imshow(total_energy, extent=(0,360,0,90), origin='lower')
-    plt.xlabel('Elevation of reflected ray (degrees)')
-    plt.ylabel('Azimuth of reflected ray (degrees)')
-    plt.title('Total returned energy for different reflected ray directions\n(i=%.1f)'% i)
-    plt.colorbar(label='Total returned energy')
-    savefig(get_next_path('figures/total_returned_energy_heatmap.png'))
+    plt.figure(figsize=(12,6))
+    plt.subplot(1,2,1)
+    plt.plot(el_r[0,0,:]*180/np.pi, total_energy)
+    plt.xlabel('$\\vec{e}_r$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.grid()
+    plt.subplot(1,2,2)
+    plt.plot(np.cos(np.pi/2 - el_r[0,0,:]), total_energy)
+    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.grid()
+    savefig('figures/total_returned_energy.png')
+
+    print('total_energy: ', total_energy)
 
     # so the azimuth of the reflected ray doesn't matter, but the elevation does, which makes sense because the scattering is symmetric around the normal direction.
     # we can simply fit a polynomial to the relationship between the elevation of the reflected ray and the total returned energy, and use that as our multiplier for the returned energy ray.
+
+    x = np.cos(np.pi/2 - el_r[0,0,:]) # (n_r,)
+    y = total_energy # (n_r,)
+
+    for order in [1,2,3,4,5]:
+        coeffs = np.polyfit(x, y, order)
+        print('Coeffs for order %d: '%order, coeffs)
+        poly = np.poly1d(coeffs)
+        plt.plot(x, poly(x), label='order %d'%order)
+    plt.plot(x, y, label='numerical integral', color='black', linewidth=2)
+    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.legend()
+    plt.grid()
+    savefig('figures/total_returned_energy_fit.png')
+
+    # make sure i get the equation right in pytorch
+    coeffs = [-0.27239384, 0.94296234, -1.19504825, 0.65042818, 0.12070119]
+    reproduction = coeffs[0]*x**4 + coeffs[1]*x**3 + coeffs[2]*x**2 + coeffs[3]*x + coeffs[4]
+    plt.plot(x, reproduction, label='polynomial reproduction', linestyle='dashed')
+    plt.plot(x, y, label='numerical integral', color='black', linewidth=2)
+    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.legend()
+    plt.grid()
+    savefig('figures/total_returned_energy_fit_reproduction.png')
+
+def directional_scatter_polynomial_alpha100(cos_90_minus_elevation):
+    '''
+    this is the function we will use to multiply the returned energy ray by, to ensure conservation of energy when alpha=100
+    '''
+    return  -0.27239384*cos_90_minus_elevation**4 + \
+            0.94296234*cos_90_minus_elevation**3 + \
+            -1.19504825*cos_90_minus_elevation**2 + \
+            0.65042818*cos_90_minus_elevation + \
+            0.12070119
+
+
     
     
 
