@@ -477,10 +477,10 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_raids = (1,1,10,0,1),
+                obj_raids = (1.0, 1.0, 0.9, 0.1, 1.0),
                 make_ground = True,
                 ground_below = True,
-                ground_raids = (1,1,1,.9,.1),
+                ground_raids = (0.1, 0.1, 0.1, 0.9, 1.0),
                 device = 'cuda',
                 scale = None,
         ):  
