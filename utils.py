@@ -301,7 +301,7 @@ def plot_angular_response():
     savefig(get_next_path('figures/angular_response.png'))
 
 
-def numerically_analyze_directional_scattering():
+def numerically_analyze_directional_scattering(alpha=100):
     '''
     I want to compute how much i should multiply the returned energy ray by such that we satisfy the conservation of energy.
     This means the diffuse and the directional scattering
@@ -321,7 +321,6 @@ def numerically_analyze_directional_scattering():
     n_r = 100
     az_r = 0
     el_r = np.linspace(0,np.pi/2,n_r).reshape( 1, 1,-1) # (1, 1, n_r)
-    alpha = 100
 
     # compute the integral for each az_r, el_r combination, without a for loop...
 
@@ -349,11 +348,13 @@ def numerically_analyze_directional_scattering():
     plt.plot(el_r[0,0,:]*180/np.pi, total_energy)
     plt.xlabel('$\\vec{e}_r$', fontsize=18)
     plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
     plt.grid()
     plt.subplot(1,2,2)
     plt.plot(np.cos(np.pi/2 - el_r[0,0,:]), total_energy)
     plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
     plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
     plt.grid()
     savefig('figures/total_returned_energy.png')
 
@@ -373,20 +374,23 @@ def numerically_analyze_directional_scattering():
     plt.plot(x, y, label='numerical integral', color='black', linewidth=2)
     plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
     plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
     plt.legend()
     plt.grid()
     savefig('figures/total_returned_energy_fit.png')
 
     # make sure i get the equation right in pytorch
-    coeffs = [-0.27239384, 0.94296234, -1.19504825, 0.65042818, 0.12070119]
-    reproduction = coeffs[0]*x**4 + coeffs[1]*x**3 + coeffs[2]*x**2 + coeffs[3]*x + coeffs[4]
-    plt.plot(x, reproduction, label='polynomial reproduction', linestyle='dashed')
-    plt.plot(x, y, label='numerical integral', color='black', linewidth=2)
-    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
-    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
-    plt.legend()
-    plt.grid()
-    savefig('figures/total_returned_energy_fit_reproduction.png')
+    order = 1
+    coeffs = np.polyfit(x, y, order)
+
+    # print the function so i can copy it into my code
+    print('Directional scatter multiplier function for alpha=%d:'%alpha)
+    print('def directional_scatter_polynomial_alpha%d(cos_90_minus_elevation):'%alpha)
+    s = '    return '
+    for i in range(order):
+        s += '%.8f*cos_90_minus_elevation**%d + '%( coeffs[i], order-i )
+    s += '%.8f'%coeffs[order]
+    print(s)
 
 
 def directional_scatter_polynomial_alpha100(cos_90_minus_elevation):
@@ -398,11 +402,13 @@ def directional_scatter_polynomial_alpha100(cos_90_minus_elevation):
             -1.19504825*cos_90_minus_elevation**2 + \
             0.65042818*cos_90_minus_elevation + \
             0.12070119
+def directional_scatter_polynomial_alpha5(cos_90_minus_elevation):
+    return 1.46792856*cos_90_minus_elevation**1 + 1.81188202
 
 
     
 
 if __name__ == '__main__':
-    numerically_analyze_directional_scattering()
+    numerically_analyze_directional_scattering(alpha=5)
 
   

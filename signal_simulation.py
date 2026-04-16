@@ -1,4 +1,4 @@
-from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha100
+from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha5
 import matplotlib.pyplot as plt
 import tqdm
 import os
@@ -176,14 +176,14 @@ def accumulate_scatters(target_poses,
             s = material_properties[valid_face_ids,4] 
             i = material_properties[valid_face_ids,2]
             d = material_properties[valid_face_ids,3]
-            alpha = 100
+            alpha = 5
             n = face_normals[valid_face_ids]
             n = n / torch.linalg.norm(n, dim=-1, keepdim=True) # normalize the normals
             u_in = forward_vector / torch.linalg.norm(forward_vector, dim=-1, keepdim=True)
             cos_theta_over_2 = torch.abs(dot_product(n, u_in))
             energy_map[hit] = s * (
                 (i*cos_theta_over_2**alpha) / \
-                (directional_scatter_polynomial_alpha100(cos_theta_over_2)) + \
+                (directional_scatter_polynomial_alpha5(cos_theta_over_2)) + \
                 d/2/np.pi
             )
 
