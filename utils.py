@@ -409,6 +409,6 @@ def directional_scatter_polynomial_alpha5(cos_90_minus_elevation):
     
 
 if __name__ == '__main__':
-    numerically_analyze_directional_scattering(alpha=5)
+    numerically_analyze_directional_scattering(alpha=1)
 
   

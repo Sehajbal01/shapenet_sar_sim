@@ -1013,8 +1013,8 @@ if __name__ == '__main__':
         # 'override_obj_path': os.path.join('/','home','berian','Documents','sphere.obj')
     }
     vary_kwargs = {
-        'obj_raids':    [(1.0, 1.0, 0.5, 0.5, 1.0),],
-        'ground_raids': [(0.1, 0.1, 0.1, 0.9, 1.0)],
+        'obj_raids':    [(1.0, 0.0, 0.95, 0.05, 1.0),],
+        'ground_raids': [(0.1, 8, 0.5, 0.5, 1)],
     }
 
     custom_title_strings = (np.arange(len(vary_kwargs['obj_raids']))+1).astype(np.str_).tolist()
