@@ -322,12 +322,12 @@ def render_random_image(
     """
 
     # cluster dirs
-    # dataset_dir = '/workspace/data/srncars/cars_train/'
-    # models_dir = '/workspace/data/srncars/02958343'
+    dataset_dir = '/workspace/data/srncars/cars_train/'
+    models_dir = '/workspace/data/srncars/02958343'
 
-    # lab pc dirs
-    dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
-    models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    # # lab pc dirs
+    # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
+    # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
 
     all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
@@ -980,104 +980,104 @@ if __name__ == '__main__':
     # multi_param_experiment(vary_kwargs, default_kwargs, "trajectory_noise_var", custom_title_strings=custom_title_strings)
 
 
-    # material properties
-    default_kwargs = {
-        'debug_gif': True,
-        'num_pulse': 32,
-        'azimuth_spread': 90,
-        'spatial_bw': 90,
-        'spatial_fs': 90,
-        'wavelength': 0.5,
-        'use_sig_magnitude': True,
-        'snr_db': 50,
-        'trajectory_noise_var' : 0,
-
-        'image_width'        : 128,
-        'image_height'       : 128,
-        'image_plane_width'  : 1,
-        'image_plane_height' : 1,
-        'grid_width'         : 2,
-        'grid_height'        : 2,
-        'n_ray_width'        : 256,
-        'n_ray_height'       : 256,
-        'region_radius'      : 1.7,
-        'grid_width'         : 1.2,
-        'grid_height'        : 1.2,
-
-        'trajectory_type': 'circular',
-
-        'render_method': 'rasterization',
-        # 'render_method': 'raytracing',
-
-        # 'override_obj_path': os.path.join('/','workspace','berian','sphere.obj')
-        # 'override_obj_path': os.path.join('/','home','berian','Documents','sphere.obj')
-    }
-    vary_kwargs = {
-        'obj_raids':    [(1.0, 0.0, 0.95, 0.05, 1.0),],
-        'ground_raids': [(0.1, 8, 0.5, 0.5, 1)],
-    }
-
-    custom_title_strings = (np.arange(len(vary_kwargs['obj_raids']))+1).astype(np.str_).tolist()
-    multi_param_experiment(vary_kwargs, default_kwargs, "raids_sandbox", custom_title_strings=custom_title_strings)
-
-
-    # # idk
+    # # material properties
     # default_kwargs = {
     #     'debug_gif': True,
     #     'num_pulse': 32,
-    #     'azimuth_spread': 100,
+    #     'azimuth_spread': 90,
     #     'spatial_bw': 90,
     #     'spatial_fs': 90,
     #     'wavelength': 0.5,
     #     'use_sig_magnitude': True,
     #     'snr_db': 50,
+    #     'trajectory_noise_var' : 0,
 
     #     'image_width'        : 128,
     #     'image_height'       : 128,
     #     'image_plane_width'  : 1,
     #     'image_plane_height' : 1,
-    #     'grid_width'         : 1.2,
-    #     'grid_height'        : 1.2,
+    #     'grid_width'         : 2,
+    #     'grid_height'        : 2,
     #     'n_ray_width'        : 256,
     #     'n_ray_height'       : 256,
     #     'region_radius'      : 1.7,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+
+    #     'trajectory_type': 'circular',
 
     #     'render_method': 'rasterization',
     #     # 'render_method': 'raytracing',
 
-    #     'obj_raids':    (1.0, 1.0, 0.9, 0.1, 1.0),
-    #     'ground_raids': (0.1, 0.1, 0.1, 0.9, 1.0),
-
-    #     'imaging_algorithm': 'cbp',
-    #     'trajectory_type': 'circular',
-    #     'trajectory_noise_var' : 0,
-
-
-
+    #     # 'override_obj_path': os.path.join('/','workspace','berian','sphere.obj')
+    #     # 'override_obj_path': os.path.join('/','home','berian','Documents','sphere.obj')
     # }
-
-
-    # # generate list of all the .obj paths in this folder
-    # override_objs_dir = '/home/berian/Documents/cv_domes_cad_models_ojb_mtl_blend'
-    # # override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
-    # all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
-    # # make the title strinks everuything in the .obj filename before the first 0 or _
-    # custom_title_strings = []
-    # for obj_path in all_obj_paths:
-    #     filename = os.path.basename(obj_path)
-    #     if '_' in filename:
-    #         title = filename.split('_')[0]  # Extract title before first underscore
-    #     else:
-    #         title = filename.split('0')[0]  # If no underscore, use a 0
-    #     custom_title_strings.append(title)
-    # print('all obj paths: ', all_obj_paths)
-    # print('custom title strings: ', custom_title_strings)
-
-    # # all_obj_paths = all_obj_paths[:2]
-    # # custom_title_strings = custom_title_strings[:2]
-
     # vary_kwargs = {
-    #     'override_obj_path': all_obj_paths
+    #     'obj_raids':    [(1.0, 0.0, 0.95, 0.05, 1.0),],
+    #     'ground_raids': [(0.1, 8, 0.5, 0.5, 1)],
     # }
-    # #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
-    # multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
+
+    # custom_title_strings = (np.arange(len(vary_kwargs['obj_raids']))+1).astype(np.str_).tolist()
+    # multi_param_experiment(vary_kwargs, default_kwargs, "raids_sandbox", custom_title_strings=custom_title_strings)
+
+
+    # idk
+    default_kwargs = {
+        'debug_gif': True,
+        'num_pulse': 32,
+        'azimuth_spread': 180,
+        'spatial_bw': 90,
+        'spatial_fs': 90,
+        'wavelength': 0.5,
+        'use_sig_magnitude': True,
+        'snr_db': 50,
+
+        'image_width'        : 128,
+        'image_height'       : 128,
+        'image_plane_width'  : 1,
+        'image_plane_height' : 1,
+        'grid_width'         : 1.2,
+        'grid_height'        : 1.2,
+        'n_ray_width'        : 256,
+        'n_ray_height'       : 256,
+        'region_radius'      : 1.7,
+
+        # 'render_method': 'rasterization',
+        'render_method': 'raytracing',
+
+        'obj_raids':    (1.0, 0.0, 0.5, 0.5, 1.0),
+        'ground_raids': (7, 7, 0.5, 0.5, 1),
+
+        'imaging_algorithm': 'cbp',
+        'trajectory_type': 'circular',
+        'trajectory_noise_var' : 0,
+
+
+
+    }
+
+
+    # generate list of all the .obj paths in this folder
+    # override_objs_dir = '/home/berian/Documents/cv_domes_cad_models_ojb_mtl_blend'
+    override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
+    all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
+    # make the title strinks everuything in the .obj filename before the first 0 or _
+    custom_title_strings = []
+    for obj_path in all_obj_paths:
+        filename = os.path.basename(obj_path)
+        if '_' in filename:
+            title = filename.split('_')[0]  # Extract title before first underscore
+        else:
+            title = filename.split('0')[0]  # If no underscore, use a 0
+        custom_title_strings.append(title)
+    print('all obj paths: ', all_obj_paths)
+    print('custom title strings: ', custom_title_strings)
+
+    # all_obj_paths = all_obj_paths[:2]
+    # custom_title_strings = custom_title_strings[:2]
+
+    vary_kwargs = {
+        'override_obj_path': all_obj_paths
+    }
+    #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
