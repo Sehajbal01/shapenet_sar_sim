@@ -5,3 +5,4 @@
 *.swp
 figures/
 .vscode/
+run_log.txt
