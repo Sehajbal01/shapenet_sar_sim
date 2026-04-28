@@ -678,37 +678,38 @@ if __name__ == '__main__':
     ####################################### PAPER RESULTS #######################################
     ####################################### PAPER RESULTS #######################################
 
-    # # azimuth spread
-    # default_kwargs = {
-    #     'debug_gif': False,
-    #     'num_pulse': 32,
-    #     # 'azimuth_spread': 90,
-    #     'spatial_bw': 90,
-    #     'spatial_fs': 90,
-    #     'wavelength': 0.5,
-    #     'use_sig_magnitude': True,
-    #     'snr_db': 50,
+    # azimuth spread
+    default_kwargs = {
+        'debug_gif': False,
+        'num_pulse': 32,
+        # 'azimuth_spread': 90,
+        'spatial_bw': 90,
+        'spatial_fs': 90,
+        'wavelength': 0.5,
+        'use_sig_magnitude': True,
+        'snr_db': 50,
 
-    #     'image_width'        : 128,
-    #     'image_height'       : 128,
-    #     'image_plane_width'  : 1,
-    #     'image_plane_height' : 1,
-    #     'grid_width'         : 2,
-    #     'grid_height'        : 2,
-    #     'n_ray_width'        : 256,
-    #     'n_ray_height'       : 256,
-    #     'range_near'         : 0.5,
-    #     'range_far'          : 2.1,
-    #     'grid_width'         : 1.2,
-    #     'grid_height'        : 1.2,
+        'image_width'        : 128,
+        'image_height'       : 128,
+        'image_plane_width'  : 1,
+        'image_plane_height' : 1,
+        'grid_width'         : 2,
+        'grid_height'        : 2,
+        'n_ray_width'        : 256,
+        'n_ray_height'       : 256,
+        # 'range_near'         : 0.5,
+        # 'range_far'          : 2.1,
+        'region_radius'      : 1.3,
+        'grid_width'         : 1.2,
+        'grid_height'        : 1.2,
 
-    #     # 'render_method': 'rasterization',
-    #     'render_method': 'raytracing',
-    # }
-    # vary_kwargs = {
-    #     'azimuth_spread': np.linspace(0,360,8).tolist(),
-    # }
-    # multi_param_experiment(vary_kwargs, default_kwargs, "az_spread")
+        # 'render_method': 'rasterization',
+        'render_method': 'raytracing',
+    }
+    vary_kwargs = {
+        'azimuth_spread': np.linspace(0,360,8).tolist(),
+    }
+    multi_param_experiment(vary_kwargs, default_kwargs, "az_spread")
 
     # # num pulses
     # default_kwargs = {
@@ -1021,63 +1022,63 @@ if __name__ == '__main__':
     # multi_param_experiment(vary_kwargs, default_kwargs, "raids_sandbox", custom_title_strings=custom_title_strings)
 
 
-    # idk
-    default_kwargs = {
-        'debug_gif': True,
-        'num_pulse': 32,
-        'azimuth_spread': 180,
-        'spatial_bw': 90,
-        'spatial_fs': 90,
-        'wavelength': 0.5,
-        'use_sig_magnitude': True,
-        'snr_db': 50,
+    # # idk
+    # default_kwargs = {
+    #     'debug_gif': True,
+    #     'num_pulse': 32,
+    #     'azimuth_spread': 180,
+    #     'spatial_bw': 90,
+    #     'spatial_fs': 90,
+    #     'wavelength': 0.5,
+    #     'use_sig_magnitude': True,
+    #     'snr_db': 50,
 
-        'image_width'        : 128,
-        'image_height'       : 128,
-        'image_plane_width'  : 1,
-        'image_plane_height' : 1,
-        'grid_width'         : 1.2,
-        'grid_height'        : 1.2,
-        'n_ray_width'        : 256,
-        'n_ray_height'       : 256,
-        'region_radius'      : 1.7,
+    #     'image_width'        : 128,
+    #     'image_height'       : 128,
+    #     'image_plane_width'  : 1,
+    #     'image_plane_height' : 1,
+    #     'grid_width'         : 1.2,
+    #     'grid_height'        : 1.2,
+    #     'n_ray_width'        : 256,
+    #     'n_ray_height'       : 256,
+    #     'region_radius'      : 1.7,
 
-        # 'render_method': 'rasterization',
-        'render_method': 'raytracing',
+    #     # 'render_method': 'rasterization',
+    #     'render_method': 'raytracing',
 
-        'obj_raids':    (1.0, 0.0, 0.5, 0.5, 1.0),
-        'ground_raids': (7, 7, 0.5, 0.5, 1),
+    #     'obj_raids':    (1.0, 0.0, 0.5, 0.5, 1.0),
+    #     'ground_raids': (7, 7, 0.5, 0.5, 1),
 
-        'imaging_algorithm': 'cbp',
-        'trajectory_type': 'circular',
-        'trajectory_noise_var' : 0,
-
-
-
-    }
+    #     'imaging_algorithm': 'cbp',
+    #     'trajectory_type': 'circular',
+    #     'trajectory_noise_var' : 0,
 
 
-    # generate list of all the .obj paths in this folder
-    # override_objs_dir = '/home/berian/Documents/cv_domes_cad_models_ojb_mtl_blend'
-    override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
-    all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
-    # make the title strinks everuything in the .obj filename before the first 0 or _
-    custom_title_strings = []
-    for obj_path in all_obj_paths:
-        filename = os.path.basename(obj_path)
-        if '_' in filename:
-            title = filename.split('_')[0]  # Extract title before first underscore
-        else:
-            title = filename.split('0')[0]  # If no underscore, use a 0
-        custom_title_strings.append(title)
-    print('all obj paths: ', all_obj_paths)
-    print('custom title strings: ', custom_title_strings)
 
-    # all_obj_paths = all_obj_paths[:2]
-    # custom_title_strings = custom_title_strings[:2]
+    # }
 
-    vary_kwargs = {
-        'override_obj_path': all_obj_paths
-    }
-    #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
-    multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)
+
+    # # generate list of all the .obj paths in this folder
+    # # override_objs_dir = '/home/berian/Documents/cv_domes_cad_models_ojb_mtl_blend'
+    # override_objs_dir = '/workspace/data/cv_domes_cad_models_ojb_mtl_blend'
+    # all_obj_paths = [os.path.join(override_objs_dir, f) for f in os.listdir(override_objs_dir) if f.endswith('.obj')]
+    # # make the title strinks everuything in the .obj filename before the first 0 or _
+    # custom_title_strings = []
+    # for obj_path in all_obj_paths:
+    #     filename = os.path.basename(obj_path)
+    #     if '_' in filename:
+    #         title = filename.split('_')[0]  # Extract title before first underscore
+    #     else:
+    #         title = filename.split('0')[0]  # If no underscore, use a 0
+    #     custom_title_strings.append(title)
+    # print('all obj paths: ', all_obj_paths)
+    # print('custom title strings: ', custom_title_strings)
+
+    # # all_obj_paths = all_obj_paths[:2]
+    # # custom_title_strings = custom_title_strings[:2]
+
+    # vary_kwargs = {
+    #     'override_obj_path': all_obj_paths
+    # }
+    # #custom_title_strings = ['Linear Trajectory','Circular Trajectory']
+    # multi_param_experiment(vary_kwargs, default_kwargs, "otherplots", custom_title_strings=custom_title_strings)

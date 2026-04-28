@@ -11,14 +11,13 @@ from ray_tracer.camera.orthographic import OrthographicCamera
 
 
 
-def accumulate_scatters(target_poses, 
+def accumulate_scatters(target_poses,
                         mesh, face_normals, material_properties,
-                        azimuth_spread=15, n_pulses=30,
+                        trajectory,
                         wavelength=None,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
-
                         num_bounces=2,
                     ):
     '''
@@ -43,16 +42,8 @@ def accumulate_scatters(target_poses,
     scene = mesh
 
     device = target_poses.device
-    T = target_poses.shape[0]  # no. of camera views
-    P = n_pulses               # no. of pulses per view
-
-    # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
-    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #           (T,)          (T,)           (T,)
-
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+    T = target_poses.shape[0]   # no. of camera views
+    P = trajectory.shape[1]     # no. of pulses per view
 
 
     # loop over each pulse and compute the depth map and surface normal
@@ -65,16 +56,9 @@ def accumulate_scatters(target_poses,
         # construct P number of cameras due to azimuth spread
         cameras = []
         for p in range(P):  # for each pulse
-            elevation = cam_elevation[t] / 180 * torch.pi  # in radians now
-            azimuth_ = (90 + azimuth[t][p]) / 180 * torch.pi  # in radians now
-            position_vector = torch.tensor([
-                torch.cos(elevation) * torch.sin(azimuth_),
-                torch.sin(elevation),
-                torch.cos(elevation) * torch.cos(azimuth_)
-            ], device=device)
-            position_vector = position_vector / torch.norm(position_vector) * cam_distance[t]
-            direction_vector = torch.tensor([0, 0, 0], device=device) - position_vector
-            direction_vector = direction_vector / torch.norm(direction_vector)
+            pos = trajectory[t, p]
+            position_vector = torch.stack([pos[0], pos[2], -pos[1]])  # Z-up (trajectory) -> Y-up (ray tracer)
+            direction_vector = -position_vector / torch.norm(position_vector)
             ortho_cam = OrthographicCamera(
                 position_vector.cpu(),  # position
                 direction_vector.cpu(),  # direction
@@ -133,10 +117,6 @@ def accumulate_scatters(target_poses,
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile(cam_distance.reshape(T, 1), (1, P))  # (T, P)
-
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
@@ -169,8 +149,8 @@ def accumulate_scatters(target_poses,
         path = get_next_path(f'figures/tmp_ray_tracer/scatter_energies.png')
         imageio.imwrite(path, scatter_energies_images)
 
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
+    return scatter_ranges, scatter_energies
+    #      (T, P, R)       (T, P, R)
 
 
 def load_mesh_raytracing(  file_name,
