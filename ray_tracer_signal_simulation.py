@@ -24,19 +24,22 @@ def accumulate_scatters(target_poses,
     returns the energy and range for a bunch of rays for each pulse
 
     inputs:
-        target_poses (T,4,4): the rgb pose for which we want to get a sar image from
-        object_filename (str): path to the .obj file
-        azimuth_spread (float): the range of azimuth angles for sar rendering
-        n_pulses (int): the number of pulses for sar rendering
-        alpha_1 (float): scaling factor for the energy return
-        alpha_2 (float): offset for the energy return
-        use_ground (bool): whether to use the ground plane for rendering
-        debug_gif (bool): whether to save a gif of the depth and energy images
+        target_poses (T,4,4): the camera poses for which we want to get a sar image from
+        mesh: ray tracer Scene object containing the 3D model
+        face_normals: unused (embedded in the Scene object)
+        material_properties: unused (embedded in the Scene object)
+        trajectory (T,P,3): sensor positions in Z-up cartesian coordinates for each pulse for each view
+        wavelength (float): wavelength of the radar signal; if None, energy is real-valued
+        debug_gif (bool): whether to save debug images of depth, energy, and range
+        grid_width (float): sensor width in world space for the orthographic camera
+        grid_height (float): sensor height in world space for the orthographic camera
+        n_ray_width (int): number of rays along the width dimension
+        n_ray_height (int): number of rays along the height dimension
         num_bounces (int): number of ray bounces to simulate
 
     outputs:
-        range (T,P,R): the range of all the rays
-        energy (T,P,R): the simulated energy of all the rays
+        scatter_ranges (T,P,R): range of each ray return
+        scatter_energies (T,P,R): simulated energy of each ray return
 
     '''
     scene = mesh
