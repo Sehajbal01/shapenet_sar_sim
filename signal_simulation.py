@@ -96,6 +96,7 @@ def accumulate_scatters(target_poses,
                         debug_gif=False,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
+                        num_bounce = 1,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -133,13 +134,21 @@ def accumulate_scatters(target_poses,
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
     scatter_energies = []
+    scatter_ranges_2nd = []
+    scatter_energies_2nd = []
     dm_e_images = []  # to store depth and energy images
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
+        scatter_ranges_2nd.append([])
+        scatter_energies_2nd.append([])
+        t1_total = 0.0
+        t2_total = 0.0
         for p in range(P):
 
             # perform rasterization to find where the rays hit the mesh
+            t1_start = torch.cuda.Event(enable_timing=True); t1_end = torch.cuda.Event(enable_timing=True)
+            t1_start.record()
             cam_azimuth_deg, cam_elevation_deg, cam_distance = cartesian_to_spherical(trajectory[t,p])
 
             rotation, translation = look_at_view_transform(
@@ -219,6 +228,7 @@ def accumulate_scatters(target_poses,
             depth_map[~hit]  = 0.0  # set missed rays to 0
             scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
+            t1_end.record(); torch.cuda.synchronize(); t1_total += t1_start.elapsed_time(t1_end)
 
             if debug_gif and t == 0:
                 tmp1 = scatter_ranges[t][-1].cpu().numpy()
@@ -232,13 +242,134 @@ def accumulate_scatters(target_poses,
                 plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
                 plt.close()
 
+            # calculate second bounce
+            if num_bounce == 2:
+                t2_start = torch.cuda.Event(enable_timing=True); t2_end = torch.cuda.Event(enable_timing=True)
+                t2_start.record()
+                # Prepare zeros for this pulse (filled in below if hits exist)
+                e2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
+                r2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
 
+                if hit.any():
+                    R0 = rotation[0]     # (3,3)
+                    T0 = translation[0]  # (3,)
+
+                    # Camera axes in world space and camera center
+                    right_w = R0[:, 0]   # (3,)
+                    up_w    = R0[:, 1]   # (3,)
+                    fwd_w   = forward_vector / torch.linalg.norm(forward_vector)  # (3,) unit
+                    cam_center_w = -(T0.unsqueeze(0) @ R0.T).squeeze(0)           # (3,)
+
+                    # Camera-space pixel grid (y flipped: row 0 = top = +y in camera)
+                    x_cam = torch.linspace(-grid_width/2,  grid_width/2,  n_ray_width,  device=device)
+                    y_cam = torch.linspace( grid_height/2, -grid_height/2, n_ray_height, device=device)
+                    gy, gx = torch.meshgrid(y_cam, x_cam, indexing='ij')  # (H, W)
+
+                    # World-space first-bounce hit positions
+                    # v_world = cam_center + x*right + y*up + depth*fwd
+                    hit_pos_w = (cam_center_w
+                                 + gx.unsqueeze(-1) * right_w
+                                 + gy.unsqueeze(-1) * up_w
+                                 + depth_map.unsqueeze(-1) * fwd_w)  # (H, W, 3)
+
+                    first_hit_flat   = hit.reshape(-1)                               # (H*W,) bool
+                    ro2              = hit_pos_w.reshape(-1, 3)[first_hit_flat]      # (R', 3)
+                    first_hit_depths = depth_map.reshape(-1)[first_hit_flat]         # (R',)
+
+                    # Reflected ray directions (specular off first-bounce surface)
+                    # n: (R',3) first-bounce normals (already normalized); flip to face incident ray
+                    n_r = n.clone()
+                    flip_mask2 = (n_r * fwd_w.unsqueeze(0)).sum(-1) > 0
+                    n_r[flip_mask2] *= -1
+                    dot_r = (fwd_w.unsqueeze(0) * n_r).sum(-1, keepdim=True)  # (R', 1)
+                    rd2 = fwd_w.unsqueeze(0) - 2 * dot_r * n_r                # (R', 3)
+                    rd2 = rd2 / torch.linalg.norm(rd2, dim=-1, keepdim=True)
+                    ro2 = ro2 + 1e-4 * rd2  # offset to avoid self-intersection
+
+                    # Möller–Trumbore ray-triangle intersection (chunked for memory)
+                    vp  = mesh.verts_packed()         # (V, 3)
+                    fp  = mesh.faces_packed()         # (F, 3)
+                    tri = vp[fp[:, 0]]                # (F, 3) vertex A
+                    e1m = vp[fp[:, 1]] - tri          # (F, 3) edge 1
+                    e2m = vp[fp[:, 2]] - tri          # (F, 3) edge 2
+
+                    Rp      = ro2.shape[0]
+                    Fn      = tri.shape[0]
+                    chunk_n = 256
+                    t_best  = torch.full((Rp,), float('inf'), device=device)
+                    f_best  = torch.full((Rp,), -1, dtype=torch.long, device=device)
+
+                    for s2b in range(0, Rp, chunk_n):
+                        e2b = min(s2b + chunk_n, Rp)
+                        o_c = ro2[s2b:e2b]            # (C, 3)
+                        d_c = rd2[s2b:e2b]            # (C, 3)
+                        C   = o_c.shape[0]
+
+                        # broadcast shapes: (C,1,3) vs (1,F,3)
+                        hmt = torch.linalg.cross(d_c.view(C,1,3), e2m.view(1,Fn,3))       # (C,F,3)
+                        a_c = (e1m.view(1,Fn,3) * hmt).sum(-1)                            # (C,F)
+                        sa  = torch.where(a_c.abs() > 1e-8, a_c, torch.ones_like(a_c))
+                        sv  = o_c.view(C,1,3) - tri.view(1,Fn,3)                          # (C,F,3)
+                        u_c = (sv * hmt).sum(-1) / sa                                     # (C,F)
+                        q_c = torch.linalg.cross(sv, e1m.view(1,Fn,3))                    # (C,F,3)
+                        v_c = (d_c.view(C,1,3) * q_c).sum(-1) / sa                        # (C,F)
+                        tc  = (e2m.view(1,Fn,3) * q_c).sum(-1) / sa                       # (C,F)
+
+                        valid_c = (a_c.abs() > 1e-8) & (u_c >= 0) & (v_c >= 0) & (u_c + v_c <= 1) & (tc > 1e-4)
+                        tc      = torch.where(valid_c, tc, torch.full_like(tc, float('inf')))
+                        tm, fi  = tc.min(dim=-1)                                           # (C,)
+
+                        t_best[s2b:e2b]  = tm
+                        f_best[s2b:e2b]  = torch.where(tm.isfinite(), fi, torch.full_like(fi, -1))
+
+                    hit2 = t_best.isfinite()  # (R',) bool
+
+                    if hit2.any():
+                        vf2   = f_best[hit2]              # (H,) face ids at 2nd bounce
+                        dist2 = t_best[hit2]              # (H,) distance to 2nd hit
+
+                        s2   = material_properties[vf2, 4]
+                        i2   = material_properties[vf2, 2]
+                        d2_m = material_properties[vf2, 3]
+                        n_b2 = face_normals[vf2]
+                        n_b2 = n_b2 / torch.linalg.norm(n_b2, dim=-1, keepdim=True)
+                        u_b2 = rd2[hit2]  # (H,3) normalized incident directions at 2nd bounce
+                        cos2 = torch.abs(dot_product(n_b2, u_b2))
+
+                        second_bounce_energy = s2 * (
+                            (i2 * cos2**alpha) /
+                            directional_scatter_polynomial_alpha5(cos2) +
+                            d2_m / 2 / np.pi
+                        )
+
+                        # Round-trip range: 2 × (depth1 + dist_to_2nd + camera-z of 2nd hit)
+                        pos2      = ro2[hit2] + dist2.unsqueeze(-1) * rd2[hit2]                # (H,3)
+                        dist_back = ((pos2 - cam_center_w) * fwd_w).sum(-1)                   # (H,)
+                        second_bounce_range = 2 * (first_hit_depths[hit2] + dist2 + dist_back)
+
+                        # Write results into full (H*W,) tensors
+                        idx_fh = first_hit_flat.nonzero(as_tuple=True)[0]  # (R',)
+                        idx_sh = idx_fh[hit2]                               # (H,)
+                        e2_full[idx_sh] = second_bounce_energy
+                        r2_full[idx_sh] = second_bounce_range
+
+                scatter_energies_2nd[t].append(e2_full)
+                scatter_ranges_2nd[t].append(r2_full)
+                t2_end.record(); torch.cuda.synchronize(); t2_total += t2_start.elapsed_time(t2_end)
+
+        print(f"[t={t}] first bounce: {t1_total/1000:.2f}s  second bounce: {t2_total/1000:.2f}s  ({P} pulses, {n_ray_width}x{n_ray_height} rays)")
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
     scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
+    # stack on the second bounce if desired
+    if num_bounce == 2:
+        sr2 = torch.stack([torch.stack(sr, dim=0) for sr in scatter_ranges_2nd], dim=0)   # (T, P, R)
+        se2 = torch.stack([torch.stack(se, dim=0) for se in scatter_energies_2nd], dim=0) # (T, P, R)
+        scatter_ranges   = torch.cat([scatter_ranges,   sr2], dim=-1)  # (T, P, 2R)
+        scatter_energies = torch.cat([scatter_energies, se2], dim=-1)  # (T, P, 2R)
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:

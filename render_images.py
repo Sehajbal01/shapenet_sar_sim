@@ -122,6 +122,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         grid_height    = grid_height,
         n_ray_width    = n_ray_width,
         n_ray_height   = n_ray_height,
+
+        num_bounce = 2,
     )
     if verbose:
         print('done.')
@@ -703,8 +705,8 @@ if __name__ == '__main__':
         'grid_width'         : 1.2,
         'grid_height'        : 1.2,
 
-        # 'render_method': 'rasterization',
-        'render_method': 'raytracing',
+        'render_method': 'rasterization',
+        # 'render_method': 'raytracing',
     }
     vary_kwargs = {
         'azimuth_spread': np.linspace(0,360,8).tolist(),
