@@ -15,6 +15,12 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 
+def gpu_mem(device=None):
+    alloc = torch.cuda.memory_allocated(device) / 1024**3
+    reserved = torch.cuda.memory_reserved(device) / 1024**3
+    return f"alloc={alloc:.2f}GB reserved={reserved:.2f}GB"
+
+
 def dot_product(a, b, dim = -1):
     '''
     compute the dot product between two tensors along a specified dimension, and return a tensor with that dimension removed.

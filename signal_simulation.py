@@ -16,7 +16,9 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
+from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical, gpu_mem
+from ray_tracer.geometry.trimesh import TriMesh
+from ray_tracer.accelerator.octree import Octree
 
 
 
@@ -121,6 +123,9 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = trajectory.shape[1]    # no. of pulses per view
 
+    mem = lambda: gpu_mem(device)
+    print(f"[accumulate_scatters START] {mem()}")
+
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
         image_size=(n_ray_height, n_ray_width), 
@@ -130,6 +135,22 @@ def accumulate_scatters(target_poses,
         bin_size=0,  # or set to a small value
         max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
     )
+
+    # build octree from PyTorch3D mesh for fast second-bounce intersection
+    if num_bounce == 2:
+        vp_all = mesh.verts_packed()
+        fp_all = mesh.faces_packed()
+        _tm = TriMesh()
+        _tm.triangles_A      = vp_all[fp_all[:, 0]]
+        _tm.triangles_B      = vp_all[fp_all[:, 1]]
+        _tm.triangles_C      = vp_all[fp_all[:, 2]]
+        _tm.triangles_edge1  = _tm.triangles_B - _tm.triangles_A
+        _tm.triangles_edge2  = _tm.triangles_C - _tm.triangles_A
+        _tm.triangles_normal = torch.linalg.cross(_tm.triangles_edge1, _tm.triangles_edge2, dim=1)
+        _tm.triangles_normal = _tm.triangles_normal / torch.norm(_tm.triangles_normal, dim=1, keepdim=True)
+        _tm.triangles_rsa    = torch.zeros((fp_all.shape[0], 3), device=device)
+        octree_rt = Octree(max_depth=2, approx_trig_per_bbox=256, mesh=_tm, device=device)
+        print(f"[octree built] {mem()}")
 
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
@@ -143,9 +164,10 @@ def accumulate_scatters(target_poses,
         scatter_ranges_2nd.append([])
         scatter_energies_2nd.append([])
         t1_total = 0.0
-        t2_total = 0.0
+        second_bounce_data = [None] * P
         for p in range(P):
 
+            print(f"  [t={t} p={p} 1st-bounce START] {mem()}")
             # perform rasterization to find where the rays hit the mesh
             t1_start = torch.cuda.Event(enable_timing=True); t1_end = torch.cuda.Event(enable_timing=True)
             t1_start.record()
@@ -166,6 +188,7 @@ def accumulate_scatters(target_poses,
                 raster_settings=raster_settings
             )
             fragments = rasterizer(mesh)
+            print(f"  [t={t} p={p} after rasterizer] {mem()}")
 
             # get depth map
             depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
@@ -229,6 +252,7 @@ def accumulate_scatters(target_poses,
             scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
             scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
             t1_end.record(); torch.cuda.synchronize(); t1_total += t1_start.elapsed_time(t1_end)
+            print(f"  [t={t} p={p} 1st-bounce END] {mem()}  scatter_ranges[t] len={len(scatter_ranges[t])}")
 
             if debug_gif and t == 0:
                 tmp1 = scatter_ranges[t][-1].cpu().numpy()
@@ -242,122 +266,89 @@ def accumulate_scatters(target_poses,
                 plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
                 plt.close()
 
-            # calculate second bounce
-            if num_bounce == 2:
-                t2_start = torch.cuda.Event(enable_timing=True); t2_end = torch.cuda.Event(enable_timing=True)
-                t2_start.record()
-                # Prepare zeros for this pulse (filled in below if hits exist)
+            # collect second bounce data (deferred; batched after pulse loop)
+            if num_bounce == 2 and hit.any():
+                R0 = rotation[0]
+                T0 = translation[0]
+                fwd_w        = forward_vector / torch.linalg.norm(forward_vector)
+                cam_center_w = -(T0.unsqueeze(0) @ R0.T).squeeze(0)
+
+                x_cam = torch.linspace(-grid_width/2,  grid_width/2,  n_ray_width,  device=device)
+                y_cam = torch.linspace( grid_height/2, -grid_height/2, n_ray_height, device=device)
+                gy, gx = torch.meshgrid(y_cam, x_cam, indexing='ij')
+                hit_pos_w = (cam_center_w
+                             + gx.unsqueeze(-1) * R0[:, 0]
+                             + gy.unsqueeze(-1) * R0[:, 1]
+                             + depth_map.unsqueeze(-1) * fwd_w)
+
+                first_hit_flat   = hit.reshape(-1)
+                ro2              = hit_pos_w.reshape(-1, 3)[first_hit_flat]
+                first_hit_depths = depth_map.reshape(-1)[first_hit_flat]
+
+                n_r = n.clone()
+                n_r[(n_r * fwd_w).sum(-1) > 0] *= -1
+                dot_r = (fwd_w.unsqueeze(0) * n_r).sum(-1, keepdim=True)
+                rd2   = fwd_w.unsqueeze(0) - 2 * dot_r * n_r
+                rd2   = rd2 / torch.linalg.norm(rd2, dim=-1, keepdim=True)
+                ro2   = ro2 + 1e-4 * rd2
+
+                second_bounce_data[p] = dict(
+                    ro2=ro2, rd2=rd2,
+                    first_hit_flat=first_hit_flat,
+                    first_hit_depths=first_hit_depths,
+                    fwd_w=fwd_w, cam_center_w=cam_center_w,
+                )
+
+        # second bounce: one octree call per pulse to avoid OOM
+        if num_bounce == 2:
+            t2_ev_start = torch.cuda.Event(enable_timing=True)
+            t2_ev_end   = torch.cuda.Event(enable_timing=True)
+            t2_ev_start.record()
+
+            for p in range(P):
                 e2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
                 r2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
 
-                if hit.any():
-                    R0 = rotation[0]     # (3,3)
-                    T0 = translation[0]  # (3,)
-
-                    # Camera axes in world space and camera center
-                    right_w = R0[:, 0]   # (3,)
-                    up_w    = R0[:, 1]   # (3,)
-                    fwd_w   = forward_vector / torch.linalg.norm(forward_vector)  # (3,) unit
-                    cam_center_w = -(T0.unsqueeze(0) @ R0.T).squeeze(0)           # (3,)
-
-                    # Camera-space pixel grid (y flipped: row 0 = top = +y in camera)
-                    x_cam = torch.linspace(-grid_width/2,  grid_width/2,  n_ray_width,  device=device)
-                    y_cam = torch.linspace( grid_height/2, -grid_height/2, n_ray_height, device=device)
-                    gy, gx = torch.meshgrid(y_cam, x_cam, indexing='ij')  # (H, W)
-
-                    # World-space first-bounce hit positions
-                    # v_world = cam_center + x*right + y*up + depth*fwd
-                    hit_pos_w = (cam_center_w
-                                 + gx.unsqueeze(-1) * right_w
-                                 + gy.unsqueeze(-1) * up_w
-                                 + depth_map.unsqueeze(-1) * fwd_w)  # (H, W, 3)
-
-                    first_hit_flat   = hit.reshape(-1)                               # (H*W,) bool
-                    ro2              = hit_pos_w.reshape(-1, 3)[first_hit_flat]      # (R', 3)
-                    first_hit_depths = depth_map.reshape(-1)[first_hit_flat]         # (R',)
-
-                    # Reflected ray directions (specular off first-bounce surface)
-                    # n: (R',3) first-bounce normals (already normalized); flip to face incident ray
-                    n_r = n.clone()
-                    flip_mask2 = (n_r * fwd_w.unsqueeze(0)).sum(-1) > 0
-                    n_r[flip_mask2] *= -1
-                    dot_r = (fwd_w.unsqueeze(0) * n_r).sum(-1, keepdim=True)  # (R', 1)
-                    rd2 = fwd_w.unsqueeze(0) - 2 * dot_r * n_r                # (R', 3)
-                    rd2 = rd2 / torch.linalg.norm(rd2, dim=-1, keepdim=True)
-                    ro2 = ro2 + 1e-4 * rd2  # offset to avoid self-intersection
-
-                    # Möller–Trumbore ray-triangle intersection (chunked for memory)
-                    vp  = mesh.verts_packed()         # (V, 3)
-                    fp  = mesh.faces_packed()         # (F, 3)
-                    tri = vp[fp[:, 0]]                # (F, 3) vertex A
-                    e1m = vp[fp[:, 1]] - tri          # (F, 3) edge 1
-                    e2m = vp[fp[:, 2]] - tri          # (F, 3) edge 2
-
-                    Rp      = ro2.shape[0]
-                    Fn      = tri.shape[0]
-                    chunk_n = 256
-                    t_best  = torch.full((Rp,), float('inf'), device=device)
-                    f_best  = torch.full((Rp,), -1, dtype=torch.long, device=device)
-
-                    for s2b in range(0, Rp, chunk_n):
-                        e2b = min(s2b + chunk_n, Rp)
-                        o_c = ro2[s2b:e2b]            # (C, 3)
-                        d_c = rd2[s2b:e2b]            # (C, 3)
-                        C   = o_c.shape[0]
-
-                        # broadcast shapes: (C,1,3) vs (1,F,3)
-                        hmt = torch.linalg.cross(d_c.view(C,1,3), e2m.view(1,Fn,3))       # (C,F,3)
-                        a_c = (e1m.view(1,Fn,3) * hmt).sum(-1)                            # (C,F)
-                        sa  = torch.where(a_c.abs() > 1e-8, a_c, torch.ones_like(a_c))
-                        sv  = o_c.view(C,1,3) - tri.view(1,Fn,3)                          # (C,F,3)
-                        u_c = (sv * hmt).sum(-1) / sa                                     # (C,F)
-                        q_c = torch.linalg.cross(sv, e1m.view(1,Fn,3))                    # (C,F,3)
-                        v_c = (d_c.view(C,1,3) * q_c).sum(-1) / sa                        # (C,F)
-                        tc  = (e2m.view(1,Fn,3) * q_c).sum(-1) / sa                       # (C,F)
-
-                        valid_c = (a_c.abs() > 1e-8) & (u_c >= 0) & (v_c >= 0) & (u_c + v_c <= 1) & (tc > 1e-4)
-                        tc      = torch.where(valid_c, tc, torch.full_like(tc, float('inf')))
-                        tm, fi  = tc.min(dim=-1)                                           # (C,)
-
-                        t_best[s2b:e2b]  = tm
-                        f_best[s2b:e2b]  = torch.where(tm.isfinite(), fi, torch.full_like(fi, -1))
-
-                    hit2 = t_best.isfinite()  # (R',) bool
+                data = second_bounce_data[p]
+                if data is not None:
+                    print(f"  [t={t} p={p} 2nd-bounce] ro2.shape={data['ro2'].shape} {mem()}")
+                    t_p, f_p = octree_rt.intersect_rays(data['ro2'], data['rd2'])
+                    print(f"  [t={t} p={p} 2nd-bounce after intersect] {mem()}")
+                    hit2 = t_p >= 0
 
                     if hit2.any():
-                        vf2   = f_best[hit2]              # (H,) face ids at 2nd bounce
-                        dist2 = t_best[hit2]              # (H,) distance to 2nd hit
-
+                        vf2  = f_p[hit2]
+                        d2   = t_p[hit2]
                         s2   = material_properties[vf2, 4]
                         i2   = material_properties[vf2, 2]
                         d2_m = material_properties[vf2, 3]
                         n_b2 = face_normals[vf2]
                         n_b2 = n_b2 / torch.linalg.norm(n_b2, dim=-1, keepdim=True)
-                        u_b2 = rd2[hit2]  # (H,3) normalized incident directions at 2nd bounce
+                        u_b2 = data['rd2'][hit2]
                         cos2 = torch.abs(dot_product(n_b2, u_b2))
-
-                        second_bounce_energy = s2 * (
-                            (i2 * cos2**alpha) /
-                            directional_scatter_polynomial_alpha5(cos2) +
+                        energy2 = s2 * (
+                            (i2 * cos2**alpha) / directional_scatter_polynomial_alpha5(cos2) +
                             d2_m / 2 / np.pi
                         )
+                        pos2      = data['ro2'][hit2] + d2.unsqueeze(-1) * data['rd2'][hit2]
+                        dist_back = ((pos2 - data['cam_center_w']) * data['fwd_w']).sum(-1)
+                        range2    = 2 * (data['first_hit_depths'][hit2] + d2 + dist_back)
 
-                        # Round-trip range: 2 × (depth1 + dist_to_2nd + camera-z of 2nd hit)
-                        pos2      = ro2[hit2] + dist2.unsqueeze(-1) * rd2[hit2]                # (H,3)
-                        dist_back = ((pos2 - cam_center_w) * fwd_w).sum(-1)                   # (H,)
-                        second_bounce_range = 2 * (first_hit_depths[hit2] + dist2 + dist_back)
-
-                        # Write results into full (H*W,) tensors
-                        idx_fh = first_hit_flat.nonzero(as_tuple=True)[0]  # (R',)
-                        idx_sh = idx_fh[hit2]                               # (H,)
-                        e2_full[idx_sh] = second_bounce_energy
-                        r2_full[idx_sh] = second_bounce_range
+                        idx_fh = data['first_hit_flat'].nonzero(as_tuple=True)[0]
+                        idx_sh = idx_fh[hit2]
+                        e2_full[idx_sh] = energy2
+                        r2_full[idx_sh] = range2
 
                 scatter_energies_2nd[t].append(e2_full)
                 scatter_ranges_2nd[t].append(r2_full)
-                t2_end.record(); torch.cuda.synchronize(); t2_total += t2_start.elapsed_time(t2_end)
+                print(f"  [t={t} p={p} 2nd-bounce appended] {mem()}")
 
-        print(f"[t={t}] first bounce: {t1_total/1000:.2f}s  second bounce: {t2_total/1000:.2f}s  ({P} pulses, {n_ray_width}x{n_ray_height} rays)")
+            t2_ev_end.record(); torch.cuda.synchronize()
+            t2_total = t2_ev_start.elapsed_time(t2_ev_end) / 1000
+        else:
+            t2_total = 0.0
+
+        print(f"[t={t}] first bounce: {t1_total/1000:.2f}s  second bounce: {t2_total:.2f}s  ({P} pulses, {n_ray_width}x{n_ray_height} rays)  {mem()}")
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
@@ -375,7 +366,12 @@ def accumulate_scatters(target_poses,
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
 
-    return scatter_ranges, scatter_energies 
+    if num_bounce == 2:
+        del octree_rt, _tm
+        torch.cuda.empty_cache()
+
+    print(f"[accumulate_scatters END] {mem()}")
+    return scatter_ranges, scatter_energies
     #      (T, P, R)       (T, P, R)         
 
 
