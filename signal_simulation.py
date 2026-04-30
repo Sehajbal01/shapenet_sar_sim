@@ -16,9 +16,7 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical, gpu_mem
-from ray_tracer.geometry.trimesh import TriMesh
-from ray_tracer.accelerator.octree import Octree
+from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
 
 
 
@@ -91,7 +89,7 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
 
 
 
-def accumulate_scatters(target_poses,
+def accumulate_scatters(target_poses, 
                         mesh, face_normals, material_properties,
                         trajectory,
                         wavelength=None,
@@ -99,8 +97,6 @@ def accumulate_scatters(target_poses,
                         grid_width=1, grid_height=1,
                         n_ray_width=1, n_ray_height=1,
                         num_bounce = 1,
-                        first_bounce_batch_size = 1,
-                        second_bounce_batch_size = 1,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -125,9 +121,6 @@ def accumulate_scatters(target_poses,
     T = target_poses.shape[0]  # no. of camera views
     P = trajectory.shape[1]    # no. of pulses per view
 
-    mem = lambda: gpu_mem(device)
-    # print(f"[accumulate_scatters START] {mem()}")
-
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
         image_size=(n_ray_height, n_ray_width), 
@@ -138,236 +131,164 @@ def accumulate_scatters(target_poses,
         max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
     )
 
-    # build octree from PyTorch3D mesh for fast second-bounce intersection
-    if num_bounce == 2:
-        vp_all = mesh.verts_packed()
-        fp_all = mesh.faces_packed()
-        _tm = TriMesh()
-        _tm.triangles_A      = vp_all[fp_all[:, 0]]
-        _tm.triangles_B      = vp_all[fp_all[:, 1]]
-        _tm.triangles_C      = vp_all[fp_all[:, 2]]
-        _tm.triangles_edge1  = _tm.triangles_B - _tm.triangles_A
-        _tm.triangles_edge2  = _tm.triangles_C - _tm.triangles_A
-        _tm.triangles_normal = torch.linalg.cross(_tm.triangles_edge1, _tm.triangles_edge2, dim=1)
-        _tm.triangles_normal = _tm.triangles_normal / torch.norm(_tm.triangles_normal, dim=1, keepdim=True)
-        _tm.triangles_rsa    = torch.zeros((fp_all.shape[0], 3), device=device)
-        octree_rt = Octree(max_depth=2, approx_trig_per_bbox=256, mesh=_tm, device=device)
-        # print(f"[octree built] {mem()}")
-
     # loop over each pulse and compute the depth map and surface normal
     scatter_ranges = []
     scatter_energies = []
-    scatter_ranges_2nd = []
-    scatter_energies_2nd = []
     dm_e_images = []  # to store depth and energy images
-    alpha = 5
-    num_faces = face_normals.shape[0]  # faces in the original (non-extended) mesh
-    t1_grand_total = 0.0
-    t2_grand_total = 0.0
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
-        scatter_ranges_2nd.append([])
-        scatter_energies_2nd.append([])
-        t1_total = 0.0
-        second_bounce_data = [None] * P
+        for p in range(P):
 
-        t1_start = torch.cuda.Event(enable_timing=True)
-        t1_end   = torch.cuda.Event(enable_timing=True)
+            # perform rasterization to find where the rays hit the mesh
+            cam_azimuth_deg, cam_elevation_deg, cam_distance = cartesian_to_spherical(trajectory[t,p])
 
-        for batch_start in range(0, P, first_bounce_batch_size):
-            batch_end = min(batch_start + first_bounce_batch_size, P)
-            B = batch_end - batch_start
-
-            t1_start.record()
-
-            # build batched cameras for this group of pulses
-            rot_list, trans_list = [], []
-            for p in range(batch_start, batch_end):
-                az, el, dist = cartesian_to_spherical(trajectory[t, p])
-                rot, trans = look_at_view_transform(dist, el, az + 90, device=device)
-                rot_list.append(rot)    # (1, 3, 3)
-                trans_list.append(trans)  # (1, 3)
-            rotations_b    = torch.cat(rot_list,   dim=0)  # (B, 3, 3)
-            translations_b = torch.cat(trans_list, dim=0)  # (B, 3)
-
+            rotation, translation = look_at_view_transform(
+                cam_distance,
+                cam_elevation_deg,
+                cam_azimuth_deg+90,
+                device=device)
             cameras = FoVOrthographicCameras(
-                device=device, R=rotations_b, T=translations_b,
-                min_x=-grid_width/2,  max_x=grid_width/2,
-                min_y=-grid_height/2, max_y=grid_height/2,
+                device = device, R = rotation, T = translation, 
+                min_x = -grid_width /2, max_x = grid_width /2,
+                min_y = -grid_height/2, max_y = grid_height/2,
             )
-            rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
-            fragments = rasterizer(mesh.extend(B))
-            print(f"  [1st-bounce t={t} pulses={batch_start}-{batch_end-1}] fragments.zbuf.shape={fragments.zbuf.shape}")
+            rasterizer = MeshRasterizer(
+                cameras=cameras,
+                raster_settings=raster_settings
+            )
+            fragments = rasterizer(mesh)
 
-            for bi, p in enumerate(range(batch_start, batch_end)):
-                rotation    = rotations_b[bi:bi+1]     # (1, 3, 3)
-                translation = translations_b[bi:bi+1]  # (1, 3)
+            # get depth map
+            depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
 
-                depth_map = fragments.zbuf[bi, ..., 0]         # (H, W)
-                face_ids  = fragments.pix_to_face[bi, ..., 0]  # (H, W)
-                hit = (depth_map >= 0)
-                valid_face_ids = face_ids[hit] - bi * num_faces  # offset for extended mesh
+            # compute surface normals from face indices and mesh vertices/faces
+            face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
+            hit = (depth_map >= 0) # (r, r) valid hits
+            
+            # create normal map by indexing face normals with face IDs
+            valid_face_ids = face_ids[hit] # (R',)
 
-                forward_vector = rotation[0, :, 2]  # (3,)
-                energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)
+            # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
+            forward_vector = rotation[0,:,2] # (3,)
+            energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
 
-                s = material_properties[valid_face_ids, 4]
-                i = material_properties[valid_face_ids, 2]
-                d = material_properties[valid_face_ids, 3]
-                n = face_normals[valid_face_ids]
-                n = n / torch.linalg.norm(n, dim=-1, keepdim=True)
-                u_in = forward_vector / torch.linalg.norm(forward_vector, dim=-1, keepdim=True)
-                cos_theta_over_2 = torch.abs(dot_product(n, u_in))
-                energy_map[hit] = s * (
-                    (i * cos_theta_over_2**alpha) /
-                    directional_scatter_polynomial_alpha5(cos_theta_over_2) +
-                    d / 2 / np.pi
+            # calculate returned energy
+            s = material_properties[valid_face_ids,4] 
+            i = material_properties[valid_face_ids,2]
+            d = material_properties[valid_face_ids,3]
+            alpha = 5
+            n = face_normals[valid_face_ids]
+            n = n / torch.linalg.norm(n, dim=-1, keepdim=True) # normalize the normals
+            u_in = forward_vector / torch.linalg.norm(forward_vector, dim=-1, keepdim=True)
+            cos_theta_over_2 = torch.abs(dot_product(n, u_in))
+            energy_map[hit] = s * (
+                (i*cos_theta_over_2**alpha) / \
+                (directional_scatter_polynomial_alpha5(cos_theta_over_2)) + \
+                d/2/np.pi
+            )
+
+            # produce a frame of the depth and energy maps
+            if debug_gif:
+                masked_dm = depth_map[hit]
+                masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
+                masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
+                masked_dm = 1 - masked_dm  # invert the depth map
+                dm_im = torch.zeros((n_ray_height, n_ray_width), device=device)  # (r, r)
+                dm_im[hit] = masked_dm  # apply the mask
+
+                masked_e = energy_map[hit]
+                masked_e = masked_e - masked_e.min()  # shift to start from 0
+                masked_e = masked_e / masked_e.max()  # normalize to [0,1]
+                e_im = torch.zeros((n_ray_height, n_ray_width), device=device)
+                e_im[hit] = masked_e  # apply the mask
+
+                e_im = e_im.cpu().numpy()  # convert to numpy for saving
+                dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
+                dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
+                dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
+
+                dm_e_images.append(dm_e_im)  # store the depth and energy image
+
+                # save current image to a file in a tmp folder in figures to be made into a gif later
+                if not os.path.exists('figures/tmp'):
+                    os.makedirs('figures/tmp')
+                path = get_next_path(f'figures/tmp/depth_energy.png')
+                imageio.imwrite(path, dm_e_im)
+
+            # finalize the range and energy
+            depth_map[~hit]  = 0.0  # set missed rays to 0
+            scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
+            scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
+
+            if debug_gif and t == 0:
+                tmp1 = scatter_ranges[t][-1].cpu().numpy()
+                tmp2 = scatter_energies[t][-1].cpu().numpy()
+                plt.scatter(tmp1, tmp2, s=1)
+                plt.xlabel("Range")
+                plt.ylabel("Energy")
+                plt.xlim(0, 6)
+                plt.ylim(-0.5, 1.5)
+                plt.title(f"Energy vs Range Plot for Bounce 0 for Pulse {p}")
+                plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
+                plt.close()
+
+            # calculate second bounce
+            if num_bounce == 2:
+                # let R' be the number of rays that previously hit
+
+                ray_origins = # (R',) this is the origin of the next path of the ray. it is where the rays landed on the mesh, i believe i can get this from fragments. check documentation only keep this tensor full of rays that actually made contact
+                
+                ray_directions = # (R',) might have to do some math to calculate this
+
+                camera = # some kind of pytorch3d object that lets you create a camera with custom rays (device = device)
+                rasterizer = MeshRasterizer(
+                    cameras=cameras,
+                    raster_settings=raster_settings
                 )
+                fragments = rasterizer(mesh)
 
-                if debug_gif:
-                    masked_dm = depth_map[hit]
-                    masked_dm = masked_dm - masked_dm.min()
-                    masked_dm = masked_dm / masked_dm.max()
-                    masked_dm = 1 - masked_dm
-                    dm_im = torch.zeros((n_ray_height, n_ray_width), device=device)
-                    dm_im[hit] = masked_dm
+                # let H be the number of rays that hit something
 
-                    masked_e = energy_map[hit]
-                    masked_e = masked_e - masked_e.min()
-                    masked_e = masked_e / masked_e.max()
-                    e_im = torch.zeros((n_ray_height, n_ray_width), device=device)
-                    e_im[hit] = masked_e
+                # get depth map
+                depth_map  = fragments.zbuf # [ something in the brackets to get the shape (R',) ]
 
-                    e_im   = e_im.cpu().numpy()
-                    dm_im  = dm_im.cpu().numpy()
-                    dm_e_im = np.concatenate((dm_im, e_im), axis=1)
-                    dm_e_im = (dm_e_im * 255).astype(np.uint8)
-                    dm_e_images.append(dm_e_im)
+                # compute surface normals from face indices and mesh vertices/faces
+                face_ids = fragments.pix_to_face# [ something in the brackets to get the shape (R',) ]
+                hit = (depth_map >= 0) # (H,) valid hits
+                
+                # only keep the rays that hit something
+                ray_origins = ray_origins[hit]
+                ray_directions = ray_directions[hit]
+                
+                # create normal map by indexing face normals with face IDs
+                valid_face_ids = face_ids[hit] # (H,)
 
-                    if not os.path.exists('figures/tmp'):
-                        os.makedirs('figures/tmp')
-                    path = get_next_path(f'figures/tmp/depth_energy.png')
-                    imageio.imwrite(path, dm_e_im)
+                # calculate returned energy
+                s = material_properties[valid_face_ids,4] # put shape here
+                i = material_properties[valid_face_ids,2]# put shape here
+                d = material_properties[valid_face_ids,3]# put shape here
+                alpha = 5
+                n = face_normals[valid_face_ids] # (H,)
+                n = n / torch.linalg.norm(n, dim=-1, keepdim=True) # normalize the normals
+                u_in = ray_directions / torch.linalg.norm(forward_vector, dim=-1, keepdim=True) # put shape here
+                cos_theta_over_2 = torch.abs(dot_product(n, u_in)) # put shape here
+                energy_map = s * (
+                    (i*cos_theta_over_2**alpha) / \
+                    (directional_scatter_polynomial_alpha5(cos_theta_over_2)) + \
+                    d/2/np.pi
+                ) # put shape here
 
-                depth_map[~hit] = 0.0
-                scatter_ranges[t].append(2 * depth_map.reshape(-1))
-                scatter_energies[t].append(energy_map.reshape(-1))
+                # there will be no plotting for the second bounce
 
-                if debug_gif and t == 0:
-                    tmp1 = scatter_ranges[t][-1].cpu().numpy()
-                    tmp2 = scatter_energies[t][-1].cpu().numpy()
-                    plt.scatter(tmp1, tmp2, s=1)
-                    plt.xlabel("Range")
-                    plt.ylabel("Energy")
-                    plt.xlim(0, 6)
-                    plt.ylim(-0.5, 1.5)
-                    plt.title(f"Energy vs Range Plot for Bounce 0 for Pulse {p}")
-                    plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
-                    plt.close()
+                # now we can calculate the round trip range traveled by each ray that hit something
+                dist_to_next_triangle = depth_map[hit] # (H,)
+                ray_ends = ray_origins + dist_to_next_triangle * ray_directions # put shape here
+                distance_to_original_ray_plane = # fill this in
 
-                if num_bounce == 2 and hit.any():
-                    R0 = rotation[0]
-                    T0 = translation[0]
-                    fwd_w        = forward_vector / torch.linalg.norm(forward_vector)
-                    cam_center_w = -(T0.unsqueeze(0) @ R0.T).squeeze(0)
+                second_bounce_energy = # fill this in
+                second_bounce_range = # original depth + dist_to_next_triangle + distance_to_original_ray_plane
 
-                    x_cam = torch.linspace(-grid_width/2,  grid_width/2,  n_ray_width,  device=device)
-                    y_cam = torch.linspace( grid_height/2, -grid_height/2, n_ray_height, device=device)
-                    gy, gx = torch.meshgrid(y_cam, x_cam, indexing='ij')
-                    hit_pos_w = (cam_center_w
-                                 + gx.unsqueeze(-1) * R0[:, 0]
-                                 + gy.unsqueeze(-1) * R0[:, 1]
-                                 + depth_map.unsqueeze(-1) * fwd_w)
-
-                    first_hit_flat   = hit.reshape(-1)
-                    ro2              = hit_pos_w.reshape(-1, 3)[first_hit_flat]
-                    first_hit_depths = depth_map.reshape(-1)[first_hit_flat]
-
-                    n_r = n.clone()
-                    n_r[(n_r * fwd_w).sum(-1) > 0] *= -1
-                    dot_r = (fwd_w.unsqueeze(0) * n_r).sum(-1, keepdim=True)
-                    rd2   = fwd_w.unsqueeze(0) - 2 * dot_r * n_r
-                    rd2   = rd2 / torch.linalg.norm(rd2, dim=-1, keepdim=True)
-                    ro2   = ro2 + 1e-4 * rd2
-
-                    second_bounce_data[p] = dict(
-                        ro2=ro2, rd2=rd2,
-                        first_hit_flat=first_hit_flat,
-                        first_hit_depths=first_hit_depths,
-                        fwd_w=fwd_w, cam_center_w=cam_center_w,
-                    )
-
-            t1_end.record(); torch.cuda.synchronize(); t1_total += t1_start.elapsed_time(t1_end)
-
-        # second bounce: second_bounce_batch_size pulses per octree call
-        if num_bounce == 2:
-            t2_ev_start = torch.cuda.Event(enable_timing=True)
-            t2_ev_end   = torch.cuda.Event(enable_timing=True)
-            t2_ev_start.record()
-
-            for batch_start in range(0, P, second_bounce_batch_size):
-                batch_end = min(batch_start + second_bounce_batch_size, P)
-                batch_data = [second_bounce_data[p] for p in range(batch_start, batch_end)]
-                valid_mask = [d is not None for d in batch_data]
-                valid_data = [d for d in batch_data if d is not None]
-
-                t_p_list = []
-                f_p_list = []
-                if valid_data:
-                    batch_ro2 = torch.cat([d['ro2'] for d in valid_data], dim=0)
-                    batch_rd2 = torch.cat([d['rd2'] for d in valid_data], dim=0)
-                    print(f"  [2nd-bounce t={t} pulses={batch_start}-{batch_end-1}] batch_ro2.shape={batch_ro2.shape} ({len(valid_data)} valid pulses)")
-                    t_p_all, f_p_all = octree_rt.intersect_rays(batch_ro2, batch_rd2)
-                    sizes = [d['ro2'].shape[0] for d in valid_data]
-                    t_p_list = list(torch.split(t_p_all, sizes))
-                    f_p_list = list(torch.split(f_p_all, sizes))
-
-                valid_idx = 0
-                for i in range(batch_end - batch_start):
-                    e2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
-                    r2_full = torch.zeros(n_ray_height * n_ray_width, device=device)
-
-                    if valid_mask[i]:
-                        data = batch_data[i]
-                        t_p  = t_p_list[valid_idx]
-                        f_p  = f_p_list[valid_idx]
-                        valid_idx += 1
-                        hit2 = t_p >= 0
-
-                        if hit2.any():
-                            vf2  = f_p[hit2]
-                            d2   = t_p[hit2]
-                            s2   = material_properties[vf2, 4]
-                            i2   = material_properties[vf2, 2]
-                            d2_m = material_properties[vf2, 3]
-                            n_b2 = face_normals[vf2]
-                            n_b2 = n_b2 / torch.linalg.norm(n_b2, dim=-1, keepdim=True)
-                            u_b2 = data['rd2'][hit2]
-                            cos2 = torch.abs(dot_product(n_b2, u_b2))
-                            energy2 = s2 * (
-                                (i2 * cos2**alpha) / directional_scatter_polynomial_alpha5(cos2) +
-                                d2_m / 2 / np.pi
-                            )
-                            pos2      = data['ro2'][hit2] + d2.unsqueeze(-1) * data['rd2'][hit2]
-                            dist_back = ((pos2 - data['cam_center_w']) * data['fwd_w']).sum(-1)
-                            range2    = 2 * (data['first_hit_depths'][hit2] + d2 + dist_back)
-
-                            idx_fh = data['first_hit_flat'].nonzero(as_tuple=True)[0]
-                            idx_sh = idx_fh[hit2]
-                            e2_full[idx_sh] = energy2
-                            r2_full[idx_sh] = range2
-
-                    scatter_energies_2nd[t].append(e2_full)
-                    scatter_ranges_2nd[t].append(r2_full)
-
-            t2_ev_end.record(); torch.cuda.synchronize()
-            t2_total = t2_ev_start.elapsed_time(t2_ev_end) / 1000
-        else:
-            t2_total = 0.0
-
-        t1_grand_total += t1_total / 1000
-        t2_grand_total += t2_total
         # stack the results
         scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
         scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
@@ -375,22 +296,13 @@ def accumulate_scatters(target_poses,
     scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
 
     # stack on the second bounce if desired
-    if num_bounce == 2:
-        sr2 = torch.stack([torch.stack(sr, dim=0) for sr in scatter_ranges_2nd], dim=0)   # (T, P, R)
-        se2 = torch.stack([torch.stack(se, dim=0) for se in scatter_energies_2nd], dim=0) # (T, P, R)
-        scatter_ranges   = torch.cat([scatter_ranges,   sr2], dim=-1)  # (T, P, 2R)
-        scatter_energies = torch.cat([scatter_energies, se2], dim=-1)  # (T, P, 2R)
+
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
         scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
 
-    if num_bounce == 2:
-        del octree_rt, _tm
-        torch.cuda.empty_cache()
-
-    print(f"[accumulate_scatters] 1st-bounce batch={first_bounce_batch_size}: {t1_grand_total:.2f}s  2nd-bounce batch={second_bounce_batch_size}: {t2_grand_total:.2f}s  total: {t1_grand_total+t2_grand_total:.2f}s  ({T}x{P} pulses, {n_ray_width}x{n_ray_height} rays)")
-    return scatter_ranges, scatter_energies
+    return scatter_ranges, scatter_energies 
     #      (T, P, R)       (T, P, R)         
 
 
