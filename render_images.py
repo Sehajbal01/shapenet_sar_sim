@@ -125,6 +125,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         n_ray_height   = n_ray_height,
 
         num_bounce = 2,
+        first_bounce_batch_size  = 2**100,
+        second_bounce_batch_size = 2**100,
     )
     if verbose:
         print('done.')
@@ -319,6 +321,8 @@ def render_random_image(
         # material properties
         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
+
+        log_scale = False,
     ):
     """
     Renders a random image from the ShapeNet dataset using SAR simulation.
@@ -400,6 +404,8 @@ def render_random_image(
 
     # plot the SAR image next to the RGB image
     sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
+    if log_scale:
+        sar = torch.log1p(sar)
     sar = (sar - sar.min()) / (sar.max() - sar.min()) * 255.0  # normalize to [0, 255]
     sar = sar.cpu().numpy().astype(np.uint8)  # convert to uint8
     sar = cv2.resize(sar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
@@ -1056,8 +1062,7 @@ if __name__ == '__main__':
         'trajectory_type': 'circular',
         'trajectory_noise_var' : 0,
 
-
-
+        'log_scale': True,
     }
 
 
@@ -1077,8 +1082,9 @@ if __name__ == '__main__':
     print('all obj paths: ', all_obj_paths)
     print('custom title strings: ', custom_title_strings)
 
-    # all_obj_paths = all_obj_paths[:2]
-    # custom_title_strings = custom_title_strings[:2]
+    # for now just do 2 images
+    all_obj_paths = all_obj_paths[:2]
+    custom_title_strings = custom_title_strings[:2]
 
     vary_kwargs = {
         'override_obj_path': all_obj_paths
