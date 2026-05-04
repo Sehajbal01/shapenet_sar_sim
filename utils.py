@@ -21,12 +21,12 @@ def gpu_mem(device=None):
     return f"alloc={alloc:.2f}GB reserved={reserved:.2f}GB"
 
 
-def dot_product(a, b, dim = -1):
+def dot_product(a, b, dim = -1, keepdim=False):
     '''
     compute the dot product between two tensors along a specified dimension, and return a tensor with that dimension removed.
     For example, if a and b are both (..., 3) and dim=-1, then this function will return a tensor of shape (...) containing the dot product of the last dimension of a and b.
     '''
-    return torch.sum(a * b, dim=dim)
+    return torch.sum(a * b, dim=dim, keepdim=keepdim)
 
 
 def correct_material_properties(properties):
