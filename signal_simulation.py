@@ -18,7 +18,7 @@ from pytorch3d.renderer import (
 import math
 import time
 from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
-from ray_tracer_v2 import ray_trace
+from ray_tracer_v2 import ray_trace, build_octree
 
 
 
@@ -132,6 +132,10 @@ def accumulate_scatters(target_poses,
     t_overall_start = sync_time()
     t_bounce1_total = 0.0
     t_bounce2_total = 0.0
+
+    # Build octree once for the whole simulation run (amortised over all pulses).
+    # Only needed for second-bounce; skipped when num_bounce == 1.
+    octree = build_octree(mesh) if num_bounce == 2 else None
 
     # prepare rasterization settings
     raster_settings = RasterizationSettings(
@@ -271,7 +275,7 @@ def accumulate_scatters(target_poses,
 
                 # perform Möller–Trumbore intersection algorithm
                 previous_hit = hit.flatten() # (R,)
-                hit_indecies, distance = ray_trace(ray_origins,ray_directions,mesh, face_normals, batch_size=second_bounce_batch_size)
+                hit_indecies, distance = ray_trace(ray_origins, ray_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
                 # (R',)       (R',)
                 hit = distance >= 0 # (R',) boolean
                 distance = distance[hit]  # (H,) distances for the rays that hit something
