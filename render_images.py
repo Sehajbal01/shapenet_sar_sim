@@ -10,11 +10,7 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
-from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
-
-from signal_simulation import accumulate_scatters as accumulate_scatters_rasterization
-from ray_tracer_signal_simulation import accumulate_scatters as accumulate_scatters_raytracing
-from ray_tracer_signal_simulation import load_mesh_raytracing
+from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory, accumulate_scatters
 
 from imaging_algorithms import projected_CBP, strip_map_imaging
 
@@ -29,13 +25,12 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         wavelength = None,
                         use_sig_magnitude = True,
                         verbose = False,
-                        render_method = 'rasterization',
                         imaging_algorithm = 'cbp',
                         trajectory_type = 'circular',
                         trajectory_noise_var = 0,
 
                         override_obj_path = None,
-                        
+
                         # image size stuff
                         image_width = 64,
                         image_height = 64,
@@ -53,7 +48,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
                         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
     ):
-    
+
     # allow overriding the obj path for debugging purposes
     mesh_scale = None
     if override_obj_path is not None:
@@ -64,38 +59,14 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # set device
     device = poses.device
 
-    # select the function for accumulating scatters
-    if render_method == 'rasterization':
-        accumulate_scatters_fn = accumulate_scatters_rasterization
-    elif render_method == 'raytracing':
-        accumulate_scatters_fn = accumulate_scatters_raytracing
-    else:
-        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
-
     # load the mesh and hardcode the material properties
-    if render_method == 'rasterization':
-        #obj  (F,3)    (F,5)
-        mesh, normals, material_properties = load_mesh( file_name,
-                                                        device=device,
-                                                        make_ground=True,
-                                                        scale=mesh_scale,
-                                                        obj_raids = obj_raids,
-                                                        ground_raids = ground_raids,
-                                                    )
-        
-
-        # verts = mesh.verts_packed()
-        # print('filename: ', file_name)
-        # print('mesh min: ', verts.flatten(0).min(dim=0).values)
-        # print('mesh max: ', verts.flatten(0).max(dim=0).values)
-        # print('mesh.shape: ', verts.shape)
-        # sys.exit()
-
-    elif render_method == 'raytracing':
-        mesh = load_mesh_raytracing(file_name, device=device,)
-        normals, material_properties = None, None  # embedded into each triangle of the mesh object
-    else:
-        raise ValueError('Invalid render method \'%s\', expected \'rasterization\' or \'raytracing\''%render_method)
+    mesh, normals, material_properties = load_mesh( file_name,
+                                                    device=device,
+                                                    make_ground=True,
+                                                    scale=mesh_scale,
+                                                    obj_raids = obj_raids,
+                                                    ground_raids = ground_raids,
+                                                )
 
     # generate the sensor trajectory for each pose
     # (T,P,3)        (T,P,3)              (T,P)
@@ -112,7 +83,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # (T,P,R)   (T,P,R)
     torch.cuda.empty_cache()
-    all_ranges, all_energies = accumulate_scatters_fn(
+    all_ranges, all_energies = accumulate_scatters(
         poses.to(device),
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
@@ -298,7 +269,6 @@ def render_random_image(
         wavelength = None,
         use_sig_magnitude=True,
         suffix = None,
-        render_method = 'rasterization',
         imaging_algorithm = 'cbp',
         trajectory_type = 'circular',
         trajectory_noise_var = 0,
@@ -377,8 +347,6 @@ def render_random_image(
 
                             debug_gif=debug_gif, # debug gif
                             debug_gif_suffix = suffix,
-
-                            render_method=render_method,
 
                             imaging_algorithm=imaging_algorithm,
                             trajectory_type=trajectory_type,
@@ -1050,9 +1018,6 @@ if __name__ == '__main__':
         'n_ray_width'        : 256,
         'n_ray_height'       : 256,
         'region_radius'      : 1.7,
-
-        'render_method': 'rasterization',
-        # 'render_method': 'raytracing',
 
         'obj_raids':    (1.0, 0.0, 0.5, 0.5, 1.0),
         'ground_raids': (7, 7, 0.5, 0.5, 1),
