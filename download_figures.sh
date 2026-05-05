@@ -6,4 +6,8 @@ LOCAL_PATH="/home/berian/Documents/remote-figures/"
 
 rm -rf "$LOCAL_PATH"
 mkdir -p "$LOCAL_PATH"
-rsync -avz --progress "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH" "$LOCAL_PATH"
+RSYNC_ARGS=(-avz --progress)
+if [ -n "$1" ]; then
+    RSYNC_ARGS+=(--include="*$1*" --exclude="*")
+fi
+rsync "${RSYNC_ARGS[@]}" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_PATH" "$LOCAL_PATH"
