@@ -1032,7 +1032,7 @@ if __name__ == '__main__':
 
     # idk
     default_kwargs = {
-        'debug_gif': True,
+        'debug_gif': False,
         'num_pulse': 32,
         'azimuth_spread': 180,
         'spatial_bw': 90,
