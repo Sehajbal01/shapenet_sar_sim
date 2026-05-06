@@ -5,7 +5,7 @@ from PIL import ImageDraw
 import imageio
 import cv2
 import os
-from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info
+from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info, plot_image
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
@@ -161,6 +161,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%imaging_algorithm)
     if verbose:
         print('done.')
+
+    # save the sar image with colorbar for qualitative analysis
+    plot_image(sar_image, title="SAR", cmap='inferno')
+    savefig(get_next_path("figures/colorbar_sar_image.png"))
 
     # make a gif if desired
     if debug_gif:
@@ -1026,7 +1030,7 @@ if __name__ == '__main__':
         'trajectory_type': 'circular',
         'trajectory_noise_var' : 0,
 
-        'log_scale': True,
+        'log_scale': False,
     }
 
 
@@ -1046,9 +1050,9 @@ if __name__ == '__main__':
     print('all obj paths: ', all_obj_paths)
     print('custom title strings: ', custom_title_strings)
 
-    # for now just do 2 images
-    all_obj_paths = all_obj_paths[:2]
-    custom_title_strings = custom_title_strings[:2]
+    # # for now just do 2 images
+    # all_obj_paths = all_obj_paths[:2]
+    # custom_title_strings = custom_title_strings[:2]
 
     vary_kwargs = {
         'override_obj_path': all_obj_paths

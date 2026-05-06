@@ -3,27 +3,12 @@ TOP PRIORITY:
 Others
 
 - manual trajectory
-    DONE - add the linear movement mode
-    DONE - make trajectory generation function
-    DONE - make sure considered samples have the object in range
-        DONE - variable z_near,z_far per pulse
-    - modify accumulate_scatters to input trajectory
-        DONE - rasterization
-        - ray tracing
-    DONE - modify imaging functions to input trajectory
-    DONE - add tests
-    DONE - noisy trajectory
-        DONE - imaging function assumes the perfect trajectory
-        DONE - the signals are taken with the noisy trajectory
-        look into noise models of trajectory in literature
     - make image mosaic for the paper
 
 - simple object imaging
-    DONE - find the right model for r s a d i for CV Domes first
-        DONE - play around with it in utils
-    DONE - implement the new return model
     - replicate sinc pattern in the image
-    - cube and sphere obj in /workspace/berian
+        - use small sphere
+        - i think i just need to reduce the bw??
     - mosaic for raids
     - what if i run CBP with the actual object not in the center
         - i suspect some imaging effects we observe aredue to the CBP running with the object in the center, which is not the case for the real world
@@ -31,17 +16,19 @@ Others
 
 - implement strip map mode simulation
     DONE - implement the imaging function
+    - utilize phase in strip map
     - make image mosaic for the paper
 
 - Produce images for CV domes object for comparative analysis
-    - play with the model
-    - decide on a new returned energy model
+    DONE - play with the model
+    DONE - decide on a new returned energy model
+    - use qualitative analysis
     - find hyperparameters that best match CVDomes results
-    - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
+    DONE - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
 
-Implement depth map rendering mode
-Implement range-angle imaging that converts to range-range with various beam patterns
-    - cook up some stuff then meet with andy from arete
+- for arete
+    - Implement depth map rendering mode
+    - Implement range-angle imaging that converts to range-range with various beam patterns
 
 - Adress reviewre concerns
     - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/

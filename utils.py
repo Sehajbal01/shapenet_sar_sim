@@ -163,6 +163,38 @@ def test_spherical_cartesian_consistency(num_points=100000, tol=1e-3):
         return False
 
 
+def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False):
+    """
+    Plot a 2D image with a colorbar.
+
+    Parameters
+    ----------
+    image   : (H, W) array-like or torch.Tensor
+    title   : optional title string
+    cmap    : matplotlib colormap name (default 'gray')
+    vmin    : colorbar lower bound (default: image min)
+    vmax    : colorbar upper bound (default: image max)
+    figsize : (width, height) in inches
+    db      : if True, convert to dB scale (10*log10) before plotting
+    """
+    if hasattr(image, 'detach'):
+        image = image.detach().cpu().numpy()
+    else:
+        image = np.asarray(image)
+    image = np.squeeze(image)
+    if db:
+        image = 10 * np.log10(np.maximum(image, 1e-10))
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(image, cmap=cmap, vmin=vmin, vmax=vmax)
+    cbar = fig.colorbar(im, ax=ax)
+    if db:
+        cbar.set_label('dB')
+    if title is not None:
+        ax.set_title(title)
+    ax.axis('off')
+    return fig, ax
+
+
 def savefig(path):
     plt.tight_layout()
     plt.savefig(path)
