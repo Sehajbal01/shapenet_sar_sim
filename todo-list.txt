@@ -1,4 +1,5 @@
 TOP PRIORITY:
+modify accumulate scatters to only return the rays that hit stuff. No more returning zeros.
 
 Others
 
