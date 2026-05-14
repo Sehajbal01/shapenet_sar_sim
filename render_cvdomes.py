@@ -15,7 +15,7 @@ CENTER_ELEVATION = 32   # degrees
 SENSOR_DISTANCE  = 1.3
 
 AZ_SPREADS  = [30, 90, 180]
-NUM_PULSES  = 50
+NUM_PULSES  = 100
 
 # Generic args from default_kwargs at the bottom of render_images.py
 GENERIC_KWARGS = dict(
@@ -33,12 +33,13 @@ GENERIC_KWARGS = dict(
     n_ray_width         = 256,
     n_ray_height        = 256,
     region_radius       = 1.7,
-    obj_raids           = (1.0, 0.0, 0.5, 0.5, 1.0),
-    ground_raids        = (7, 7, 0.5, 0.5, 1),
+    obj_raids           = (0.8, 0.0, 0.9, 0.1, 0.2),
+    ground_raids        = (0.5, 0.0, 0.8, 0.2, 0.5),
     imaging_algorithm   = 'cbp',
     trajectory_type     = 'circular',
     trajectory_noise_var= 0,
     debug_gif           = False,
+    mesh_scale          = 0.05,
 )
 
 
@@ -50,7 +51,7 @@ def model_name(obj_path):
 
 
 def save_with_colorbar(sar_image, path):
-    plot_image(sar_image, title=None, cmap='gray')
+    plot_image(sar_image, title=None, cmap='gray', db=True, relative_db=True)
     savefig(path)
 
 
@@ -90,11 +91,10 @@ def main():
                 NUM_PULSES,
                 pose,
                 az_spread,
-                override_obj_path=obj_path,  # sets mesh_scale=0.07 for cvdomes
                 **GENERIC_KWARGS,
             )
 
-            base = f'{name}_{az_spread}azspread'
+            base = f'cvdomes_{name}_{az_spread}azspread'
 
             colorbar_path = os.path.join(FIGURES_DIR, f'{base}.png')
             save_with_colorbar(sar_image, colorbar_path)
@@ -103,6 +103,9 @@ def main():
             nobar_path = os.path.join(FIGURES_DIR, f'{base}_nobar.png')
             save_image_only(sar_image, nobar_path)
             print(f'    saved: {nobar_path}')
+
+        # only do 1 object
+        break
 
 
 if __name__ == '__main__':

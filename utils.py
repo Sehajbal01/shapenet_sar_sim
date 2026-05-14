@@ -163,19 +163,20 @@ def test_spherical_cartesian_consistency(num_points=100000, tol=1e-3):
         return False
 
 
-def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False):
+def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False, relative_db=True):
     """
     Plot a 2D image with a colorbar.
 
     Parameters
     ----------
-    image   : (H, W) array-like or torch.Tensor
-    title   : optional title string
-    cmap    : matplotlib colormap name (default 'gray')
-    vmin    : colorbar lower bound (default: image min)
-    vmax    : colorbar upper bound (default: image max)
-    figsize : (width, height) in inches
-    db      : if True, convert to dB scale (10*log10) before plotting
+    image       : (H, W) array-like or torch.Tensor
+    title       : optional title string
+    cmap        : matplotlib colormap name (default 'gray')
+    vmin        : colorbar lower bound (default: image min)
+    vmax        : colorbar upper bound (default: image max)
+    figsize     : (width, height) in inches
+    db          : if True, convert to dB scale (10*log10) before plotting
+    relative_db : if True (default), normalize by max before dB so 0 dB = brightest pixel
     """
     if hasattr(image, 'detach'):
         image = image.detach().cpu().numpy()
@@ -183,12 +184,15 @@ def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6,
         image = np.asarray(image)
     image = np.squeeze(image)
     if db:
-        image = 10 * np.log10(np.maximum(image, 1e-10))
+        if relative_db:
+            image = 10 * np.log10(np.maximum(image / np.max(image), 1e-10))
+        else:
+            image = 10 * np.log10(np.maximum(image, 1e-10))
     fig, ax = plt.subplots(figsize=figsize)
     im = ax.imshow(image, cmap=cmap, vmin=vmin, vmax=vmax)
     cbar = fig.colorbar(im, ax=ax)
     if db:
-        cbar.set_label('dB')
+        cbar.set_label('Relative Magnitude (dB)' if relative_db else 'dB')
     if title is not None:
         ax.set_title(title)
     ax.axis('off')

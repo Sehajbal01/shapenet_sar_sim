@@ -28,6 +28,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         imaging_algorithm = 'cbp',
                         trajectory_type = 'circular',
                         trajectory_noise_var = 0,
+                        mesh_scale = None,
 
                         override_obj_path = None,
 
@@ -48,13 +49,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
                         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
     ):
-
-    # allow overriding the obj path for debugging purposes
-    mesh_scale = None
-    if override_obj_path is not None:
-        file_name = override_obj_path
-        mesh_scale = 0.07 # for cvdomes
-        # mesh_scale = 0.35 # big sphere
 
     # set device
     device = poses.device
@@ -162,9 +156,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if verbose:
         print('done.')
 
-    # save the sar image with colorbar for qualitative analysis
-    plot_image(sar_image, title="SAR", cmap='inferno')
-    savefig(get_next_path("figures/colorbar_sar_image.png"))
+    # # save the sar image with colorbar for qualitative analysis
+    # plot_image(sar_image, title="SAR", cmap='inferno', db=True)
+    # savefig(get_next_path("figures/colorbar_sar_image.png"))
 
     # make a gif if desired
     if debug_gif:
