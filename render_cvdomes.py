@@ -40,7 +40,7 @@ GENERIC_KWARGS = dict(
     trajectory_noise_var= 0,
     debug_gif           = False,
     mesh_scale          = 0.05,
-    num_bounce          = 2,
+    num_bounce          = 3,
 )
 
 

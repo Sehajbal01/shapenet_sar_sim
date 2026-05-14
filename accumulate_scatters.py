@@ -38,8 +38,8 @@ def accumulate_scatters(target_poses,
         n_ray_width/height (int): the number of rays on the ray grid along the width and height axis.
 
     outputs:
-        range (T,P,R): the range of all the rays
-        energy (T,P,R): the simulated energy of all the rays
+        range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
+        energy (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
 
     '''
     device = target_poses.device
@@ -155,10 +155,9 @@ def accumulate_scatters(target_poses,
                 path = get_next_path(f'figures/tmp/depth_energy.png')
                 imageio.imwrite(path, dm_e_im)
 
-            # finalize the range and energy
-            depth_map[~hit]  = 0.0  # set missed rays to 0
-            scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
-            scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
+            # finalize the range and energy — keep only hit rays
+            scatter_ranges[t].append(2 * depth_map[hit])   # (R',)
+            scatter_energies[t].append(energy_map[hit])     # (R',)
 
             if debug_gif and t == 0:
                 tmp1 = scatter_ranges[t][-1].cpu().numpy()
@@ -197,7 +196,6 @@ def accumulate_scatters(target_poses,
                 prev_directions = forward_vector - 2 * dot_product(forward_vector, n_hit, keepdim=True) * n_hit  # (R', 3)
                 depth_hit1      = depth_map[hit]  # (R',)
                 cumulative_legs = torch.zeros(prev_origins.shape[0], device=device)  # (R',)
-                R = scatter_ranges[t][-1].shape[0]
 
                 for b in range(2, num_bounce + 1):
                     hit_indecies, distance = ray_trace(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
@@ -232,10 +230,7 @@ def accumulate_scatters(target_poses,
                     distance_to_sensor_plane = dot_product(hit_b_pos - trajectory[t, p], forward_vector)  # (H,)
                     total_range = depth_hit1 + cumulative_legs + distance_to_sensor_plane  # (H,)
 
-                    # pad to R and append scatter contributions for this bounce
-                    pad = R - energy_b.shape[0]
-                    total_range = torch.cat((total_range, torch.zeros(pad, device=device)))
-                    energy_b    = torch.cat((energy_b,    torch.zeros(pad, device=device)))
+                    # append scatter contributions for this bounce (no padding — ragged per pulse)
                     scatter_ranges[t][-1]   = torch.cat((scatter_ranges[t][-1],   total_range))
                     scatter_energies[t][-1] = torch.cat((scatter_energies[t][-1], energy_b))
 
@@ -245,18 +240,19 @@ def accumulate_scatters(target_poses,
 
                 t_multibounce_total += sync_time() - t_mb_start
 
-        # stack the results
-        scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, 2R or R)
-        scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, 2R or R)
-    scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, 2R or R)
-    scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, 2R or R)
+        # leave as list — each pulse has a different number of hit rays
+        pass
 
     t_overall = sync_time() - t_overall_start
     print(f"accumulate_scatters: overall={t_overall:.3f}s  bounce1={t_bounce1_total:.3f}s  multibounce={t_multibounce_total:.3f}s")
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
-        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
+        for t in range(T):
+            for p in range(P):
+                scatter_energies[t][p] = scatter_energies[t][p] * torch.exp(
+                    1j * 2 * np.pi / wavelength * scatter_ranges[t][p]
+                )
 
-    return scatter_ranges, scatter_energies 
-    #      (T, P, 2R or R)  (T, P, 2R or R)         
+    return scatter_ranges, scatter_energies
+    #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse)

@@ -97,19 +97,28 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         print('done.')
 
     # Generate signal
-    # (T,P,Z) (Z,)
+    # (T,P,Z) (T,P,Z)
     if verbose:
         print('Interpolating signal...')
-    # (T,P,Z) (T,P,Z,)
-    signals, sample_z = interpolate_signal(all_ranges/2, all_energies, # divide ranges by 2 to convert to spatial range
-
-            # range_near = range_near, range_far = range_far,
-            region_radius,
-            torch.linalg.norm(true_trajectory, dim=-1), # (T,P)
-
-            spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-            batch_size = None, debug = debug_gif,
-    )
+    T, P = true_trajectory.shape[:2]
+    signals_list  = []
+    sample_z_list = []
+    for t in range(T):
+        signals_list.append([])
+        sample_z_list.append([])
+        for p in range(P):
+            sig_tp, sz_tp = interpolate_signal(
+                all_ranges[t][p].unsqueeze(0) / 2,   # (1, R') spatial range
+                all_energies[t][p].unsqueeze(0),      # (1, R')
+                region_radius,
+                torch.linalg.norm(true_trajectory[t, p], dim=-1).reshape(1),  # (1,)
+                spatial_bw = spatial_bw, spatial_fs = spatial_fs,
+                batch_size = None, debug = debug_gif,
+            )
+            signals_list[t].append(sig_tp.squeeze(0))    # (Z,)
+            sample_z_list[t].append(sz_tp.squeeze(0))    # (Z,)
+    signals  = torch.stack([torch.stack(row) for row in signals_list])   # (T,P,Z)
+    sample_z = torch.stack([torch.stack(row) for row in sample_z_list])  # (T,P,Z)
     if verbose:
         print('done.')
 
