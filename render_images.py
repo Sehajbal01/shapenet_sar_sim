@@ -29,6 +29,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         trajectory_type = 'circular',
                         trajectory_noise_var = 0,
                         mesh_scale = None,
+                        num_bounce = 2,
 
                         override_obj_path = None,
 
@@ -89,7 +90,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         n_ray_width    = n_ray_width,
         n_ray_height   = n_ray_height,
 
-        num_bounce = 2,
+        num_bounce = num_bounce,
         second_bounce_batch_size = 2**10,
     )
     if verbose:

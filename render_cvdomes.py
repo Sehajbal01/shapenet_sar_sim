@@ -15,7 +15,7 @@ CENTER_ELEVATION = 32   # degrees
 SENSOR_DISTANCE  = 1.3
 
 AZ_SPREADS  = [30, 90, 180]
-NUM_PULSES  = 100
+NUM_PULSES  = 50
 
 # Generic args from default_kwargs at the bottom of render_images.py
 GENERIC_KWARGS = dict(
@@ -40,6 +40,7 @@ GENERIC_KWARGS = dict(
     trajectory_noise_var= 0,
     debug_gif           = False,
     mesh_scale          = 0.05,
+    num_bounce          = 2,
 )
 
 
