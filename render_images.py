@@ -175,14 +175,14 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, sample_z, debugging_maps, suffix=debug_gif_suffix)
+        signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=debug_gif_suffix)
 
     return sar_image
 
 
 
 
-def signal_gif(signals, sample_z, debugging_maps, suffix=None):
+def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=None):
     import io
 
     signals = torch.abs(signals)  # (T, P, Z)
@@ -190,28 +190,44 @@ def signal_gif(signals, sample_z, debugging_maps, suffix=None):
 
     sig_min, sig_max = signals.min().item(), signals.max().item()
 
+    # precompute energy axis limits across all pulses
+    all_energies_cat = torch.cat([torch.abs(all_energies[0][p]) for p in range(P)])
+    e_min, e_max = all_energies_cat.min().item(), all_energies_cat.max().item()
+
+    # scatter x-axis matches sample_z extent (sensor_distance ± region_radius)
+    sz_min, sz_max = sample_z.min().item(), sample_z.max().item()
+
     images = []
     for p in tqdm.tqdm(range(P), desc='Creating GIF'):
-        depth_map  = debugging_maps[(0, p)]['depth'].cpu().numpy()   # (H, W)
-        energy_map = debugging_maps[(0, p)]['energy'].cpu().numpy()  # (H, W)
-        sig        = signals[0, p].cpu().numpy()                     # (Z,)
-        sz         = sample_z[0, p].cpu().numpy()                    # (Z,)
+        depth_map  = debugging_maps[(0, p)]['depth'].cpu().numpy()           # (H, W)
+        energy_map = debugging_maps[(0, p)]['energy'].cpu().numpy()          # (H, W)
+        sig        = signals[0, p].cpu().numpy()                             # (Z,)
+        sz         = sample_z[0, p].cpu().numpy()                            # (Z,)
+        ranges_p   = all_ranges[0][p].cpu().numpy() / 2                      # (R',) half round-trip
+        energies_p = torch.abs(all_energies[0][p]).cpu().numpy()             # (R',)
 
-        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-        axes[0].imshow(depth_map,  cmap='gray')
-        axes[0].set_title('Depth Map')
-        axes[0].axis('off')
+        axes[0, 0].imshow(depth_map,  cmap='gray')
+        axes[0, 0].set_title('Depth Map')
+        axes[0, 0].axis('off')
 
-        axes[1].imshow(energy_map, cmap='gray')
-        axes[1].set_title('Energy Map')
-        axes[1].axis('off')
+        axes[0, 1].imshow(energy_map, cmap='gray')
+        axes[0, 1].set_title('Energy Map')
+        axes[0, 1].axis('off')
 
-        axes[2].plot(sz, sig)
-        axes[2].set_title('Signal')
-        axes[2].set_xlabel('Range')
-        axes[2].set_ylabel('Amplitude')
-        axes[2].set_ylim(sig_min, sig_max)
+        axes[1, 0].scatter(ranges_p, energies_p, s=1)
+        axes[1, 0].set_title('Scatter')
+        axes[1, 0].set_xlabel('Range')
+        axes[1, 0].set_ylabel('Energy')
+        axes[1, 0].set_xlim(sz_min, sz_max)
+        axes[1, 0].set_ylim(e_min, e_max)
+
+        axes[1, 1].plot(sz, sig)
+        axes[1, 1].set_title('Signal')
+        axes[1, 1].set_xlabel('Range')
+        axes[1, 1].set_ylabel('Amplitude')
+        axes[1, 1].set_ylim(sig_min, sig_max)
 
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
