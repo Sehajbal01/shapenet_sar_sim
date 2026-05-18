@@ -4,7 +4,7 @@ REMOTE_USER="berian"
 REMOTE_PATH="/workspace/berian/shapenet_sar_sim/figures/"
 LOCAL_PATH="/home/berian/Documents/remote-figures/"
 
-rm -rf "$LOCAL_PATH"
+rm -rf "$LOCAL_PATH"/*
 mkdir -p "$LOCAL_PATH"
 RSYNC_ARGS=(-avz --progress)
 if [ -n "$1" ]; then

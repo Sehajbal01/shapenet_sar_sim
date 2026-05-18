@@ -79,7 +79,6 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # (T,P,R)   (T,P,R)
     torch.cuda.empty_cache()
     all_ranges, all_energies = accumulate_scatters(
-        poses.to(device),
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif,

@@ -163,7 +163,7 @@ def test_spherical_cartesian_consistency(num_points=100000, tol=1e-3):
         return False
 
 
-def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False, relative_db=True):
+def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False, relative_db=False):
     """
     Plot a 2D image with a colorbar.
 
@@ -196,6 +196,62 @@ def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6,
     if title is not None:
         ax.set_title(title)
     ax.axis('off')
+    return fig, ax
+
+
+def plot_rays(origins, directions, ray_length=1.0, max_rays=None, title=None, figsize=(8, 8)):
+    """
+    3-D scatter + quiver plot of rays.
+
+    Parameters
+    ----------
+    origins    : (N, 3) array-like or torch.Tensor  — ray start positions
+    directions : (N, 3) array-like or torch.Tensor  — ray direction vectors (need not be unit)
+    ray_length : scalar length to draw each arrow
+    max_rays   : subsample to this many rays when N is large (keeps the plot readable)
+    title      : optional title string
+    figsize    : figure size in inches
+
+    Returns
+    -------
+    fig, ax
+    """
+    if hasattr(origins, 'detach'):
+        origins = origins.detach().cpu().numpy()
+    else:
+        origins = np.asarray(origins)
+    if hasattr(directions, 'detach'):
+        directions = directions.detach().cpu().numpy()
+    else:
+        directions = np.asarray(directions)
+
+    # normalise directions so arrow length is controlled by ray_length alone
+    norms = np.linalg.norm(directions, axis=-1, keepdims=True)
+    directions = directions / np.where(norms > 0, norms, 1)
+
+    # subsample with a uniform stride to preserve grid structure
+    N = origins.shape[0]
+    if max_rays is not None and N > max_rays:
+        stride = int(np.ceil(N / max_rays))
+        origins    = origins[::stride]
+        directions = directions[::stride]
+
+    fig = plt.figure(figsize=figsize)
+    ax  = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(origins[:, 0], origins[:, 1], origins[:, 2], s=4, c='tab:blue', label='origins')
+    ax.quiver(
+        origins[:, 0],    origins[:, 1],    origins[:, 2],
+        directions[:, 0], directions[:, 1], directions[:, 2],
+        length=ray_length, normalize=False, color='tab:orange', linewidth=0.6,
+    )
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    if title is not None:
+        ax.set_title(title)
+    ax.legend()
     return fig, ax
 
 

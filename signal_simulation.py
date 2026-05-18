@@ -316,17 +316,21 @@ def load_mesh(  file_name,
                 obj_raids = (1.0, 1.0, 0.9, 0.1, 1.0),
                 make_ground = True,
                 ground_below = True,
-                ground_raids = (0.1, 0.1, 0.1, 0.9, 1.0),
+                ground_raids = (0.1, 0.1, 0.1, 0.9, 1.0),  # set to None to skip ground
+                ground_dim = 2,
+                level_with_ground = True,
                 device = 'cuda',
                 scale = None,
-        ):  
+        ):
     '''
     Load a mesh from an obj file and compute face normals.
     Inputs:
         file_name: str - path to the obj file
         make_ground: bool - whether to add a ground plane
         obj_raids: tuple - roughness, specular, ambient for the object material
-        ground_raids: tuple - roughness, specular, ambient for the ground material
+        ground_raids: tuple - roughness, specular, ambient for the ground material, set to None to skip ground
+        ground_dim: int - axis index for the vertical dimension (default 2 for z-up)
+        level_with_ground: bool - if True, translate the object so its bottom sits at 0 along ground_dim before adding the ground
         device: str - device to load the mesh onto
     Outputs:
         mesh: Meshes - the loaded mesh with face normals
@@ -342,22 +346,27 @@ def load_mesh(  file_name,
     if scale is not None:
         verts = verts * scale
 
+    # optionally translate the object so its bottom sits at 0 along ground_dim
+    if level_with_ground:
+        dim_min = verts[:, ground_dim].min()
+        verts[:, ground_dim] -= dim_min
+        print(f'load_mesh: levelled object with ground, shifted dim {ground_dim} by {-dim_min.item():.4f}')
+
     # set material properties for each face
     raids = torch.tensor(obj_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(faces.shape[0], 1)  # (F, 5)
 
     # add a ground if desired to the mesh
+    print(f'load_mesh: {faces.shape[0]} faces before adding ground')
+    if make_ground and ground_raids is None:
+        print('WARNING: load_mesh: ground_raids is None, skipping ground addition')
+        make_ground = False
     if make_ground:
-        ground_buffer = 0.001
-        if ground_below:
-            ground_y  = verts[:, 1].min().item() - ground_buffer
-        else:
-            ground_y = verts[:, 1].max().item() + ground_buffer
-
-        ground_size = 100
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y, max_triangle_len = ground_size/100.0, device = device )
+        ground_size = 200
+        ground_verts,ground_faces = make_big_ground( ground_size, ground_dim, ground_level = 0, max_triangle_len = ground_size/100.0, device = device )
         num_verts_before = verts.shape[0]
         verts = torch.cat([verts, ground_verts], dim=0)
         faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
+        print(f'load_mesh: {faces.shape[0]} faces after adding ground ({ground_faces.shape[0]} ground faces)')
 
         # set ground material properties
         ground_properties = torch.tensor(ground_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(ground_faces.shape[0], 1)  # (F_g, 5)

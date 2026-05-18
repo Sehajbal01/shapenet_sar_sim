@@ -19,8 +19,8 @@ NUM_PULSES  = 50
 
 # Generic args from default_kwargs at the bottom of render_images.py
 GENERIC_KWARGS = dict(
-    spatial_bw          = 90,
-    spatial_fs          = 90,
+    spatial_bw          = 60,
+    spatial_fs          = 60,
     wavelength          = 0.5,
     use_sig_magnitude   = True,
     snr_db              = 50,
@@ -30,8 +30,8 @@ GENERIC_KWARGS = dict(
     image_plane_height  = 1,
     grid_width          = 1.2,
     grid_height         = 1.2,
-    n_ray_width         = 256,
-    n_ray_height        = 256,
+    n_ray_width         = 250,
+    n_ray_height        = 250,
     region_radius       = 1.7,
     obj_raids           = (0.8, 0.0, 0.9, 0.1, 0.2),
     ground_raids        = (0.5, 0.0, 0.8, 0.2, 0.5),
@@ -40,7 +40,7 @@ GENERIC_KWARGS = dict(
     trajectory_noise_var= 0,
     debug_gif           = False,
     mesh_scale          = 0.05,
-    num_bounce          = 3,
+    num_bounce          = 2,
 )
 
 
