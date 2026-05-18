@@ -47,6 +47,8 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
     octree = build_octree(mesh)
 
+    depth_maps = {}  # (t, p) -> (H, W) tensor; only populated when debug_gif=True
+
     scatter_ranges = []
     scatter_energies = []
     for t in range(T):
@@ -86,6 +88,9 @@ def accumulate_scatters(mesh, face_normals, material_properties,
             for b in range(1, num_bounce + 1):
                 t_b_start = sync_time()
                 hit_indices, distance = ray_trace(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
+
+                if b == 1 and debug_gif:
+                    depth_maps[(t, p)] = distance.reshape(n_ray_height, n_ray_width)
 
                 hit_b = distance >= 0
                 if not hit_b.any():
@@ -146,5 +151,5 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                     1j * 2 * np.pi / wavelength * scatter_ranges[t][p]
                 )
 
-    return scatter_ranges, scatter_energies
-    #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse)
+    return scatter_ranges, scatter_energies, depth_maps if debug_gif else None
+    #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse), dict (t,p)->(H,W) or None

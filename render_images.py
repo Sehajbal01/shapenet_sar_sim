@@ -30,6 +30,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         trajectory_noise_var = 0,
                         mesh_scale = None,
                         num_bounce = 2,
+                        object_x_flip = False,
+                        object_rotate_xyz = (0.0, 0.0, 0.0),
 
                         override_obj_path = None,
 
@@ -61,6 +63,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                                                     scale=mesh_scale,
                                                     obj_raids = obj_raids,
                                                     ground_raids = ground_raids,
+                                                    x_flip = object_x_flip,
+                                                    rotate_xyz = object_rotate_xyz,
                                                 )
 
     # generate the sensor trajectory for each pose
@@ -78,7 +82,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # (T,P,R)   (T,P,R)
     torch.cuda.empty_cache()
-    all_ranges, all_energies = accumulate_scatters(
+    all_ranges, all_energies, depth_maps = accumulate_scatters(
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif,

@@ -506,6 +506,43 @@ def directional_scatter_polynomial_alpha5(cos_90_minus_elevation):
 
     
 
+def rotation_matrix_xyz(rx_deg, ry_deg, rz_deg, device='cpu'):
+    '''
+    Returns a 3x3 rotation matrix for extrinsic XYZ rotations (applied X first, then Y, then Z).
+    Inputs:
+        rx_deg, ry_deg, rz_deg (float): rotation angles in degrees about each axis
+        device: torch device
+    Output:
+        R (3,3): combined rotation matrix
+    '''
+    def _deg2rad(d):
+        return torch.tensor(d, dtype=torch.float32, device=device) * (torch.pi / 180.0)
+
+    cx, sx = torch.cos(_deg2rad(rx_deg)), torch.sin(_deg2rad(rx_deg))
+    cy, sy = torch.cos(_deg2rad(ry_deg)), torch.sin(_deg2rad(ry_deg))
+    cz, sz = torch.cos(_deg2rad(rz_deg)), torch.sin(_deg2rad(rz_deg))
+
+    Rx = torch.stack([
+        torch.stack([torch.ones_like(cx),  torch.zeros_like(cx), torch.zeros_like(cx)]),
+        torch.stack([torch.zeros_like(cx),  cx,                  -sx               ]),
+        torch.stack([torch.zeros_like(cx),  sx,                   cx               ]),
+    ])  # (3,3)
+
+    Ry = torch.stack([
+        torch.stack([ cy,                   torch.zeros_like(cy),  sy               ]),
+        torch.stack([torch.zeros_like(cy),  torch.ones_like(cy),   torch.zeros_like(cy)]),
+        torch.stack([-sy,                   torch.zeros_like(cy),  cy               ]),
+    ])  # (3,3)
+
+    Rz = torch.stack([
+        torch.stack([ cz,                  -sz,                   torch.zeros_like(cz)]),
+        torch.stack([ sz,                   cz,                   torch.zeros_like(cz)]),
+        torch.stack([torch.zeros_like(cz),  torch.zeros_like(cz), torch.ones_like(cz)]),
+    ])  # (3,3)
+
+    return Rz @ Ry @ Rx  # (3,3)
+
+
 if __name__ == '__main__':
     numerically_analyze_directional_scattering(alpha=1)
 

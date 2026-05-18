@@ -41,6 +41,8 @@ GENERIC_KWARGS = dict(
     debug_gif           = False,
     mesh_scale          = 0.05,
     num_bounce          = 2,
+    object_x_flip       = False,
+    object_rotate_xyz   = (90.0, 0.0, 0.0),
 )
 
 

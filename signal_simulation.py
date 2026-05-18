@@ -1,4 +1,4 @@
-from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha5
+from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha5, rotation_matrix_xyz
 import matplotlib.pyplot as plt
 import tqdm
 import os
@@ -319,6 +319,8 @@ def load_mesh(  file_name,
                 ground_raids = (0.1, 0.1, 0.1, 0.9, 1.0),  # set to None to skip ground
                 ground_dim = 2,
                 level_with_ground = True,
+                x_flip = False,
+                rotate_xyz = (0.0, 0.0, 0.0),
                 device = 'cuda',
                 scale = None,
         ):
@@ -331,6 +333,8 @@ def load_mesh(  file_name,
         ground_raids: tuple - roughness, specular, ambient for the ground material, set to None to skip ground
         ground_dim: int - axis index for the vertical dimension (default 2 for z-up)
         level_with_ground: bool - if True, translate the object so its bottom sits at 0 along ground_dim before adding the ground
+        x_flip: bool - if True, mirror the object along the x axis before leveling
+        rotate_xyz: tuple/list/tensor of 3 floats - rotation angles in degrees about x, y, z axes applied before leveling
         device: str - device to load the mesh onto
     Outputs:
         mesh: Meshes - the loaded mesh with face normals
@@ -345,6 +349,16 @@ def load_mesh(  file_name,
     # optional scaling
     if scale is not None:
         verts = verts * scale
+
+    # optional x-axis flip
+    if x_flip:
+        verts = verts * torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=verts.dtype)
+
+    # optional rotation about x, y, z axes (applied before leveling)
+    rx, ry, rz = rotate_xyz
+    if rx != 0.0 or ry != 0.0 or rz != 0.0:
+        R = rotation_matrix_xyz(rx, ry, rz, device=device).to(verts.dtype)
+        verts = verts @ R.T
 
     # optionally translate the object so its bottom sits at 0 along ground_dim
     if level_with_ground:
