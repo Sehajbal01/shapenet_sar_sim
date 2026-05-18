@@ -82,7 +82,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # (T,P,R)   (T,P,R)
     torch.cuda.empty_cache()
-    all_ranges, all_energies, depth_maps = accumulate_scatters(
+    all_ranges, all_energies, debugging_maps = accumulate_scatters(
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif,
@@ -116,7 +116,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                 region_radius,
                 torch.linalg.norm(true_trajectory[t, p], dim=-1).reshape(1),  # (1,)
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-                batch_size = None, debug = debug_gif,
+                batch_size = None,
             )
             signals_list[t].append(sig_tp.squeeze(0))    # (Z,)
             sample_z_list[t].append(sz_tp.squeeze(0))    # (Z,)
@@ -175,97 +175,58 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # make a gif if desired
     if debug_gif:
-        signal_gif(signals, all_ranges/2, all_energies, sample_z, region_radius, suffix =debug_gif_suffix)
+        signal_gif(signals, sample_z, debugging_maps, suffix=debug_gif_suffix)
 
     return sar_image
 
 
 
 
-def signal_gif(signals, all_ranges, all_energies, sample_z, region_radius, suffix=None):
+def signal_gif(signals, sample_z, debugging_maps, suffix=None):
+    import io
 
+    signals = torch.abs(signals)  # (T, P, Z)
+    T, P, Z = signals.shape
 
-    # convert to amplitude
-    signals      = torch.abs(signals     )
-    all_energies = torch.abs(all_energies)
+    sig_min, sig_max = signals.min().item(), signals.max().item()
 
-    # plot the signal and scatters for every pulse
-    sig_max = signals.max().item()
-    sig_min = signals.min().item()
-    energy_max = all_energies.max().item()
-    energy_min = all_energies.min().item()
-    for p in tqdm.tqdm(range(signals.shape[1]), desc='Plotting scatters and signals'):
-        plt.figure(figsize=(12, 6))
-        plt.subplot(1, 2, 1)
-        plt.scatter(all_ranges[0,p].cpu().numpy(),all_energies[0,p].cpu().numpy())
-        plt.title('Scatters')
-        plt.xlabel('Range')
-        plt.ylabel('Energy')
-        plt.xlim(sample_z.min().item(), sample_z.max().item())
-        plt.ylim(energy_min, energy_max)
-        plt.subplot(1, 2, 2)
-        plt.plot(sample_z[0,p].cpu().numpy(), signals[0,p].cpu().numpy())
-        plt.title('Signal')
-        plt.xlabel('Range')
-        plt.ylabel('Amplitude')
-        plt.xlim(sample_z.min().item(), sample_z.max().item())
-        plt.ylim(sig_min, sig_max)
-
-
-        path = get_next_path('figures/tmp/scatters_signal.png')
-        savefig(path)
-
-    # make a gif of the depth map, energy map, scatter plot, and signal plot
-    # [ [depth, energy],
-    #   [scatter, signal] ]
     images = []
-    for p in tqdm.tqdm(range(signals.shape[1]), desc='Creating GIF'):
+    for p in tqdm.tqdm(range(P), desc='Creating GIF'):
+        depth_map  = debugging_maps[(0, p)]['depth'].cpu().numpy()   # (H, W)
+        energy_map = debugging_maps[(0, p)]['energy'].cpu().numpy()  # (H, W)
+        sig        = signals[0, p].cpu().numpy()                     # (Z,)
+        sz         = sample_z[0, p].cpu().numpy()                    # (Z,)
 
-        # load the depth energy image file
-        depth_energy_path = f'figures/tmp/depth_energy_{p:02d}.png'
-        if not os.path.exists(depth_energy_path):
-            print(f'Warning: {depth_energy_path} does not exist. Skipping.')
-            continue
-        depth_energy_im = PIL.Image.open(depth_energy_path)
-        depth_energy_im = np.array(depth_energy_im)
-        depth_energy_im = np.tile(depth_energy_im[..., np.newaxis], (1, 1, 3))
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
-        # delete the image
-        os.remove(depth_energy_path)
+        axes[0].imshow(depth_map,  cmap='gray')
+        axes[0].set_title('Depth Map')
+        axes[0].axis('off')
 
-        # load the scatter signal image file
-        scatter_signal_path = f'figures/tmp/scatters_signal_{p:02d}.png'
-        if not os.path.exists(scatter_signal_path):
-            print(f'Warning: {scatter_signal_path} does not exist. Skipping.')
-            continue
-        scatter_signal_im = PIL.Image.open(scatter_signal_path)
-        scatter_signal_im = np.array(scatter_signal_im)[..., :3]
+        axes[1].imshow(energy_map, cmap='gray')
+        axes[1].set_title('Energy Map')
+        axes[1].axis('off')
 
-        # delete the image
-        os.remove(scatter_signal_path)
+        axes[2].plot(sz, sig)
+        axes[2].set_title('Signal')
+        axes[2].set_xlabel('Range')
+        axes[2].set_ylabel('Amplitude')
+        axes[2].set_ylim(sig_min, sig_max)
 
-        # resize the depth energy image to match the scatter signal image
-        new_rows = scatter_signal_im.shape[1] // 2
-        depth_energy_im = cv2.resize(depth_energy_im, (scatter_signal_im.shape[1], new_rows))
-
-        # concatenate accross the row dimension
-        combined_im = np.concatenate((depth_energy_im, scatter_signal_im), axis=0)
-
-        # save image to list
-        images.append(combined_im)
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        frame = np.array(PIL.Image.open(buf))[..., :3]
+        plt.close(fig)
+        images.append(frame)
 
     # make a boomerang gif
-    images = np.stack(images, axis=0) # (N, H, W, C)
-    time_reversed = np.flip(images, axis=0)  # reverse the time dimension
-    images = np.concatenate((images, time_reversed), axis=0)  # concatenate original and reversed
+    images = np.stack(images, axis=0)  # (N, H, W, C)
+    images = np.concatenate((images, np.flip(images, axis=0)), axis=0)
 
-    # create gif from the images
-    fps = signals.shape[1]/4.0
-    print('Saving GIF with %.1f fps...'% fps)
-    if suffix is not None:
-        path = f'figures/dm_em_sc_si_{suffix}.gif'
-    else:
-        path = get_next_path('figures/dm_em_sc_si.gif')
+    fps = P / 4.0
+    print('Saving GIF with %.1f fps...' % fps)
+    path = f'figures/dm_em_sc_si_{suffix}.gif' if suffix is not None else get_next_path('figures/dm_em_sc_si.gif')
     imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
     print('GIF saved to: ', path)
 

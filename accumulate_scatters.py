@@ -47,7 +47,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
     octree = build_octree(mesh)
 
-    depth_maps = {}  # (t, p) -> (H, W) tensor; only populated when debug_gif=True
+    debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True
 
     scatter_ranges = []
     scatter_energies = []
@@ -89,9 +89,6 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                 t_b_start = sync_time()
                 hit_indices, distance = ray_trace(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
 
-                if b == 1 and debug_gif:
-                    depth_maps[(t, p)] = distance.reshape(n_ray_height, n_ray_width)
-
                 hit_b = distance >= 0
                 if not hit_b.any():
                     break
@@ -118,6 +115,18 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                     directional_scatter_polynomial_alpha5(cos_theta_over_2) +
                     d / 2 / np.pi
                 )  # (N,)
+
+                # store per-pixel depth and energy maps for the first bounce (misses get -1 / 0)
+                if b == 1 and debug_gif:
+                    HW = n_ray_height * n_ray_width
+                    depth_map_flat = torch.full((HW,), -1.0, device=device, dtype=distance.dtype)
+                    depth_map_flat[hit_b] = distance
+                    energy_map_flat = torch.zeros(HW, device=device, dtype=energy_b.dtype)
+                    energy_map_flat[hit_b] = energy_b
+                    debugging_maps[(t, p)] = {
+                        'depth':  depth_map_flat.reshape(n_ray_height, n_ray_width),
+                        'energy': energy_map_flat.reshape(n_ray_height, n_ray_width),
+                    }
 
                 # round-trip range: for b=1 this gives 2×distance; for b>1 adds inter-bounce legs
                 distance_to_sensor_plane = dot_product(hit_b_pos - trajectory[t, p], forward_vector)  # (N,)
@@ -151,5 +160,5 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                     1j * 2 * np.pi / wavelength * scatter_ranges[t][p]
                 )
 
-    return scatter_ranges, scatter_energies, depth_maps if debug_gif else None
+    return scatter_ranges, scatter_energies, debugging_maps if debug_gif else None
     #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse), dict (t,p)->(H,W) or None
