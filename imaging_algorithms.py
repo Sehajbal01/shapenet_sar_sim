@@ -12,6 +12,7 @@ def projected_CBP(
     image_height = 64,
     image_plane_width = 1,
     image_plane_height = 1,
+    batch_size = None,
 ):
     '''
     does some projection then runs the 2D convolutional back projection algorithm
@@ -44,7 +45,7 @@ def projected_CBP(
 
     # run the 2D CBP
     sar_image = CBP_2D(
-        signal, 
+        signal,
         projected_r,
         line_vector,
         projected_fs,
@@ -53,6 +54,7 @@ def projected_CBP(
         image_height             = image_height,
         image_plane_width        = image_plane_width,
         image_plane_height       = image_plane_height,
+        batch_size               = batch_size,
     ) # (T,H,W)
     
     return sar_image
@@ -67,6 +69,7 @@ def CBP_2D( pf,
             image_height = 64,
             image_plane_width = 1,
             image_plane_height = 1,
+            batch_size = None,
     ):
     '''
     Convolutional back projection algorithm in 2D
@@ -116,11 +119,25 @@ def CBP_2D( pf,
 
     # interpolate pixel coordinated projected onto the filtered signal
     line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
-    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T,1)
-    interpolated_r_points = torch.sum(  filtered_pf.reshape(N,P,1,R) * \
-                                        torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
-                                        dim=-1
-                                    ) # (N,P,T)
+    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T)
+
+    if batch_size is None:
+        interpolated_r_points = torch.sum(
+            filtered_pf.reshape(N,P,1,R) *
+            torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
+            dim=-1
+        ) # (N,P,T)
+    else:
+        interpolated_r_points = torch.zeros(N, P, T, dtype=filtered_pf.dtype, device=device)
+        for t_start in range(0, T, batch_size):
+            t_end = min(t_start + batch_size, T)
+            bT = t_end - t_start
+            r_coord_batch = r_coord[:, :, t_start:t_end]  # (N,P,bT)
+            interpolated_r_points[:, :, t_start:t_end] = torch.sum(
+                filtered_pf.reshape(N,P,1,R) *
+                torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord_batch.reshape(N,P,bT,1) - r.reshape(N,P,1,R)) ), # (N,P,bT,R)
+                dim=-1
+            ) # (N,P,bT)
     
     # integrate over theta (eqation 2.31)
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)

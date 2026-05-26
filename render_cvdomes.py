@@ -14,13 +14,15 @@ CENTER_AZIMUTH   = 210  # degrees
 CENTER_ELEVATION = 32   # degrees
 SENSOR_DISTANCE  = 1.3
 
-AZ_SPREADS  = [30, 90, 180]
-NUM_PULSES  = 50
+RESOLUTION_MM = 300
+
+AZ_SPREADS  = [30,90,180]
+NUM_PULSES  = 30
 
 # Generic args from default_kwargs at the bottom of render_images.py
 GENERIC_KWARGS = dict(
-    spatial_bw          = 60,
-    spatial_fs          = 60,
+    spatial_bw          = 3680/RESOLUTION_MM,
+    spatial_fs          = 3680/RESOLUTION_MM,
     wavelength          = 0.5,
     use_sig_magnitude   = True,
     snr_db              = 50,
@@ -30,19 +32,20 @@ GENERIC_KWARGS = dict(
     image_plane_height  = 1,
     grid_width          = 1.2,
     grid_height         = 1.2,
-    n_ray_width         = 250,
-    n_ray_height        = 250,
+    n_ray_width         = 128,
+    n_ray_height        = 128,
     region_radius       = 1.7,
     obj_raids           = (0.8, 0.0, 0.9, 0.1, 0.2),
     ground_raids        = (0.5, 0.0, 0.8, 0.2, 0.5),
     imaging_algorithm   = 'cbp',
+    cbp_batch_size      = 4096,
     trajectory_type     = 'circular',
     trajectory_noise_var= 0,
-    debug_gif           = True,
+    debug_gif           = False,
     mesh_scale          = 0.05,
     num_bounce          = 2,
     object_x_flip       = False,
-    object_rotate_xyz   = (90.0, 0.0, 0.0),
+    object_rotate_xyz   = (90.0, 0.0, 90.0),
 )
 
 
