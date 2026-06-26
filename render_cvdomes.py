@@ -14,7 +14,7 @@ CENTER_AZIMUTH   = 210  # degrees
 CENTER_ELEVATION = 32   # degrees
 SENSOR_DISTANCE  = 1.3
 
-RESOLUTION_MM = 300
+RESOLUTION_MM = 100
 
 AZ_SPREADS  = [30,90,180]
 NUM_PULSES  = 30
@@ -41,7 +41,7 @@ GENERIC_KWARGS = dict(
     cbp_batch_size      = 4096,
     trajectory_type     = 'circular',
     trajectory_noise_var= 0,
-    debug_gif           = False,
+    debug_gif           = True,
     mesh_scale          = 0.05,
     num_bounce          = 2,
     object_x_flip       = False,

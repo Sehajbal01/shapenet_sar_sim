@@ -184,7 +184,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
 
 
-def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=None):
+def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=None, use_mp4_format=True):
     import io
     import matplotlib.gridspec as gridspec
 
@@ -216,7 +216,7 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
     ne_max = neighbor_error_ratio.max() * 1.1 if neighbor_error_ratio.max() > 0 else 1.0
 
     images = []
-    for p in tqdm.tqdm(range(P), desc='Creating GIF'):
+    for p in tqdm.tqdm(range(P), desc='Creating MP4' if use_mp4_format else 'Creating GIF'):
         depth_map  = debugging_maps[(0, p)]['depth'].cpu().numpy()           # (H, W)
         energy_map = debugging_maps[(0, p)]['energy'].cpu().numpy()          # (H, W)
         sig        = signals[0, p].cpu().numpy()                             # (Z,)
@@ -274,10 +274,16 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
     images = np.concatenate((images, np.flip(images, axis=0)), axis=0)
 
     fps = P / 4.0
-    print('Saving GIF with %.1f fps...' % fps)
-    path = f'figures/dm_em_sc_si_{suffix}.gif' if suffix is not None else get_next_path('figures/dm_em_sc_si.gif')
-    imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
-    print('GIF saved to: ', path)
+    if use_mp4_format:
+        print('Saving MP4 with %.1f fps...' % fps)
+        path = f'figures/dm_em_sc_si_{suffix}.mp4' if suffix is not None else get_next_path('figures/dm_em_sc_si.mp4')
+        imageio.mimsave(path, images, fps=fps, format='FFMPEG')
+        print('MP4 saved to: ', path)
+    else:
+        print('Saving GIF with %.1f fps...' % fps)
+        path = f'figures/dm_em_sc_si_{suffix}.gif' if suffix is not None else get_next_path('figures/dm_em_sc_si.gif')
+        imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
+        print('GIF saved to: ', path)
 
 
 def render_random_image( 
