@@ -77,6 +77,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
             prev_origins    = first_bounce_origins.reshape(-1, 3)                            # (H*W, 3)
             prev_directions = forward_vector.unsqueeze(0).expand(prev_origins.shape[0], -1)  # (H*W, 3)
             cumulative_legs = torch.zeros(prev_origins.shape[0], device=device)              # (H*W,)
+            cumulative_reflectivity = torch.ones(prev_origins.shape[0], device=device)       # (H*W,) product of r of prior bounces
             depth_hit1      = None
 
             scatter_ranges[t].append(torch.empty(0, device=device))
@@ -99,6 +100,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                 distance        = distance[hit_b]
                 hit_indices     = hit_indices[hit_b]
                 cumulative_legs = cumulative_legs[hit_b]
+                cumulative_reflectivity = cumulative_reflectivity[hit_b]
                 if depth_hit1 is not None:
                     depth_hit1 = depth_hit1[hit_b]
 
@@ -110,11 +112,11 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                 d = material_properties[hit_indices, 3]
                 n = face_normals[hit_indices]  # (N, 3)
                 cos_theta_over_2 = torch.abs(dot_product(n, prev_directions))
-                energy_b = s * (
+                energy_b = cumulative_reflectivity * s * (
                     (i * cos_theta_over_2**5) /
                     directional_scatter_polynomial_alpha5(cos_theta_over_2) +
                     d / 2 / np.pi
-                )  # (N,)
+                )  # (N,) attenuated by the reflectivity of all prior bounces
 
                 # store per-pixel depth and energy maps for the first bounce (misses get -1 / 0)
                 if b == 1 and debug_gif:
@@ -138,6 +140,10 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
                 scatter_ranges[t][-1]   = torch.cat((scatter_ranges[t][-1],   total_range))
                 scatter_energies[t][-1] = torch.cat((scatter_energies[t][-1], energy_b))
+
+                # attenuate future bounces by this surface's reflectivity
+                r = material_properties[hit_indices, 0]
+                cumulative_reflectivity = cumulative_reflectivity * r
 
                 # reflect for next bounce
                 prev_directions = prev_directions - 2 * dot_product(prev_directions, n, keepdim=True) * n
