@@ -13,6 +13,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                         n_ray_width=1, n_ray_height=1,
                         num_bounce = 1,
                         second_bounce_batch_size = 2**100,
+                        surface_bias = 1e-3,
                         debug_gif = False,
                     ):
     '''
@@ -26,6 +27,9 @@ def accumulate_scatters(mesh, face_normals, material_properties,
         wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
         grid_width/height (float): the size of the ray grid for the orthonormal camera
         n_ray_width/height (int): the number of rays on the ray grid along the width and height axis.
+        surface_bias (float): distance to push each bounce's outgoing ray origin off the surface
+            along the normal, to prevent self-intersection (spurious leg~=0 re-hits). Should be
+            small relative to scene features but large relative to float error at the scene scale.
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
@@ -147,7 +151,14 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
                 # reflect for next bounce
                 prev_directions = prev_directions - 2 * dot_product(prev_directions, n, keepdim=True) * n
-                prev_origins    = hit_b_pos
+                # bias the new origin off the surface along the normal so the reflected ray
+                # cannot spuriously re-hit the surface it just left. Without this, a reflected
+                # ray that grazes the (flat, finely tessellated) ground re-intersects an adjacent
+                # coplanar triangle at leg~=0, dumping a duplicate full-energy scatter at the
+                # first-bounce range. Those pile up coherently and spike the signal on pulses
+                # whose geometry produces many grazing ground reflections.
+                offset_sign  = torch.sign(dot_product(prev_directions, n, keepdim=True))
+                prev_origins = hit_b_pos + surface_bias * offset_sign * n
 
                 t_bounce_totals[b-1] += sync_time() - t_b_start
 
