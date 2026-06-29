@@ -6,6 +6,49 @@ import numpy as np
 from utils import cartesian_to_spherical, generate_pose_mat, dot_product, directional_scatter_polynomial_alpha5, plot_rays, get_next_path, plot_image, savefig
 from ray_tracer_v2 import ray_trace, build_octree
 
+
+def points_visible_to_sensor(points, sensor_direction, mesh, face_normals,
+                             octree=None, surface_bias=1e-3, batch_size=2**20):
+    '''
+    Determine whether each point has an unobstructed line of sight back to the sensor.
+
+    The sensor is treated as infinitely far away (orthographic / planar-wavefront model),
+    so the direction from every point back to the sensor is the same unit vector. A point
+    is visible if a ray cast from it toward the sensor escapes the scene without hitting
+    any geometry; if it hits a triangle first, the point is occluded.
+
+    Inputs:
+        points (N,3): points in space to test
+        sensor_direction (3,): unit vector pointing from a point back toward the sensor,
+            i.e. normalized trajectory[t,p]
+        mesh (obj): pytorch3d mesh of the scene
+        face_normals (F,3): face normals (passed through to ray_trace)
+        octree: prebuilt Octree for the mesh, or None to build one here
+        surface_bias (float): distance to push each ray origin off its surface along the
+            sensor direction, to avoid self-intersection (same issue as the bounce origins)
+        batch_size (int): max rays per ray_trace batch
+
+    Outputs:
+        visible (N,): boolean tensor, True where the point can see the sensor
+    '''
+    if octree is None:
+        octree = build_octree(mesh)
+
+    # every point shoots the same direction toward the (infinitely far) sensor
+    directions = sensor_direction.reshape(1, 3).expand(points.shape[0], -1)  # (N, 3)
+
+    # bias origins toward the sensor so the shadow ray doesn't re-hit the surface the
+    # point sits on (leg~=0 self-intersection)
+    origins = points + surface_bias * directions  # (N, 3)
+
+    _, distance = ray_trace(origins, directions, mesh, face_normals,
+                            octree=octree, batch_size=batch_size)  # (N,)
+
+    # a hit (distance >= 0) means geometry blocks the path to the sensor
+    visible = distance < 0  # (N,)
+    return visible
+
+
 def accumulate_scatters(mesh, face_normals, material_properties,
                         trajectory,
                         wavelength=None,
@@ -69,6 +112,9 @@ def accumulate_scatters(mesh, face_normals, material_properties,
             up_vector      = pose[:3, 1]  # (3,)
             forward_vector = pose[:3, 2]  # (3,)
             position_vector = pose[:3, 3]  # (3,)
+
+            # unit direction from any scene point back to the (infinitely far) sensor
+            sensor_direction = torch.nn.functional.normalize(trajectory[t, p], dim=-1)  # (3,)
 
             # set up ray origins on the sensor plane
             x_offsets = torch.linspace(-grid_width/2,  grid_width/2,  n_ray_width,  device=device)  # (W,) left→right
@@ -142,8 +188,21 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                     cumulative_legs = cumulative_legs + distance
                 total_range = depth_hit1 + cumulative_legs + distance_to_sensor_plane  # (N,)
 
-                scatter_ranges[t][-1]   = torch.cat((scatter_ranges[t][-1],   total_range))
-                scatter_energies[t][-1] = torch.cat((scatter_energies[t][-1], energy_b))
+                # cull occluded scatters: a hit only returns energy if its path back to the
+                # sensor is unobstructed. First-bounce hits are the nearest intersection along
+                # the incoming ray, so they are always visible; only later bounces can be
+                # occluded (e.g. a ground point hidden behind the object). This filters what we
+                # store, NOT the ray that propagates onward to the next bounce.
+                if b > 1:
+                    visible = points_visible_to_sensor(
+                        hit_b_pos, sensor_direction, mesh, face_normals,
+                        octree=octree, surface_bias=surface_bias, batch_size=second_bounce_batch_size,
+                    )  # (N,)
+                else:
+                    visible = torch.ones(hit_b_pos.shape[0], dtype=torch.bool, device=device)
+
+                scatter_ranges[t][-1]   = torch.cat((scatter_ranges[t][-1],   total_range[visible]))
+                scatter_energies[t][-1] = torch.cat((scatter_energies[t][-1], energy_b[visible]))
 
                 # attenuate future bounces by this surface's reflectivity
                 r = material_properties[hit_indices, 0]
