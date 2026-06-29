@@ -85,6 +85,102 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
     return true_trajectory, perceived_trajectory, cam_azimuth_deg
 
 
+# Barker-13 code: the longest known Barker sequence, whose autocorrelation has
+# uniform sidelobes of magnitude 1 against a peak of 13 (-22.3 dB).
+BARKER13 = (+1, +1, +1, +1, +1, -1, -1, +1, +1, -1, +1, -1, +1)
+
+
+def _matched_filter_window(x, dz, device, dtype):
+    """
+    Build the effective matched-filter window w(z) = h(z) * x(z) for a transmit
+    waveform x(z) sampled on a uniform grid of spacing dz, where h(z) = conj(x(-z))
+    is the matched filter.  w(z) is just the autocorrelation of x and plays the same
+    role as the ideal sinc window in interpolate_signal:
+        s_mf(z_o) = w(z) * g(z) |_{z=z_o} = sum_r E_r w(-z_o - z_r/2).
+    It is normalized to unit peak magnitude so it is directly comparable to the sinc
+    window (unit peak, no range sidelobes).
+
+    Inputs:
+        x (np.ndarray): complex baseband transmit waveform x(z), centered on the grid
+        dz (float): grid spacing in range units
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+    Returns:
+        window (callable): window(x) -> complex tensor, same shape as x; linearly
+            interpolates w(z) at the continuous range offsets x, 0 outside support
+    """
+    # matched-filter output w[k] = sum_j conj(x[j]) x[j+k] (autocorrelation of x);
+    # np.correlate conjugates its second argument, peak lands at the center.
+    w = np.correlate(x, x, mode='full')          # length 2*len(x)-1 (odd)
+    w = w / np.max(np.abs(w))                     # unit peak magnitude
+
+    M = len(w)
+    z0 = -(M - 1) / 2.0 * dz                      # range of the first grid sample
+    cdtype = torch.complex64 if dtype in (torch.float32, torch.float16) else torch.complex128
+    w_grid = torch.tensor(w, device=device, dtype=cdtype)  # (M,)
+
+    def window(x):
+        # linear interpolation of w(z) at the continuous offsets x, 0 outside support
+        idxf = (x - z0) / dz
+        i0 = torch.floor(idxf)
+        frac = (idxf - i0).to(cdtype)
+        i0 = i0.long()
+        valid = (i0 >= 0) & (i0 < M - 1)
+        i0c = i0.clamp(0, M - 2)
+        w0 = w_grid[i0c]
+        w1 = w_grid[i0c + 1]
+        return (w0 + (w1 - w0) * frac) * valid.to(cdtype)
+
+    return window
+
+
+def make_lfm_window(spatial_bw, device, dtype, oversample=32, time_bandwidth=100.0):
+    """
+    Precompute the matched-filter window for an LFM (linear frequency modulation)
+    chirp transmit waveform x(z) = exp(j*pi*K*z^2) of bandwidth B = spatial_bw.
+    The matched-filter output is approximately a sinc of mainlobe width 1/B (matching
+    the sinc window's first null) with the classic ~ -13 dB range sidelobes.
+
+    Inputs:
+        spatial_bw (float): chirp bandwidth B; sets range resolution (~1/B)
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+        oversample (int): grid samples per resolution cell (1/B)
+        time_bandwidth (float): time-bandwidth product B*T of the chirp
+    Returns:
+        window (callable): window(x) -> complex tensor
+    """
+    B = float(spatial_bw)
+    dz = 1.0 / (B * oversample)              # fine grid spacing in range units
+    T = time_bandwidth / B                   # pulse duration (range units)
+    K = B / T                                # chirp rate, so that B = K*T
+    n = int(round(T / dz)) + 1
+    z = (np.arange(n) - (n - 1) / 2.0) * dz  # centered support, length n
+    x = np.exp(1j * np.pi * K * z ** 2)      # inst. freq K*z spans [-B/2, B/2]
+    return _matched_filter_window(x, dz, device, dtype)
+
+
+def make_barker13_window(spatial_bw, device, dtype, oversample=32):
+    """
+    Precompute the matched-filter window for a Barker-13 phase-coded transmit
+    waveform, with each of the 13 chips a rectangular sub-pulse of width 1/B
+    (bandwidth ~ B = spatial_bw).  The matched-filter output has a mainlobe of width
+    ~1/B and uniform range sidelobes at -22.3 dB (1/13 of the peak).
+
+    Inputs:
+        spatial_bw (float): waveform bandwidth B; sets range resolution (~1/B)
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+        oversample (int): grid samples per chip / resolution cell (1/B)
+    Returns:
+        window (callable): window(x) -> complex tensor
+    """
+    B = float(spatial_bw)
+    dz = 1.0 / (B * oversample)              # fine grid spacing in range units
+    x = np.repeat(np.array(BARKER13, dtype=np.float64), oversample).astype(np.complex128)
+    return _matched_filter_window(x, dz, device, dtype)
+
+
 def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
         region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
@@ -104,7 +200,9 @@ def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
-        window_func (str): window function to use ('sinc' or 'gaussian')
+        window_func (str): window function to use ('sinc', 'gaussian', 'lfm' or
+            'barker13'); 'lfm' and 'barker13' are pulse-compression matched-filter
+            windows (autocorrelation of the transmit waveform)
 
 
     Returns:
@@ -125,8 +223,12 @@ def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
         window = lambda x: torch.sinc(spatial_bw * x)
     elif window_func == "gaussian":
         window = lambda x: torch.exp(-0.5 * (x * spatial_bw) ** 2)
+    elif window_func == "lfm":
+        window = make_lfm_window(spatial_bw, device, scatter_z.dtype)
+    elif window_func == "barker13":
+        window = make_barker13_window(spatial_bw, device, scatter_z.dtype)
     else:
-        raise ValueError("window_func should be 'sinc' or 'gaussian', but got %s" % window_func)
+        raise ValueError("window_func should be 'sinc', 'gaussian', 'lfm' or 'barker13', but got %s" % window_func)
 
 
     # calculate the center of each spatial sample
@@ -395,15 +497,108 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
     return verts,faces
 
 
+def analyze_window_functions(
+        # window_funcs=('sinc', 'gaussian', 'lfm', 'barker13'),
+        window_funcs=('sinc', 'lfm', 'barker13'),
+        bw_list=(20.0,),
+        fs_list=(40.0, 80.0),
+        region_radius=1.0,
+        db_floor=-60.0,
+        device='cpu',
+        save_dir='figures',
+):
+    """
+    Characterize the range impulse response (point-spread function) of each
+    interpolate_signal window.  A single unit scatter at z=0 is fed to
+    interpolate_signal with sensor_distance=0, so the recovered signal is exactly
+    the effective window w(z) sampled at the radar sampling frequency:
+        s(z_o) = sum_r E_r w(-z_o - z_r/2) = w(-z_o)   (E=1, z=0).
+    For each (bw, fs) pair this plots the impulse response in the time/range domain
+    (linear and dB, to expose mainlobe width and range sidelobes) and its spectrum
+    in the frequency domain (dB, to expose the spectral support and any aliasing
+    when fs < bw).  Figures are written to save_dir for use in the paper.
+
+    Inputs:
+        window_funcs (iterable of str): window functions to compare
+        bw_list (iterable of float): spatial bandwidths to sweep
+        fs_list (iterable of float): spatial sampling frequencies to sweep
+        region_radius (float): radius of the sampled range region
+        db_floor (float): lower dB limit for the log-scale plots
+        device (str): torch device to run on
+        save_dir (str): directory to write the figures to
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    # one unit scatter at the origin: shape (1, R=1)
+    scatter_z = torch.zeros(1, 1, device=device)
+    scatter_e = torch.ones(1, 1, device=device, dtype=torch.complex64)
+    sensor_distance = torch.zeros(1, device=device)
+
+    def to_db(mag):  # normalized magnitude -> dB, floored for plotting
+        mag = mag / (mag.max() + 1e-30)
+        return 20.0 * np.log10(np.clip(mag, 10.0 ** (db_floor / 20.0), None))
+
+    for bw in bw_list:
+        for fs in fs_list:
+            fig, (ax_lin, ax_db, ax_freq) = plt.subplots(1, 3, figsize=(18, 5))
+
+            for wf in window_funcs:
+                signal, sample_z = interpolate_signal(
+                    scatter_z, scatter_e, region_radius, sensor_distance,
+                    spatial_bw=bw, spatial_fs=fs, window_func=wf,
+                )
+                s = signal[0].cpu().numpy()           # (Z,) complex impulse response
+                z = sample_z[0].cpu().numpy()         # (Z,) range axis (sensor_distance=0)
+                mag = np.abs(s)
+
+                # time/range domain
+                ax_lin.plot(z, mag / (mag.max() + 1e-30), label=wf, marker='.', ms=3)
+                ax_db.plot(z, to_db(mag), label=wf, marker='.', ms=3)
+
+                # frequency domain: spectrum of the sampled impulse response
+                Z = len(s)
+                spec = np.fft.fftshift(np.fft.fft(s))
+                freq = np.fft.fftshift(np.fft.fftfreq(Z, d=1.0 / fs))  # [-fs/2, fs/2)
+                ax_freq.plot(freq, to_db(np.abs(spec)), label=wf, marker='.', ms=3)
+
+            ax_lin.set_title('Range impulse response (linear)')
+            ax_lin.set_xlabel('range z'); ax_lin.set_ylabel('|s| (normalized)')
+            ax_lin.grid(True, alpha=0.3); ax_lin.legend()
+
+            ax_db.set_title('Range impulse response (dB)')
+            ax_db.set_xlabel('range z'); ax_db.set_ylabel('|s| (dB)')
+            ax_db.set_ylim(db_floor, 3); ax_db.grid(True, alpha=0.3); ax_db.legend()
+
+            # mark the bandwidth edges +-bw/2 to show spectral support
+            ax_freq.axvline(+bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
+            ax_freq.axvline(-bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
+            ax_freq.set_title('Spectrum (dB),  dashed = +-bw/2')
+            ax_freq.set_xlabel('spatial frequency'); ax_freq.set_ylabel('|S| (dB)')
+            ax_freq.set_ylim(db_floor, 3); ax_freq.grid(True, alpha=0.3); ax_freq.legend()
+
+            fig.suptitle('Window impulse response   bw=%g   fs=%g   region_radius=%g'
+                         % (bw, fs, region_radius))
+            path = get_next_path(os.path.join(save_dir, 'window_analysis.png'))
+            savefig(path)
+            print('saved %s' % path)
+
+
 if __name__ == '__main__':
-    # test the trajectory generation
-    device = 'cuda'
-    T = 1
-    center_az = 45
-    center_el = 45
-    n_pulses = 30
-    azimuth_spread_deg = 120
-    pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
-    trajectory = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg,debug=True)  # (T,P,3)
-    print('Trajectory:', trajectory)
-    print('Trajectory shape:', trajectory.shape)
+    # characterize the interpolate_signal window functions for the paper
+    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(20.0, 40.0, 80.0))
+
+    # # test the trajectory generation
+    # device = 'cuda'
+    # T = 1
+    # center_az = 45
+    # center_el = 45
+    # n_pulses = 30
+    # azimuth_spread_deg = 120
+    # pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
+    # true_trajectory, perceived_trajectory, cam_azimuth_deg = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg,debug=True)  # (T,P,3)
+    # print('true_trajectory: ', true_trajectory)
+    # print('true_trajectory.shape: ', true_trajectory.shape)
+    # print('perceived_trajectory: ', perceived_trajectory)
+    # print('perceived_trajectory.shape: ', perceived_trajectory.shape)
+    # print('cam_azimuth_deg: ', cam_azimuth_deg)
+    # print('cam_azimuth_deg.shape: ', cam_azimuth_deg.shape)
