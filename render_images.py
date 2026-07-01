@@ -153,6 +153,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             image_plane_width = image_plane_width,
             image_plane_height = image_plane_height,
             batch_size = cbp_batch_size,
+            coherent_integration = not use_sig_magnitude,
+            wavelength = wavelength,
         )
     elif imaging_algorithm == 'stripmap':
         sar_image = strip_map_imaging(

@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import sys
+import warnings
 
 def projected_CBP(
     signal,
@@ -13,6 +14,8 @@ def projected_CBP(
     image_plane_width = 1,
     image_plane_height = 1,
     batch_size = None,
+    coherent_integration = True,
+    wavelength = None,
 ):
     '''
     does some projection then runs the 2D convolutional back projection algorithm
@@ -23,11 +26,29 @@ def projected_CBP(
         trajectory: (T,P,3) - the location of the sensor for each pulse
         image_plane_rotation_deg: (T,) - the rotation angle of the image plane in degrees.
         spatial_fs: float - the spatial frequency sampling rate
+        coherent_integration: bool - determines if phase correction is used on the samples.
+            requires that the signal be complex values and wavelength is provided.
+        wavelength: float or None - wavelength for coherent integration.
     outputs:
         image: (T,H,W) - the computed image
     '''
     # gather shape constants
     T,P,Z = signal.shape
+
+    # phase correction for coherent integration
+    if coherent_integration:
+        if wavelength is None:
+            warnings.warn(
+                'coherent_integration is True but wavelength is None; '
+                'skipping phase correction.'
+            )
+        elif not torch.is_complex(signal):
+            warnings.warn(
+                'coherent_integration is True but signal is not complex; '
+                'skipping phase correction.'
+            )
+        else:
+            signal = signal * torch.exp( -4j * np.pi * sample_z / wavelength )
 
     # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
     forward_vector = -trajectory/torch.norm(trajectory,dim=-1,keepdim=True) # (T,P,3)
