@@ -7,3 +7,7 @@
 figures/
 .vscode/
 run_log.txt
+
+# Keep the LaTeX paper's figures tracked despite the extension rules above
+!latex/figs/
+!latex/figs/**
