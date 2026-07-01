@@ -8,6 +8,23 @@ figures/
 .vscode/
 run_log.txt
 
+# LaTeX auto-generated files
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.bcf
+*.run.xml
+*.dvi
+*.xdv
+
 # Keep the LaTeX paper's figures tracked despite the extension rules above
 !latex/figs/
 !latex/figs/**
