@@ -1,3 +1,5 @@
+import itertools
+
 import matplotlib.pyplot as plt
 import PIL
 import os
@@ -12,6 +14,245 @@ from pytorch3d.renderer import (
     RasterizationSettings, 
     MeshRasterizer,  
 )
+
+def gpu_mem(device=None):
+    alloc = torch.cuda.memory_allocated(device) / 1024**3
+    reserved = torch.cuda.memory_reserved(device) / 1024**3
+    return f"alloc={alloc:.2f}GB reserved={reserved:.2f}GB"
+
+
+def dot_product(a, b, dim = -1, keepdim=False):
+    '''
+    compute the dot product between two tensors along a specified dimension, and return a tensor with that dimension removed.
+    For example, if a and b are both (..., 3) and dim=-1, then this function will return a tensor of shape (...) containing the dot product of the last dimension of a and b.
+    '''
+    return torch.sum(a * b, dim=dim, keepdim=keepdim)
+
+
+def correct_material_properties(properties):
+    '''
+    make sure that the material properties are valid. Assume it is a tensor of shape (..., 5) where the 5 is
+    r: reflectivity,
+    a: absorption,
+    i: directional scattering portion,
+    d: diffuse scattering portion,
+    s: overall scattering, 
+
+    r+s+a = 1
+    i+d = 1
+
+    if these conditions are not met, we will normalize the properties to make them valid.
+    Throw a warning if the properties are not valid, but still return a corrected version of the properties that is valid.
+    '''
+    # get the properties
+    assert properties.shape[-1] == 5, "Properties should have shape (..., 5)"
+    r, a, i, d, s = properties[..., 0], properties[..., 1], properties[..., 2], properties[..., 3], properties[..., 4]
+
+    # make sure r,s,a adds to 1
+    if not torch.allclose(r + s + a, torch.ones_like(r)):
+        print("Warning: The sum of reflectivity, scattering, and absorption is not 1. Normalizing these properties.")
+        total = r + s + a
+        r = r / total
+        s = s / total
+        a = a / total
+
+    # make sure i,d adds to 1
+    if not torch.allclose(i + d, torch.ones_like(i)):
+        print("Warning: The sum of directional and diffuse scattering is not 1. Normalizing these properties.")
+        total = i + d
+        i = i / total
+        d = d / total
+
+    # stack and return
+    return torch.stack((r, a, i, d, s), dim=-1)
+
+
+
+
+def spherical_to_cartesian(azimuth_deg, elevation_deg, distance):
+    """
+    Convert spherical coordinates to Cartesian coordinates.
+
+    Parameters:
+    - azimuth: (...,) The azimuth angle in degrees.
+    - elevation: (...,) The elevation angle in degrees.
+    - distance: (...,) The distance from the origin.
+
+    Returns:
+    - cartesian: (...,3) The tensor containing the Cartesian coordinates (x, y, z).
+    """
+    azimuth_rad = azimuth_deg * np.pi / 180
+    elevation_rad = elevation_deg * np.pi / 180
+
+    x = distance * torch.cos(elevation_rad) * torch.cos(azimuth_rad)
+    y = distance * torch.cos(elevation_rad) * torch.sin(azimuth_rad)
+    z = distance * torch.sin(elevation_rad)
+
+    cartesian = torch.stack((x, y, z), dim=-1)
+    return cartesian
+
+
+def cartesian_to_spherical(cartesian):
+    """
+    Convert Cartesian coordinates to spherical coordinates.
+
+    Parameters:
+    - cartesian: (...,3) The tensor containing the Cartesian coordinates (x, y, z).
+
+    Returns:
+    - azimuth_deg: (...,) The azimuth angle in degrees.
+    - elevation_deg: (...,) The elevation angle in degrees.
+    - distance: (...,) The distance from the origin.
+    """
+    x = cartesian[..., 0]
+    y = cartesian[..., 1]
+    z = cartesian[..., 2]
+
+    distance = torch.sqrt(x**2 + y**2 + z**2)
+
+    azimuth_rad = torch.atan2(y, x)
+    elevation_rad = torch.atan2(z, torch.sqrt(x**2 + y**2))
+
+    azimuth_deg = azimuth_rad * 180 / np.pi
+    elevation_deg = elevation_rad * 180 / np.pi
+
+    return azimuth_deg, elevation_deg, distance
+
+
+
+def test_spherical_cartesian_consistency(num_points=100000, tol=1e-3):
+    """
+    Test spherical_to_cartesian and cartesian_to_spherical by converting
+    random Cartesian points to spherical coordinates and back.
+
+    Parameters
+    ----------
+    num_points : int
+        Number of random points to generate.
+    tol : float
+        Allowed reconstruction error.
+    """
+
+    # Generate random 3D points across a wide range
+    cartesian_original = torch.randn(num_points, 3) * 100
+
+    # Convert to spherical
+    azimuth_deg, elevation_deg, distance = cartesian_to_spherical(cartesian_original)
+
+    # Convert back to Cartesian
+    cartesian_reconstructed = spherical_to_cartesian(
+        azimuth_deg,
+        elevation_deg,
+        distance
+    )
+
+    # Compute reconstruction error
+    error = torch.norm(cartesian_original - cartesian_reconstructed, dim=-1)
+    max_error = error.max()
+    mean_error = error.mean()
+
+    print(f"Tested {num_points} random points")
+    print(f"Max reconstruction error: {max_error}")
+    print(f"Mean reconstruction error: {mean_error}")
+
+    if max_error < tol:
+        print("PASS: spherical/cartesian conversions are consistent")
+        return True
+    else:
+        print("FAIL: reconstruction error exceeds tolerance")
+        return False
+
+
+def plot_image(image, title=None, cmap='gray', vmin=None, vmax=None, figsize=(6, 5), db=False, relative_db=False):
+    """
+    Plot a 2D image with a colorbar.
+
+    Parameters
+    ----------
+    image       : (H, W) array-like or torch.Tensor
+    title       : optional title string
+    cmap        : matplotlib colormap name (default 'gray')
+    vmin        : colorbar lower bound (default: image min)
+    vmax        : colorbar upper bound (default: image max)
+    figsize     : (width, height) in inches
+    db          : if True, convert to dB scale (10*log10) before plotting
+    relative_db : if True (default), normalize by max before dB so 0 dB = brightest pixel
+    """
+    if hasattr(image, 'detach'):
+        image = image.detach().cpu().numpy()
+    else:
+        image = np.asarray(image)
+    image = np.squeeze(image)
+    if db:
+        if relative_db:
+            image = 10 * np.log10(np.maximum(image / np.max(image), 1e-10))
+        else:
+            image = 10 * np.log10(np.maximum(image, 1e-10))
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(image, cmap=cmap, vmin=vmin, vmax=vmax)
+    cbar = fig.colorbar(im, ax=ax)
+    if db:
+        cbar.set_label('Relative Magnitude (dB)' if relative_db else 'dB')
+    if title is not None:
+        ax.set_title(title)
+    ax.axis('off')
+    return fig, ax
+
+
+def plot_rays(origins, directions, ray_length=1.0, max_rays=None, title=None, figsize=(8, 8)):
+    """
+    3-D scatter + quiver plot of rays.
+
+    Parameters
+    ----------
+    origins    : (N, 3) array-like or torch.Tensor  — ray start positions
+    directions : (N, 3) array-like or torch.Tensor  — ray direction vectors (need not be unit)
+    ray_length : scalar length to draw each arrow
+    max_rays   : subsample to this many rays when N is large (keeps the plot readable)
+    title      : optional title string
+    figsize    : figure size in inches
+
+    Returns
+    -------
+    fig, ax
+    """
+    if hasattr(origins, 'detach'):
+        origins = origins.detach().cpu().numpy()
+    else:
+        origins = np.asarray(origins)
+    if hasattr(directions, 'detach'):
+        directions = directions.detach().cpu().numpy()
+    else:
+        directions = np.asarray(directions)
+
+    # normalise directions so arrow length is controlled by ray_length alone
+    norms = np.linalg.norm(directions, axis=-1, keepdims=True)
+    directions = directions / np.where(norms > 0, norms, 1)
+
+    # subsample with a uniform stride to preserve grid structure
+    N = origins.shape[0]
+    if max_rays is not None and N > max_rays:
+        stride = int(np.ceil(N / max_rays))
+        origins    = origins[::stride]
+        directions = directions[::stride]
+
+    fig = plt.figure(figsize=figsize)
+    ax  = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(origins[:, 0], origins[:, 1], origins[:, 2], s=4, c='tab:blue', label='origins')
+    ax.quiver(
+        origins[:, 0],    origins[:, 1],    origins[:, 2],
+        directions[:, 0], directions[:, 1], directions[:, 2],
+        length=ray_length, normalize=False, color='tab:orange', linewidth=0.6,
+    )
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    if title is not None:
+        ax.set_title(title)
+    ax.legend()
+    return fig, ax
 
 
 def savefig(path):
@@ -130,181 +371,179 @@ def generate_pose_mat(azimuth,elevation,distance,device='cpu',format='srn_cars')
         raise NotImplementedError("Unknown format for generate_pose_mat(): %s" % format)
 
 
+def plot_angular_response():
+    '''
+    plotting models for returned energy
+    '''
+
+    r = 1 # reflectivity
+    s = 1 # directional dependent scattering
+    a = 1 # absorbtion
+    d = 0 # diffusion scattering
+    i = 1 # directional scattering intensity
+    energy_in = 1
+
+    theta_deg = np.linspace(0,180,1000)
+    theta = theta_deg*np.pi/180
+
+    for i in [.2,.5,1,2,5,10,20,50,100]:
+        # energy_returned = energy_in * (s*(np.cos(theta)**i) + d)
+        # energy_returned = energy_in * (s*(np.cos(theta)+1)**i + d)
+        energy_returned = energy_in * (s*(np.cos(theta/2))**i + d)
+        plt.plot(theta_deg, energy_returned, label='$\\alpha$=%.1f'%i)
+    plt.xlabel('Reflected angular difference (degrees)')
+    plt.ylabel('Energy returned')
+    plt.legend()
+    plt.grid()
+    plt.title('Angular response of returned energy for different scattering intensities\n(s=%d, d=%d, r=%d, a=%d)'%(s,d,r,a))
+    savefig(get_next_path('figures/angular_response.png'))
+
+
+def numerically_analyze_directional_scattering(alpha=100):
+    '''
+    I want to compute how much i should multiply the returned energy ray by such that we satisfy the conservation of energy.
+    This means the diffuse and the directional scattering
+
+    We need to numerically compute the integral of returned energy over a hemisphere for different values of alpha in np.cos(theta/2)**alpha
+    the integral may changer with differnt reflected ray directions, so we need to compute it for a bunch of az_r, el_r, i combinations
+    Then we are going to find a good approximation for the multiplier using dot product and some kind of nonlinear function, like an SVM
+    '''
+
+    # integrate over many small rays in the hemisphere
+    n_numer = 1000
+    az = np.linspace(0,2*np.pi,n_numer).reshape(-1, 1, 1) # (n_numer, 1, 1)
+    el = np.linspace(0,np.pi/2,n_numer).reshape( 1,-1, 1) # (1, n_numer, 1)
+
+    # select the values of outgoing ray direction, and alpha
+    # actually, lets fix alpha
+    n_r = 100
+    az_r = 0
+    el_r = np.linspace(0,np.pi/2,n_r).reshape( 1, 1,-1) # (1, 1, n_r)
+
+    # compute the integral for each az_r, el_r combination, without a for loop...
+
+    # useful intermediate function to convert azimuth and elevation to a unit vector
+    def vec(azimuth, elevation):
+        x = np.cos(elevation) * np.cos(azimuth)
+        y = np.cos(elevation) * np.sin(azimuth)
+        z = np.sin(elevation) + np.zeros_like(azimuth)  # add zeros to ensure the shape is correct for broadcasting
+        return np.stack((x, y, z), axis=-1)
+
+    # (n_r, n_r)
+    total_energy =  np.sum(
+                        np.sum(
+                            np.sqrt((1+
+                                np.sum( vec(az,el) * vec(az_r,el_r),axis=-1) # (n_numer, n_numer, n_r)
+                            )/2)**alpha * np.cos(el)
+                            , axis= 0
+                        )
+                        ,axis=0
+                    ) * (2*np.pi/n_numer) * (np.pi/2/n_numer) # need to multiply by the width of each tiny rectangle of integration
+    
+    # plot the total_energy as a heat map like confusion matricies are plotted
+    plt.figure(figsize=(12,6))
+    plt.subplot(1,2,1)
+    plt.plot(el_r[0,0,:]*180/np.pi, total_energy)
+    plt.xlabel('$\\vec{e}_r$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
+    plt.grid()
+    plt.subplot(1,2,2)
+    plt.plot(np.cos(np.pi/2 - el_r[0,0,:]), total_energy)
+    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
+    plt.grid()
+    savefig('figures/total_returned_energy.png')
+
+    print('total_energy: ', total_energy)
+
+    # so the azimuth of the reflected ray doesn't matter, but the elevation does, which makes sense because the scattering is symmetric around the normal direction.
+    # we can simply fit a polynomial to the relationship between the elevation of the reflected ray and the total returned energy, and use that as our multiplier for the returned energy ray.
+
+    x = np.cos(np.pi/2 - el_r[0,0,:]) # (n_r,)
+    y = total_energy # (n_r,)
+
+    for order in [1,2,3,4,5]:
+        coeffs = np.polyfit(x, y, order)
+        print('Coeffs for order %d: '%order, coeffs)
+        poly = np.poly1d(coeffs)
+        plt.plot(x, poly(x), label='order %d'%order)
+    plt.plot(x, y, label='numerical integral', color='black', linewidth=2)
+    plt.xlabel('$\\cos(90\\degree - \\vec{e}_r) = -\\vec{u}_{in} \\cdot \\vec{n}$', fontsize=18)
+    plt.ylabel('$\\oiint \\cos({\\theta/2})^\\alpha d \\Omega$', fontsize=18)
+    plt.title('$\\alpha$=%d'%alpha, fontsize=18)
+    plt.legend()
+    plt.grid()
+    savefig('figures/total_returned_energy_fit.png')
+
+    # make sure i get the equation right in pytorch
+    order = 1
+    coeffs = np.polyfit(x, y, order)
+
+    # print the function so i can copy it into my code
+    print('Directional scatter multiplier function for alpha=%d:'%alpha)
+    print('def directional_scatter_polynomial_alpha%d(cos_90_minus_elevation):'%alpha)
+    s = '    return '
+    for i in range(order):
+        s += '%.8f*cos_90_minus_elevation**%d + '%( coeffs[i], order-i )
+    s += '%.8f'%coeffs[order]
+    print(s)
+
+
+def directional_scatter_polynomial_alpha100(cos_90_minus_elevation):
+    '''
+    this is the function we will use to multiply the returned energy ray by, to ensure conservation of energy when alpha=100
+    '''
+    return  -0.27239384*cos_90_minus_elevation**4 + \
+            0.94296234*cos_90_minus_elevation**3 + \
+            -1.19504825*cos_90_minus_elevation**2 + \
+            0.65042818*cos_90_minus_elevation + \
+            0.12070119
+def directional_scatter_polynomial_alpha5(cos_90_minus_elevation):
+    return 1.46792856*cos_90_minus_elevation**1 + 1.81188202
+
+
+    
+
+def rotation_matrix_xyz(rx_deg, ry_deg, rz_deg, device='cpu'):
+    '''
+    Returns a 3x3 rotation matrix for extrinsic XYZ rotations (applied X first, then Y, then Z).
+    Inputs:
+        rx_deg, ry_deg, rz_deg (float): rotation angles in degrees about each axis
+        device: torch device
+    Output:
+        R (3,3): combined rotation matrix
+    '''
+    def _deg2rad(d):
+        return torch.tensor(d, dtype=torch.float32, device=device) * (torch.pi / 180.0)
+
+    cx, sx = torch.cos(_deg2rad(rx_deg)), torch.sin(_deg2rad(rx_deg))
+    cy, sy = torch.cos(_deg2rad(ry_deg)), torch.sin(_deg2rad(ry_deg))
+    cz, sz = torch.cos(_deg2rad(rz_deg)), torch.sin(_deg2rad(rz_deg))
+
+    Rx = torch.stack([
+        torch.stack([torch.ones_like(cx),  torch.zeros_like(cx), torch.zeros_like(cx)]),
+        torch.stack([torch.zeros_like(cx),  cx,                  -sx               ]),
+        torch.stack([torch.zeros_like(cx),  sx,                   cx               ]),
+    ])  # (3,3)
+
+    Ry = torch.stack([
+        torch.stack([ cy,                   torch.zeros_like(cy),  sy               ]),
+        torch.stack([torch.zeros_like(cy),  torch.ones_like(cy),   torch.zeros_like(cy)]),
+        torch.stack([-sy,                   torch.zeros_like(cy),  cy               ]),
+    ])  # (3,3)
+
+    Rz = torch.stack([
+        torch.stack([ cz,                  -sz,                   torch.zeros_like(cz)]),
+        torch.stack([ sz,                   cz,                   torch.zeros_like(cz)]),
+        torch.stack([torch.zeros_like(cz),  torch.zeros_like(cz), torch.ones_like(cz)]),
+    ])  # (3,3)
+
+    return Rz @ Ry @ Rx  # (3,3)
+
+
 if __name__ == '__main__':
-    # from the pytorch3d tutorial: https://pytorch3d.org/tutorials/render_textured_meshes
+    numerically_analyze_directional_scattering(alpha=1)
 
-    # constants
-    device          = 'cuda'
-    half_side_len   = 0.5
-    n_rays_per_side = 128
-    azimuth_spread  = 0
-    num_pulse       = 1
-    
-    # get an object and pose
-    all_obj_id = os.listdir('/workspace/data/srncars/cars_train/')  # list all object IDs in the dataset
-    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
-    print('Selected object ID: ', obj_id)
-
-    all_pose_paths = '/workspace/data/srncars/cars_train/%s/pose/'%obj_id
-    all_pose_nums  = os.listdir(all_pose_paths)
-    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
-    print('Selected pose number: ', pose_num)
-
-    # load image, pose, and mesh
-    rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
-    rgb  = np.array(PIL.Image.open(rgb_path))[...,:3][...,:3]
-    pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-    mesh = load_objs_as_meshes([mesh_path], device=device)
-
-    # get azimuth, elevation, and distance from the pose
-    target_poses = torch.tensor(pose, device=device) # (1, 4, 4)
-    cam_center, cam_right, cam_up, cam_forward, distance, elevation, azimuth = extract_pose_info(target_poses, format='srn_cars')
-    # (1,3)     (1,3)      (1,3)   (1,3)        (1,)      (1,)       (1,)
-
-
-    ############################ replicating the srn pose ############################
-    # get verticies
-    verts      = mesh.verts_packed()  # (V, 3)
-    faces      = mesh.faces_packed()  # (F, 3)
-    face_verts = verts[faces]  # (F, 3, 3)
-
-    # compute face normals for all faces
-    v0, v1, v2   = face_verts[:, 0], face_verts[:, 1], face_verts[:,2] # (F, 3), (F, 3), (F, 3)
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
-    face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
-
-    # prepare rasterization settings
-    raster_settings = RasterizationSettings(
-        image_size=n_rays_per_side, 
-        blur_radius=0.0, 
-        faces_per_pixel=1, 
-
-        bin_size=0,  # or set to a small value
-        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
-    )
-
-
-    # perform rasterization to find where the rays hit the mesh
-    rotation, translation = look_at_view_transform(distance.item(), elevation.item(), 90+azimuth.item(), device=device) # distance, elevation, azimuth
-    cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
-                                 min_x = -half_side_len, max_x = half_side_len,
-                                 min_y = -half_side_len, max_y = half_side_len,
-                                 )
-    rasterizer = MeshRasterizer(
-        cameras=cameras,
-        raster_settings=raster_settings
-    )
-    fragments = rasterizer(mesh)
-
-    # get depth map
-    depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
-
-    # compute surface normals from face indices and mesh vertices/faces
-    face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-    hit = (depth_map >= 0) # (r, r) valid hits
-    
-    # create normal map by indexing face normals with face IDs
-    valid_face_ids = face_ids[hit] # (R',)
-
-    # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-    # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-    forward_vector = rotation[0,:,2] # (3,)
-    energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-    energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
-
-    # produce a frame of the depth and energy maps
-    masked_dm = depth_map[hit]
-    masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-    masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-    masked_dm = 1 - masked_dm  # invert the depth map
-    dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-    dm_im[hit] = masked_dm  # apply the mask
-
-    masked_e = energy_map[hit]
-    masked_e = masked_e - masked_e.min()  # shift to start from 0
-    masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-    e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-    e_im[hit] = masked_e  # apply the mask
-
-    # normalize the depth, energy, and RGB images
-    e_im = e_im.cpu().numpy()  # convert to numpy for saving
-    dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-    dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-    dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
-
-    # repeat for 3 channels and concatenate the rgb image
-    dm_e_im = np.tile(dm_e_im[..., np.newaxis], (1, 1, 3))  # (r, r, 3)
-    print('rgb.dtype: ', rgb.dtype)
-    print('rgb.shape: ', rgb.shape)
-    dm_e_rgb_im = np.concatenate((dm_e_im, rgb.astype(np.uint8)), axis=1)
-    PIL.Image.fromarray(dm_e_rgb_im).save(get_next_path('figures/depth_energy_rgb.png'))  # save the image
-    ############################ replicating the srn pose ############################
-
-
-
-
-    # # sar rendering
-    # all_azimuths = np.linspace(azimuth - azimuth_spread, azimuth + azimuth_spread, num_pulse)  # (num_pulse,)
-    # print('Azimuths: ', all_azimuths)
-    # print('Elevation: ', elevation)
-
-    # images = []
-    # for azimuth in all_azimuths:
-
-    #     # perform rasterization to find where the rays hit the mesh
-    #     rotation, translation = look_at_view_transform(distance, elevation, azimuth, device=device) # distance, elevation, azimuth
-    #     cameras = FoVOrthographicCameras(device=device, R=rotation, T=translation, 
-    #                                  min_x = -half_side_len, max_x = half_side_len,
-    #                                  min_y = -half_side_len, max_y = half_side_len,
-    #                                  )
-    #     rasterizer = MeshRasterizer(
-    #         cameras=cameras,
-    #         raster_settings=raster_settings
-    #     )
-    #     fragments = rasterizer(mesh)
-
-    #     # get depth map
-    #     depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
-
-    #     # compute surface normals from face indices and mesh vertices/faces
-    #     face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-    #     hit = (depth_map >= 0) # (r, r) valid hits
-    
-    #     # create normal map by indexing face normals with face IDs
-    #     valid_face_ids = face_ids[hit] # (R',)
-
-    #     # compute returned energy (cosine similarity between ray direction and surface normal * alpha_1 + alpha_2)
-    #     # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-    #     forward_vector = rotation[0,:,2] # (3,)
-    #     energy_map = torch.zeros(n_rays_per_side, n_rays_per_side, device=device)  # (r, r)
-    #     energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector, dim=-1)) # (r, r)
-
-    #     # produce a frame of the depth and energy maps
-    #     masked_dm = depth_map[hit]
-    #     masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-    #     masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-    #     masked_dm = 1 - masked_dm  # invert the depth map
-    #     dm_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)  # (r, r)
-    #     dm_im[hit] = masked_dm  # apply the mask
-
-    #     masked_e = energy_map[hit]
-    #     masked_e = masked_e - masked_e.min()  # shift to start from 0
-    #     masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-    #     e_im = torch.zeros((n_rays_per_side, n_rays_per_side), device=device)
-    #     e_im[hit] = masked_e  # apply the mask
-
-    #     e_im = e_im.cpu().numpy()  # convert to numpy for saving
-    #     dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-    #     dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-    #     dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
-
-    #     # save the image
-    #     images.append(dm_e_im)
-
-    # # save the images as a gif
-    # gif_path = get_next_path('figures/depth_energy_maps.gif')
-    # fps = len(images) / 15.0
-    # print('Saving GIF with %.1f fps...' % fps)
-    # imageio.mimsave(gif_path, images, fps=fps, format='GIF', loop=0)
+  

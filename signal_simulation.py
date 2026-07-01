@@ -1,4 +1,4 @@
-from utils import savefig
+from utils import savefig, correct_material_properties, dot_product, directional_scatter_polynomial_alpha5, rotation_matrix_xyz
 import matplotlib.pyplot as plt
 import tqdm
 import os
@@ -16,167 +16,175 @@ from pytorch3d.renderer import (
     MeshRasterizer,  
 )
 import math
-from utils import get_next_path, extract_pose_info
+import time
+from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
+from ray_tracer_v2 import ray_trace, build_octree
+from accumulate_scatters import accumulate_scatters
 
 
 
-def accumulate_scatters(target_poses, 
-                        mesh, face_normals, material_properties,
-                        azimuth_spread=15, n_pulses=30,
-                        wavelength=None,
-                        debug_gif=False,
-                        grid_width=1, grid_height=1,
-                        n_ray_width=1, n_ray_height=1,
-                    ):
+def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_spread_deg=None, trajectory_noise_var=0, debug=False):
     '''
-    returns the energy and range for a bunch of rays for each pulse
-
-    inputs:
-        target_poses (T,4,4): the rgb pose for which we want to get a sar image from
-        object_filename (str): path to the .obj file
-        azimuth_spread (float): the range of azimuth angles for sar rendering
-        n_pulses (int): the number of pulses for sar rendering
-        wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
-        debug_gif (bool): whether to save a gif of the depth and energy images
-
-    outputs:
-        range (T,P,R): the range of all the rays
-        energy (T,P,R): the simulated energy of all the rays
-
+    Generate a trajectory for multiple poses based on a single pose. The pose is the middle of the trajectory.
     '''
-    device = target_poses.device
-    T = target_poses.shape[0]  # no. of camera views
+    assert(azimuth_spread_deg >= 0  ), 'the azimuth cannot be negative'
+
+    device = pose.device
+    T = pose.shape[0]  # no. of camera views
     P = n_pulses               # no. of pulses per view
 
     # Pull out camera positions info # TODO: this is probably not consistent with the pytorch3d coordinate system
-    _, _, _, _, cam_distance, cam_elevation, cam_azimuth = extract_pose_info(target_poses)
-    #           (T,)          (T,)           (T,)
+    cam_center, cam_right, cam_up, cam_forward, cam_distance, cam_elevation_deg, cam_azimuth_deg = extract_pose_info(pose)
+    #  (T,3)       (T,3)      (T,3)    (T,3)        (T,)           (T,)              (T,)
+   
 
-    # Spread the pulses across a small range of azimuth angles
-    azimuth_offsets = torch.linspace(-azimuth_spread / 2, azimuth_spread / 2, P, device=device) # (P,)
-    azimuth = cam_azimuth.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
-    pytorch3d_azimuth = 90 + azimuth # The +90 is to convert from SRN coordinate system to pytorch3d coordinate system
+    if trajectory_type == 'circular':
+        # Spread the pulses across a small range of azimuth angles
+        azimuth_offsets = torch.linspace(-azimuth_spread_deg / 2, azimuth_spread_deg / 2, P, device=device) # (P,)
+        azimuth_deg = cam_azimuth_deg.reshape(T, 1) + azimuth_offsets.reshape(1, P) # (T,P)
+        elevation_deg = cam_elevation_deg.reshape(T, 1).repeat(1, P) # (T,P)
+        distance = cam_distance.reshape(T, 1).repeat(1, P) # (T,P)
+        trajectory = spherical_to_cartesian(azimuth_deg, elevation_deg, distance) # (T,P,3)
 
-    # prepare rasterization settings
-    raster_settings = RasterizationSettings(
-        image_size=(n_ray_height, n_ray_width), 
-        blur_radius=0.0, 
-        faces_per_pixel=1, 
+    elif trajectory_type == 'linear':
 
-        bin_size=0,  # or set to a small value
-        max_faces_per_bin=100000  # try increasing from the default (e.g., 10000)
-    )
+        assert(azimuth_spread_deg < 180), 'with a linear trajectory, the azimuth cannot be greater than 180 degrees'
+        mag_ground_pos = cam_center[:,:2].norm(dim=-1)  # (T,) magnitude of the ground position
+        dist_from_center = mag_ground_pos * np.tan(azimuth_spread_deg/2 * np.pi/180)  # (T,) distance from the center position for the first and last pulse
+        start_pos = cam_center - dist_from_center.reshape(T,1) * cam_right # (T,3) starting position for the first pulse
 
-    # loop over each pulse and compute the depth map and surface normal
-    scatter_ranges = []
-    scatter_energies = []
-    dm_e_images = []  # to store depth and energy images
-    for t in range(T):
-        scatter_ranges.append([])
-        scatter_energies.append([])
-        for p in range(P):
+        trajectory = torch.linspace(0,1, P, device=device).reshape(1, P, 1) * \
+                     cam_right.reshape(T, 1, 3) * \
+                     (2*dist_from_center).reshape(T, 1, 1) + \
+                     start_pos.reshape(T, 1, 3)
+        # (T,P,3) trajectory of the camera for each pulse
 
-            # perform rasterization to find where the rays hit the mesh
-            rotation, translation = look_at_view_transform(
-                cam_distance[t],
-                cam_elevation[t],
-                pytorch3d_azimuth[t, p],
-                device=device)
-            cameras = FoVOrthographicCameras(
-                device = device, R = rotation, T = translation, 
-                min_x = -grid_width /2, max_x = grid_width /2,
-                min_y = -grid_height/2, max_y = grid_height/2,
-            )
-            rasterizer = MeshRasterizer(
-                cameras=cameras,
-                raster_settings=raster_settings
-            )
-            fragments = rasterizer(mesh)
+    else:
+        raise ValueError('trajectory_type should be either circular or linear, but got %s' % trajectory_type)
 
-            # get depth map
-            depth_map  = fragments.zbuf[0, ..., 0]    # (r, r) # missed rays are -1.0
+    if debug:
+        # plot the trajectory for debugging
+        plt.figure(figsize=(6,6))
+        min_z = trajectory[:,:,2].min().item()
+        max_z = trajectory[:,:,2].max().item()
+        plt.scatter(trajectory[0,:,0].cpu().numpy(), trajectory[0,:,1].cpu().numpy())
+        plt.title('Camera Trajectory\ntrajectory trajectory_type: %s\nazimuth spread: %d degrees\nz-range: %.2f - %.2f'%(trajectory_type, azimuth_spread_deg, min_z, max_z))
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        path = get_next_path('figures/camera_trajectory.png')
+        savefig(path)
 
-            # compute surface normals from face indices and mesh vertices/faces
-            face_ids = fragments.pix_to_face[0, ..., 0]  # (r, r) face indices
-            hit = (depth_map >= 0) # (r, r) valid hits
-            
-            # create normal map by indexing face normals with face IDs
-            valid_face_ids = face_ids[hit] # (R',)
-
-            # ray direction is the same for all rays because we are using orthographic projection, so we can simply grab the forward vector from the rotation matrix
-            forward_vector = rotation[0,:,2] # (3,)
-            energy_map = torch.zeros(n_ray_height, n_ray_width, device=device)  # (r, r)
-            energy_map[hit] = torch.abs(torch.sum(face_normals[valid_face_ids] * forward_vector * material_properties[valid_face_ids,1:2], dim=-1)) # (r, r)
-
-            # produce a frame of the depth and energy maps
-            if debug_gif:
-                masked_dm = depth_map[hit]
-                masked_dm = masked_dm - masked_dm.min()  # shift to start from 0
-                masked_dm = masked_dm / masked_dm.max()  # normalize to [0, 1]
-                masked_dm = 1 - masked_dm  # invert the depth map
-                dm_im = torch.zeros((n_ray_height, n_ray_width), device=device)  # (r, r)
-                dm_im[hit] = masked_dm  # apply the mask
-
-                masked_e = energy_map[hit]
-                masked_e = masked_e - masked_e.min()  # shift to start from 0
-                masked_e = masked_e / masked_e.max()  # normalize to [0,1]
-                e_im = torch.zeros((n_ray_height, n_ray_width), device=device)
-                e_im[hit] = masked_e  # apply the mask
-
-                e_im = e_im.cpu().numpy()  # convert to numpy for saving
-                dm_im = dm_im.cpu().numpy()  # convert to numpy for saving
-                dm_e_im = np.concatenate((dm_im, e_im), axis=1)  # concatenate depth and energy maps horizontally
-                dm_e_im = (dm_e_im * 255).astype(np.uint8)  # scale to [0, 255] for saving
-
-                dm_e_images.append(dm_e_im)  # store the depth and energy image
-
-                # save current image to a file in a tmp folder in figures to be made into a gif later
-                if not os.path.exists('figures/tmp'):
-                    os.makedirs('figures/tmp')
-                path = get_next_path(f'figures/tmp/depth_energy.png')
-                imageio.imwrite(path, dm_e_im)
-
-            # finalize the range and energy
-            depth_map[~hit]  = 0.0  # set missed rays to 0
-            scatter_ranges[t].append(2 * depth_map.reshape(-1))  # (R,) # multiply by 2 for round trip
-            scatter_energies[t].append(energy_map.reshape(-1))  # (R,)
-
-            if debug_gif and t == 0:
-                tmp1 = scatter_ranges[t][-1].cpu().numpy()
-                tmp2 = scatter_energies[t][-1].cpu().numpy()
-                plt.scatter(tmp1, tmp2, s=1)
-                plt.xlabel("Range")
-                plt.ylabel("Energy")
-                plt.xlim(0, 6)
-                plt.ylim(-0.5, 1.5)
-                plt.title(f"Energy vs Range Plot for Bounce 0 for Pulse {p}")
-                plt.savefig(os.path.join("figures", "tmp", f"energy_range_bounce_0_pulse_{p}.png"))
-                plt.close()
+    # apply trajectory gaussian noise if desired
+    if trajectory_noise_var > 0:
+        noise = torch.randn_like(trajectory) * np.sqrt(trajectory_noise_var)
+        true_trajectory = trajectory + noise
+    else:
+        true_trajectory = trajectory
+    perceived_trajectory = trajectory
+        
+    return true_trajectory, perceived_trajectory, cam_azimuth_deg
 
 
-        # stack the results
-        scatter_ranges[t] = torch.stack(scatter_ranges[t], dim=0)  # (P, R)
-        scatter_energies[t] = torch.stack(scatter_energies[t], dim=0)  # (P, R)
-    scatter_ranges = torch.stack(scatter_ranges, dim=0)  # (T, P, R)
-    scatter_energies = torch.stack(scatter_energies, dim=0)  # (T, P, R)
-
-    # tile elevation and distance to match the shape of azimuth
-    elevation = torch.tile(cam_elevation.reshape(T, 1), (1, P))  # (T, P)
-    distance  = torch.tile( cam_distance.reshape(T, 1), (1, P))  # (T, P)
-
-    # apply complex value to the energy according to wavelength
-    if wavelength is not None:
-        scatter_energies = scatter_energies * torch.exp(1j * 2 * np.pi / wavelength * scatter_ranges)
-
-    return scatter_ranges, scatter_energies, azimuth, elevation, distance, cam_azimuth, cam_distance
-    #      (T, P, R)       (T, P, R)         (T, P)   (T, P)     (T, P)    (T,)         (T,)
+# Barker-13 code: the longest known Barker sequence, whose autocorrelation has
+# uniform sidelobes of magnitude 1 against a peak of 13 (-22.3 dB).
+BARKER13 = (+1, +1, +1, +1, +1, -1, -1, +1, +1, -1, +1, -1, +1)
 
 
+def _matched_filter_window(x, dz, device, dtype):
+    """
+    Build the effective matched-filter window w(z) = h(z) * x(z) for a transmit
+    waveform x(z) sampled on a uniform grid of spacing dz, where h(z) = conj(x(-z))
+    is the matched filter.  w(z) is just the autocorrelation of x and plays the same
+    role as the ideal sinc window in interpolate_signal:
+        s_mf(z_o) = w(z) * g(z) |_{z=z_o} = sum_r E_r w(-z_o - z_r/2).
+    It is normalized to unit peak magnitude so it is directly comparable to the sinc
+    window (unit peak, no range sidelobes).
 
-def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
+    Inputs:
+        x (np.ndarray): complex baseband transmit waveform x(z), centered on the grid
+        dz (float): grid spacing in range units
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+    Returns:
+        window (callable): window(x) -> complex tensor, same shape as x; linearly
+            interpolates w(z) at the continuous range offsets x, 0 outside support
+    """
+    # matched-filter output w[k] = sum_j conj(x[j]) x[j+k] (autocorrelation of x);
+    # np.correlate conjugates its second argument, peak lands at the center.
+    w = np.correlate(x, x, mode='full')          # length 2*len(x)-1 (odd)
+    w = w / np.max(np.abs(w))                     # unit peak magnitude
+
+    M = len(w)
+    z0 = -(M - 1) / 2.0 * dz                      # range of the first grid sample
+    cdtype = torch.complex64 if dtype in (torch.float32, torch.float16) else torch.complex128
+    w_grid = torch.tensor(w, device=device, dtype=cdtype)  # (M,)
+
+    def window(x):
+        # linear interpolation of w(z) at the continuous offsets x, 0 outside support
+        idxf = (x - z0) / dz
+        i0 = torch.floor(idxf)
+        frac = (idxf - i0).to(cdtype)
+        i0 = i0.long()
+        valid = (i0 >= 0) & (i0 < M - 1)
+        i0c = i0.clamp(0, M - 2)
+        w0 = w_grid[i0c]
+        w1 = w_grid[i0c + 1]
+        return (w0 + (w1 - w0) * frac) * valid.to(cdtype)
+
+    return window
+
+
+def make_lfm_window(spatial_bw, device, dtype, oversample=32, time_bandwidth=100.0):
+    """
+    Precompute the matched-filter window for an LFM (linear frequency modulation)
+    chirp transmit waveform x(z) = exp(j*pi*K*z^2) of bandwidth B = spatial_bw.
+    The matched-filter output is approximately a sinc of mainlobe width 1/B (matching
+    the sinc window's first null) with the classic ~ -13 dB range sidelobes.
+
+    Inputs:
+        spatial_bw (float): chirp bandwidth B; sets range resolution (~1/B)
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+        oversample (int): grid samples per resolution cell (1/B)
+        time_bandwidth (float): time-bandwidth product B*T of the chirp
+    Returns:
+        window (callable): window(x) -> complex tensor
+    """
+    B = float(spatial_bw)
+    dz = 1.0 / (B * oversample)              # fine grid spacing in range units
+    T = time_bandwidth / B                   # pulse duration (range units)
+    K = B / T                                # chirp rate, so that B = K*T
+    n = int(round(T / dz)) + 1
+    z = (np.arange(n) - (n - 1) / 2.0) * dz  # centered support, length n
+    x = np.exp(1j * np.pi * K * z ** 2)      # inst. freq K*z spans [-B/2, B/2]
+    return _matched_filter_window(x, dz, device, dtype)
+
+
+def make_barker13_window(spatial_bw, device, dtype, oversample=32):
+    """
+    Precompute the matched-filter window for a Barker-13 phase-coded transmit
+    waveform, with each of the 13 chips a rectangular sub-pulse of width 1/B
+    (bandwidth ~ B = spatial_bw).  The matched-filter output has a mainlobe of width
+    ~1/B and uniform range sidelobes at -22.3 dB (1/13 of the peak).
+
+    Inputs:
+        spatial_bw (float): waveform bandwidth B; sets range resolution (~1/B)
+        device: torch device of the scatter tensors
+        dtype: real torch dtype of the scatter tensors
+        oversample (int): grid samples per chip / resolution cell (1/B)
+    Returns:
+        window (callable): window(x) -> complex tensor
+    """
+    B = float(spatial_bw)
+    dz = 1.0 / (B * oversample)              # fine grid spacing in range units
+    x = np.repeat(np.array(BARKER13, dtype=np.float64), oversample).astype(np.complex128)
+    return _matched_filter_window(x, dz, device, dtype)
+
+
+def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
+        region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
         batch_size = None, window_func = 'sinc',
-        debug = False,
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -185,16 +193,23 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     Inputs:
         scatter_z (...,R): the range of each scatter point
         scatter_e (...,R): the energy of each scatter point
-        range_near (float): z near to use when rendering
-        range_far (float): z far to use when rendering
+        # range_near (float): z near to use when rendering
+        # range_far (float): z far to use when rendering
+        region_radius (float): the radius of the region to consider for output signal samples
+        sensor_distance (...,): the distance from the sensor to the origin for each pulse
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
-        window_func (str): window function to use ('sinc' or 'gaussian')
+        window_func (str): window function to use ('sinc', 'gaussian', 'lfm' or
+            'barker13'); 'lfm' and 'barker13' are pulse-compression matched-filter
+            windows (autocorrelation of the transmit waveform)
+
 
     Returns:
         signal (tensor): simulated received signal .shape=(..., Z)
     """
+
+    device = scatter_z.device
 
     # reshaping
     R = scatter_z.shape[-1]  # number of scatter points
@@ -208,16 +223,23 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
         window = lambda x: torch.sinc(spatial_bw * x)
     elif window_func == "gaussian":
         window = lambda x: torch.exp(-0.5 * (x * spatial_bw) ** 2)
+    elif window_func == "lfm":
+        window = make_lfm_window(spatial_bw, device, scatter_z.dtype)
+    elif window_func == "barker13":
+        window = make_barker13_window(spatial_bw, device, scatter_z.dtype)
     else:
-        raise ValueError("window_func should be 'sinc' or 'gaussian', but got %s" % window_func)
+        raise ValueError("window_func should be 'sinc', 'gaussian', 'lfm' or 'barker13', but got %s" % window_func)
 
 
     # calculate the center of each spatial sample
-    device = scatter_z.device
-    first_z = int(math.ceil(range_near*spatial_fs))
-    last_z =  int(math.floor(range_far*spatial_fs))
-    sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
-    Z = len(sample_z)
+    # first_z = int(math.ceil(range_near*spatial_fs))
+    # last_z =  int(math.floor(range_far*spatial_fs))
+    # sample_z = torch.arange(first_z, last_z+1, device=device, dtype=scatter_z.dtype)/spatial_fs # (Z,)
+    # Z = len(sample_z)
+    # the new way
+    Z = int(2*region_radius*spatial_fs) + 1
+    sample_z = (torch.linspace(0,1, Z, device=device, dtype=scatter_z.dtype) - 0.5 ) * (Z-1)/spatial_fs # (Z,)
+    sample_z = sensor_distance.reshape(N,1) + sample_z # (N, 1) + (Z,) -> (N, Z)
 
     # calculate the received signal for each pulse
     # signal = sum_over_R_scatters( scatter_e * torch.sinc( spatial_bw * (scatter_z - sample_z) ) )
@@ -225,7 +247,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
     if batch_size is None:
         signal = torch.sum(
             scatter_e.reshape(N,R,1) * \
-            window(scatter_z.reshape(N,R,1) - sample_z.reshape(1,1,Z)),
+            window(scatter_z.reshape(N,R,1) - sample_z.reshape(N,1,Z)),
             dim=1
         ) # (N, Z)
 
@@ -235,7 +257,7 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         reshaped_scatter_e = scatter_e.reshape(N,R,1)
         reshaped_scatter_z = scatter_z.reshape(N,R,1)
-        reshaped_sample_z  = sample_z.reshape(1,1,Z)
+        reshaped_sample_z  = sample_z.reshape(N,1,Z)
 
         start = 0
         while start < N:
@@ -249,64 +271,11 @@ def interpolate_signal(scatter_z, scatter_e, range_near, range_far,
 
         signal = torch.cat(signal, dim=1) # (N, Z)
 
-    # debugging by plotting the first signal
-    if debug:
-        all_energies = scatter_e.reshape(N,R)
-        all_ranges   = scatter_z.reshape(N,R)
-        signals      = signal.reshape(N,Z)
-        if signals.dtype.is_complex:
-            signals = torch.abs(signals)
-        if all_energies.dtype.is_complex:
-            all_energies = torch.abs(all_energies)
-
-        # plot the signal and scatters for every pulse
-        sig_max = signals.max().item()
-        sig_min = signals.min().item()
-        energy_max = all_energies.max().item()
-        energy_min = all_energies.min().item()
-        p = N//2
-        plt.figure(figsize=(12, 6))
-
-        # plot the scatters
-        plt.subplot(1, 2, 1)
-        plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-        plt.title('Scatters')
-        plt.xlabel('Range')
-        plt.ylabel('Energy')
-        plt.xlim(range_near, range_far)
-        plt.ylim(energy_min, energy_max)
-
-        # plot the signal
-        plt.subplot(1, 2, 2)
-        plt.plot(sample_z.cpu().numpy(), signals[p].cpu().numpy())
-        plt.title('Signal')
-        plt.xlabel('Range')
-        plt.ylabel('Amplitude')
-        plt.xlim(range_near, range_far)
-        plt.ylim(sig_min, sig_max)
-
-        # # plot the interpolating sinc pulse function along with the scatters
-        # window_range = torch.linspace(scatter_z.min(), scatter_z.max(), 10000, device=device, dtype=scatter_z.dtype)  # (1000,)
-        # plt.subplot(1, 3, 3)
-        # plt.scatter(all_ranges[p].cpu().numpy(),all_energies[p].cpu().numpy())
-        # for sz in sample_z:
-        #     window_pulse = window(window_range - sz)
-        #     plt.plot(window_range.cpu().numpy(), window_pulse.cpu().numpy()*energy_max, color='orange')
-        # plt.plot(sample_z.cpu().numpy(), (signals[p]/signals[p].max()).cpu().numpy(), color='red')
-        # plt.title('Window Pulse')
-        # plt.xlabel('Range')
-        # plt.ylabel('Energy')
-        # mid_z = (range_near + range_far) / 2
-        # plt.xlim(mid_z - 5 / spatial_fs, mid_z + 5 / spatial_fs)
-        # plt.ylim(window_pulse.min().cpu().numpy(), window_pulse.max().cpu().numpy())
-
-        path = get_next_path('figures/scatters_signal_fs%d_bw%d.png'%(int(spatial_fs), int(spatial_bw)))
-        savefig(path)
-        print('Figure saved to %s' % path)
-
     # return stuff
     signal = signal.reshape(*shape_prefix, Z)  # (..., Z)
-    return signal/R, sample_z # normalize by the number of rays
+    sample_z = sample_z.reshape(*shape_prefix, Z)  # (..., Z)
+    ray_normalized_signal = signal/R # normalize by the number of rays
+    return ray_normalized_signal, sample_z
 
 
 
@@ -391,59 +360,96 @@ def apply_snr(signal, snr_db, dim=-1):
 
 
 def load_mesh(  file_name,
-                obj_rsa = (0.3,0.3,0.3),
+                obj_raids = (1.0, 1.0, 0.9, 0.1, 1.0),
                 make_ground = True,
                 ground_below = True,
-                ground_rsa = (0.3,0.3,0.3),
+                ground_raids = (0.1, 0.1, 0.1, 0.9, 1.0),  # set to None to skip ground
+                ground_dim = 2,
+                level_with_ground = True,
+                x_flip = False,
+                rotate_xyz = (0.0, 0.0, 0.0),
                 device = 'cuda',
-        ):  
+                scale = None,
+        ):
     '''
     Load a mesh from an obj file and compute face normals.
     Inputs:
         file_name: str - path to the obj file
         make_ground: bool - whether to add a ground plane
-        obj_rsa: tuple - roughness, specular, ambient for the object material
-        ground_rsa: tuple - roughness, specular, ambient for the ground material
+        obj_raids: tuple - roughness, specular, ambient for the object material
+        ground_raids: tuple - roughness, specular, ambient for the ground material, set to None to skip ground
+        ground_dim: int - axis index for the vertical dimension (default 2 for z-up)
+        level_with_ground: bool - if True, translate the object so its bottom sits at 0 along ground_dim before adding the ground
+        x_flip: bool - if True, mirror the object along the x axis before leveling
+        rotate_xyz: tuple/list/tensor of 3 floats - rotation angles in degrees about x, y, z axes applied before leveling
         device: str - device to load the mesh onto
     Outputs:
         mesh: Meshes - the loaded mesh with face normals
         face_normals: (F, 3) - the face normals
-        rsa: (F, 3) - the material properties for each face in Reflectivity, Scatter, Absorption
+        raids: (F, 5) - the material properties for each face in Reflectivity, Scatter, Absorption
     '''
     # load verts and faces
     mesh = load_objs_as_meshes([file_name], device=device)
     verts = mesh.verts_packed()  # (V, 3)
     faces = mesh.faces_packed()  # (F, 3)
 
+    # optional scaling
+    if scale is not None:
+        verts = verts * scale
+
+    # optional x-axis flip
+    if x_flip:
+        verts = verts * torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=verts.dtype)
+
+    # optional rotation about x, y, z axes (applied before leveling)
+    rx, ry, rz = rotate_xyz
+    if rx != 0.0 or ry != 0.0 or rz != 0.0:
+        R = rotation_matrix_xyz(rx, ry, rz, device=device).to(verts.dtype)
+        verts = verts @ R.T
+
+    # optionally translate the object so its bottom sits at 0 along ground_dim
+    if level_with_ground:
+        dim_min = verts[:, ground_dim].min()
+        verts[:, ground_dim] -= dim_min
+
     # set material properties for each face
-    rsa = torch.tensor(obj_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(faces.shape[0], 1)  # (F, 3)
+    raids = torch.tensor(obj_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(faces.shape[0], 1)  # (F, 5)
 
     # add a ground if desired to the mesh
+    if make_ground and ground_raids is None:
+        print('WARNING: load_mesh: ground_raids is None, skipping ground addition')
+        make_ground = False
     if make_ground:
-        ground_buffer = 0.001
-        if ground_below:
-            ground_y  = verts[:, 1].min().item() - ground_buffer
-        else:
-            ground_y = verts[:, 1].max().item() + ground_buffer
-
-        ground_size = 100
-        ground_verts,ground_faces = make_big_ground( ground_size, 1, ground_level = ground_y, max_triangle_len = ground_size/100.0, device = device )
+        ground_size = 200
+        ground_verts,ground_faces = make_big_ground( ground_size, ground_dim, ground_level = 0, max_triangle_len = ground_size/100.0, device = device )
         num_verts_before = verts.shape[0]
         verts = torch.cat([verts, ground_verts], dim=0)
         faces = torch.cat([faces, ground_faces + num_verts_before], dim=0)
-        mesh = Meshes(verts=[verts], faces=[faces])
 
         # set ground material properties
-        ground_properties = torch.tensor(ground_rsa, device=device, dtype=torch.float32).reshape(1, 3).repeat(ground_faces.shape[0], 1)  # (F_g, 3)
-        rsa = torch.cat([rsa, ground_properties], dim=0)  # (F, 3)
+        ground_properties = torch.tensor(ground_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(ground_faces.shape[0], 1)  # (F_g, 5)
+        raids = torch.cat([raids, ground_properties], dim=0)  # (F, 5)
 
     # calculate the normals
     face_verts = verts[faces]  # (F, 3, 3)
-    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2]
-    face_normals = torch.cross(v1 - v0, v2 - v0, dim=1)  # (F, 3)
+    v0, v1, v2 = face_verts[:, 0], face_verts[:, 1], face_verts[:, 2] # (F, 3), (F, 3), (F, 3)
+    edge_1 = v1 - v0 # (F, 3)
+    edge_2 = v2 - v0 # (F, 3)
+    face_normals = torch.cross(edge_1, edge_2, dim=1)  # (F, 3)
     face_normals = torch.nn.functional.normalize(face_normals, dim=1)  # (F, 3)
 
-    return mesh, face_normals, rsa
+    # repack the mesh with the new verts and faces
+    mesh = Meshes(verts=[verts], faces=[faces])
+
+    # add edges to the local variables of mesh for convenience in ray tracing
+    mesh.edge_1 = edge_1
+    mesh.edge_2 = edge_2
+
+    # ensure material properties are valid
+    raids = correct_material_properties(raids)
+
+    return mesh, face_normals, raids
+    #      obj   (F,3)         (F,5)
 
 
 def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.1, device = 'cpu' ):
@@ -489,3 +495,110 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
 
     # return the mesh
     return verts,faces
+
+
+def analyze_window_functions(
+        # window_funcs=('sinc', 'gaussian', 'lfm', 'barker13'),
+        window_funcs=('sinc', 'lfm', 'barker13'),
+        bw_list=(20.0,),
+        fs_list=(40.0, 80.0),
+        region_radius=1.0,
+        db_floor=-60.0,
+        device='cpu',
+        save_dir='figures',
+):
+    """
+    Characterize the range impulse response (point-spread function) of each
+    interpolate_signal window.  A single unit scatter at z=0 is fed to
+    interpolate_signal with sensor_distance=0, so the recovered signal is exactly
+    the effective window w(z) sampled at the radar sampling frequency:
+        s(z_o) = sum_r E_r w(-z_o - z_r/2) = w(-z_o)   (E=1, z=0).
+    For each (bw, fs) pair this plots the impulse response in the time/range domain
+    (linear and dB, to expose mainlobe width and range sidelobes) and its spectrum
+    in the frequency domain (dB, to expose the spectral support and any aliasing
+    when fs < bw).  Figures are written to save_dir for use in the paper.
+
+    Inputs:
+        window_funcs (iterable of str): window functions to compare
+        bw_list (iterable of float): spatial bandwidths to sweep
+        fs_list (iterable of float): spatial sampling frequencies to sweep
+        region_radius (float): radius of the sampled range region
+        db_floor (float): lower dB limit for the log-scale plots
+        device (str): torch device to run on
+        save_dir (str): directory to write the figures to
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    # one unit scatter at the origin: shape (1, R=1)
+    scatter_z = torch.zeros(1, 1, device=device)
+    scatter_e = torch.ones(1, 1, device=device, dtype=torch.complex64)
+    sensor_distance = torch.zeros(1, device=device)
+
+    def to_db(mag):  # normalized magnitude -> dB, floored for plotting
+        mag = mag / (mag.max() + 1e-30)
+        return 20.0 * np.log10(np.clip(mag, 10.0 ** (db_floor / 20.0), None))
+
+    for bw in bw_list:
+        for fs in fs_list:
+            fig, (ax_lin, ax_db, ax_freq) = plt.subplots(1, 3, figsize=(18, 5))
+
+            for wf in window_funcs:
+                signal, sample_z = interpolate_signal(
+                    scatter_z, scatter_e, region_radius, sensor_distance,
+                    spatial_bw=bw, spatial_fs=fs, window_func=wf,
+                )
+                s = signal[0].cpu().numpy()           # (Z,) complex impulse response
+                z = sample_z[0].cpu().numpy()         # (Z,) range axis (sensor_distance=0)
+                mag = np.abs(s)
+
+                # time/range domain
+                ax_lin.plot(z, mag / (mag.max() + 1e-30), label=wf, marker='.', ms=3)
+                ax_db.plot(z, to_db(mag), label=wf, marker='.', ms=3)
+
+                # frequency domain: spectrum of the sampled impulse response
+                Z = len(s)
+                spec = np.fft.fftshift(np.fft.fft(s))
+                freq = np.fft.fftshift(np.fft.fftfreq(Z, d=1.0 / fs))  # [-fs/2, fs/2)
+                ax_freq.plot(freq, to_db(np.abs(spec)), label=wf, marker='.', ms=3)
+
+            ax_lin.set_title('Range impulse response (linear)')
+            ax_lin.set_xlabel('range z'); ax_lin.set_ylabel('|s| (normalized)')
+            ax_lin.grid(True, alpha=0.3); ax_lin.legend()
+
+            ax_db.set_title('Range impulse response (dB)')
+            ax_db.set_xlabel('range z'); ax_db.set_ylabel('|s| (dB)')
+            ax_db.set_ylim(db_floor, 3); ax_db.grid(True, alpha=0.3); ax_db.legend()
+
+            # mark the bandwidth edges +-bw/2 to show spectral support
+            ax_freq.axvline(+bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
+            ax_freq.axvline(-bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
+            ax_freq.set_title('Spectrum (dB),  dashed = +-bw/2')
+            ax_freq.set_xlabel('spatial frequency'); ax_freq.set_ylabel('|S| (dB)')
+            ax_freq.set_ylim(db_floor, 3); ax_freq.grid(True, alpha=0.3); ax_freq.legend()
+
+            fig.suptitle('Window impulse response   bw=%g   fs=%g   region_radius=%g'
+                         % (bw, fs, region_radius))
+            path = get_next_path(os.path.join(save_dir, 'window_analysis.png'))
+            savefig(path)
+            print('saved %s' % path)
+
+
+if __name__ == '__main__':
+    # characterize the interpolate_signal window functions for the paper
+    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(20.0, 40.0, 80.0))
+
+    # # test the trajectory generation
+    # device = 'cuda'
+    # T = 1
+    # center_az = 45
+    # center_el = 45
+    # n_pulses = 30
+    # azimuth_spread_deg = 120
+    # pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
+    # true_trajectory, perceived_trajectory, cam_azimuth_deg = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg,debug=True)  # (T,P,3)
+    # print('true_trajectory: ', true_trajectory)
+    # print('true_trajectory.shape: ', true_trajectory.shape)
+    # print('perceived_trajectory: ', perceived_trajectory)
+    # print('perceived_trajectory.shape: ', perceived_trajectory.shape)
+    # print('cam_azimuth_deg: ', cam_azimuth_deg)
+    # print('cam_azimuth_deg.shape: ', cam_azimuth_deg.shape)

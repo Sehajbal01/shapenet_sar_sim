@@ -1,38 +1,129 @@
-DONE - incorporate 2*distance for the signal samples
-    DONE - this will have to be in jhihyang's stuff
+TOP PRIORITY:
+modify accumulate scatters to only return the rays that hit stuff. No more returning zeros.
 
-DONE - get rid of the ring effect by increasing the signal length in space
-    DONE - in ray_tracer_signal_simulation.py
-    DONE - in signal_simulation.py
+Others
 
-DONE - adjust ground plane projection such that it falls in line with the projection function along the ground plane, not just projection.
-    DONE - make the CBP function exclusively 2D
-    DONE - set up projection functions outside CBP
-    DONE - get the image rotation correct
+- manual trajectory
+    - make image mosaic for the paper
 
-DONE - integrate ray tracing module
-    DONE - include option for the ray tracing vs rasterization
-    DONE - debug ray tracing OOM
+- simple object imaging
+    - replicate sinc pattern in the image
+        - use small sphere
+        - i think i just need to reduce the bw??
+    - mosaic for raids
+    - what if i run CBP with the actual object not in the center
+        - i suspect some imaging effects we observe aredue to the CBP running with the object in the center, which is not the case for the real world
+        - they often run CBP on a large swath of land, then chip into individual targets
 
-DONE - should i adjust the r-points interpolation in the CBP function?
-    DONE - yes, because the projection effectively adjusts the spacing between spatial samples
-
-DONE - refine energy equation
-    DONE - hardcode rsa
-    DONE - incorporate r, s, a components into the mesh
-    DONE - load mesh before accumulate scatters
-
-DONE - merge jhihyang's working ray tracer
-
-- Run experiments for the paper
-    DONE - azimuth spread
-    DONE - num pulses
-    - noise
-    - Fs/BW
-    - leads into ray density
-
-
-# after the paper is submitted to radar conf 2026
-- manual trajectory input
-    - use stop and hop assumption...
 - implement strip map mode simulation
+    DONE - implement the imaging function
+    - utilize phase in strip map
+    - make image mosaic for the paper
+
+- Produce images for CV domes object for comparative analysis
+    DONE - play with the model
+    DONE - decide on a new returned energy model
+    - use qualitative analysis
+    - find hyperparameters that best match CVDomes results
+    DONE - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
+
+- for arete
+    - Implement depth map rendering mode
+    - Implement range-angle imaging that converts to range-range with various beam patterns
+
+- Adress reviewre concerns
+    - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
+    - i have some slides about this in my updates presentation
+        - https://docs.google.com/presentation/d/128WiwIninhMNFE3ZtLbhJNa_3-_SFAs0fCvjq3ALgXU/edit?slide=id.g2ab64a12bdf_0_22#slide=id.g2ab64a12bdf_0_22
+
+- play with different image resolutions
+    - make a mosaic of the results for the paper
+
+
+- submit to https://www.mdpi.com/journal/sensors/special_issues/G617MH56JV
+    - due october
+
+- address reviewer concerns:
+****************************************
+Reviewer #1 Comments
+****************************************
+This work describes an open-source, GPU-accelerated SAR simulator in PyTorch that ray-traces arbitrary data.Object meshes with customizable 
+radar settings (wavelength, bandwidth, and sampling rate) and simple per-face material features, such as two-bounce interactions. "
+Interposummation" is a sinc-based interpolation-and-summation approach that maps discrete energy-range scatterers into a sampled received signal 
+commensurate with the system bandwidth/sample rate, followed by spotlight-mode picture generation tests using ShapeNet automobile models.
+
+The work has several strong advantages:
+1) High practical value / accessibility: PyTorch + GPU setup is attractive for most research workflows due to already existing infrastructure.
+2) Clear end-to-end story: ray tracing → energy–range scatter → interposummation → simulated received signal → SAR image (figures help communicate the flow).
+3) Interesting observation about oversampling artifacts: the discussion and diagnostic figure on how higher Fs/Bs can reveal “delta-like” 
+discontinuities (and mitigation via ray density or reduced bandwidth) is a useful practical insight for users of such a simulator.
+
+However, I see room for potential improvements:
+1) Limited evaluation scope. The experiments are mostly qualitative and focus on a single class of models (cars) and spotlight-mode 
+reconstructions. There’s no comparison to an established simulator.
+2) Modeling assumptions are simplistic / under-specified. The per-face parameters (reflect/scatter/absorb) are introduced, but the scattering/
+backscatter model is quite simplified; it’s unclear how well this matches typical SAR phenomenology (e.g., aspect dependence, specular glints, 
+diffuse scattering, etc.)
+3) Reproducibility details need tightening. Several parameters in the table appear unitless or unclear (e.g., “spatial bw 90”, “spatial fs 90”, 
+wavelength units, geometry scaling). Without consistent units and a clearly stated coordinate system/scale, it’s hard for others to reproduce 
+results or port scenes reliably.
+
+Suggested edits:
+1) Add coherent validation tests, such as a single point-scatterer or a simple canonical target (flat plate/trihedral) with a known phase 
+history and focused response. Demonstrate that complex-valued focussing operates as intended.
+2) Compare qualitative structure and/or basic metrics (peak location, resolution, sidelobes) in a single controlled trial that roughly 
+corresponds to RaySAR or CVDomes conditions.
+3) Open-source preparedness: incorporate (in the paper and repository) the license, minimal sample scripts, and a reproducibility section 
+detailing the precise configuration employed to produce significant figures.
+
+Overall, I think the tool is promising and could be very useful to the community, but the paper needs stronger evidence that it produces 
+coherently accurate SAR phase histories (not just visually plausible magnitude images), plus clearer specification of units and assumptions.
+
+
+****************************************
+Reviewer #2 Comments
+****************************************
+The paper addresses a relevant and timely problem, namely the lack of flexible open-source SAR simulators, and the general idea of combining ray 
+tracing with a signal-level model is interesting. However, in its current form, several aspects limit the technical strength and clarity of the contribution.
+
+First, the proposed Interposummation technique is presented as a core novelty, but from a signal processing perspective it appears equivalent to 
+a standard convolution with a sinc kernel, or, equivalently, an ideal matched filtering / low-pass filtering operation in range. While applying 
+this operation directly to ray-based energy–range scatters is a reasonable implementation choice, the manuscript does not sufficiently clarify 
+how this differs conceptually or practically from classical range compression or matched filtering. A clearer positioning with respect to 
+established SAR signal models would strengthen the contribution and avoid overstating novelty.
+
+Second, the paper lacks quantitative or qualitative comparisons with existing SAR simulators (e.g., RaySAR, CVDomes, or other physics-based tools
+). Although these frameworks are acknowledged as outdated or limited, they are widely known for their physical accuracy. Without side-by-side 
+comparisons (either in terms of image quality, signal fidelity, or computational trade-offs) it is difficult to assess the realism and accuracy 
+of the proposed simulator beyond visual inspection.
+
+Third, the handling of complex-valued signals raises concerns. The results show that SAR imaging with complex signals performs poorly, while 
+magnitude-only imaging yields visually acceptable results. This behaviour is not sufficiently explained and represents a significant limitation, 
+given that real SAR imaging fundamentally relies on phase coherence. A deeper analysis is needed to clarify whether this issue arises from the 
+signal model, phase handling across rays, numerical implementation, or assumptions in the ray-based scattering model.
+
+Additionally, some analyses and figures would benefit from clearer presentation. For example, Figure 1(c) and Figure 1(d), described as “range 
+per ray” and “energy per ray,” visually resemble rendered target images but lack colorbars, scales, or units. As a result, it is difficult to 
+interpret these plots quantitatively or to understand how range and energy values are distributed across rays.
+
+Overall, the work addresses an important need and has clear potential, especially as an open-source, GPU-accelerated framework. However, the 
+simulator appears to be at an early stage of development. Strengthening the theoretical framing of Interposummation, improving comparisons with 
+established simulators, clarifying the limitations related to complex-valued imaging, and refining the presentation would significantly improve 
+the paper’s impact and credibility.
+
+****************************************
+Reviewer #3 Comments
+****************************************
+Please re-read to address minor typos.  The level of detail in some explanations is significant but some areas (such for the coherent imaging) 
+could use further discussion.
+
+****************************************
+Reviewer #4 Comments
+****************************************
+The manuscript describes an interesting piece of software developed to simulate SAR imaging. Its main claim to novelty is the use of ray tracing 
+to consider up to 2 bounces per ray, and the first using PyTorch libraries to work with any 3D .obj model. The manuscript is clearly written, 
+and simulations are illustrative. It appears the method requires very detailed 3D models of targets, including full reflection/absorption/
+scattering coefficient specified for every triangle of the model. How feasible this is for general purpose SAR imaging is questionable. 
+Practical concerns aside, the greatest weakness of the manuscript is the lack of any verification for the correctness of the code, and no 
+measurements of performance against benchmarks of any kind. The manuscript would be stronger if some evidence of correction is provided. There 
+is undoubtedly some good work, but the paper feels premature for dissemination.

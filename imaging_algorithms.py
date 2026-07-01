@@ -1,61 +1,81 @@
 import numpy as np
 import torch
+import sys
+import warnings
 
 def projected_CBP(
     signal,
     sample_z,
-    forward_vector,
-    cam_azimuth,
-    cam_distance,
+    trajectory,
     spatial_fs,
+    image_plane_rotation_deg = 0,
     image_width = 64,
     image_height = 64,
     image_plane_width = 1,
     image_plane_height = 1,
+    batch_size = None,
+    coherent_integration = True,
+    wavelength = None,
 ):
     '''
     does some projection then runs the 2D convolutional back projection algorithm
     
     inputs:
         signal: (T,P,Z) - the signal to be back projected
-        sample_z: (Z,) - the range samples
-        forward_vector: (T,P,3) - the forward vector for each ray
-        cam_azimuth: (T,) - the azimuth angle of the camera
-        cam_distance: (T,) - the distance of the camera from the origin
+        sample_z: (T,P,Z,) - the range samples
+        trajectory: (T,P,3) - the location of the sensor for each pulse
+        image_plane_rotation_deg: (T,) - the rotation angle of the image plane in degrees.
         spatial_fs: float - the spatial frequency sampling rate
+        coherent_integration: bool - determines if phase correction is used on the samples.
+            requires that the signal be complex values and wavelength is provided.
+        wavelength: float or None - wavelength for coherent integration.
     outputs:
         image: (T,H,W) - the computed image
     '''
     # gather shape constants
     T,P,Z = signal.shape
 
+    # phase correction for coherent integration
+    if coherent_integration:
+        if wavelength is None:
+            warnings.warn(
+                'coherent_integration is True but wavelength is None; '
+                'skipping phase correction.'
+            )
+        elif not torch.is_complex(signal):
+            warnings.warn(
+                'coherent_integration is True but signal is not complex; '
+                'skipping phase correction.'
+            )
+        else:
+            signal = signal * torch.exp( -4j * np.pi * sample_z / wavelength )
+
     # calculate sqrt(w_1*2 + w_2*2) because i use it alot in this function
+    forward_vector = -trajectory/torch.norm(trajectory,dim=-1,keepdim=True) # (T,P,3)
     ground_vec_mag = torch.sqrt(torch.sum(forward_vector[:,:,:2]**2,dim=-1,keepdim=True)) # (T,P,1)
 
     # calculate projected r from sample_z
-    sample_r = sample_z.reshape(1,1,Z) - cam_distance.reshape(T,1,1) # (T,1,Z)
+    sample_r = sample_z - torch.linalg.vector_norm(trajectory,dim=-1,keepdim=True) # (T,P,Z)
     projected_r = sample_r / ground_vec_mag # (T,P,Z)
 
     # calculate the forward vector on the x-y plane
     line_vector = forward_vector[...,:2] / ground_vec_mag # (T,P,2)
-
-    # convert azimuth to image plane rotation
-    image_plane_rotation = cam_azimuth + 90
 
     # convert to ground plane fs
     projected_fs = spatial_fs * ground_vec_mag.reshape(T,P) # (T,P,1)
 
     # run the 2D CBP
     sar_image = CBP_2D(
-        signal, 
+        signal,
         projected_r,
         line_vector,
         projected_fs,
-        image_plane_rotation_deg = image_plane_rotation,
+        image_plane_rotation_deg = image_plane_rotation_deg,
         image_width              = image_width,
         image_height             = image_height,
         image_plane_width        = image_plane_width,
         image_plane_height       = image_plane_height,
+        batch_size               = batch_size,
     ) # (T,H,W)
     
     return sar_image
@@ -70,6 +90,7 @@ def CBP_2D( pf,
             image_height = 64,
             image_plane_width = 1,
             image_plane_height = 1,
+            batch_size = None,
     ):
     '''
     Convolutional back projection algorithm in 2D
@@ -119,11 +140,25 @@ def CBP_2D( pf,
 
     # interpolate pixel coordinated projected onto the filtered signal
     line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
-    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T,1)
-    interpolated_r_points = torch.sum(  filtered_pf.reshape(N,P,1,R) * \
-                                        torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
-                                        dim=-1
-                                    ) # (N,P,T)
+    r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T)
+
+    if batch_size is None:
+        interpolated_r_points = torch.sum(
+            filtered_pf.reshape(N,P,1,R) *
+            torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
+            dim=-1
+        ) # (N,P,T)
+    else:
+        interpolated_r_points = torch.zeros(N, P, T, dtype=filtered_pf.dtype, device=device)
+        for t_start in range(0, T, batch_size):
+            t_end = min(t_start + batch_size, T)
+            bT = t_end - t_start
+            r_coord_batch = r_coord[:, :, t_start:t_end]  # (N,P,bT)
+            interpolated_r_points[:, :, t_start:t_end] = torch.sum(
+                filtered_pf.reshape(N,P,1,R) *
+                torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord_batch.reshape(N,P,bT,1) - r.reshape(N,P,1,R)) ), # (N,P,bT,R)
+                dim=-1
+            ) # (N,P,bT)
     
     # integrate over theta (eqation 2.31)
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
@@ -159,7 +194,7 @@ def strip_map_imaging(  signal,
         wavelength: - the wavelength
         attenuation_coeff: - the attenuation coefficient of the medium
         trajectory: (N,P,3) - the trajectory of the sensor
-        sample_dist: (D,) - the distance samples
+        sample_dist: (N,P,D) - the distance samples
         interpolation_fs: float - the spatial frequency sampling rate
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
 
@@ -207,7 +242,7 @@ def strip_map_imaging(  signal,
 
     # interpolate signal at distance_to_pixel
     signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(1,1,1,D)) )), # (N,P,T,D)
+                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(N,P,1,D)) )), # (N,P,T,D)
                                     dim=-1
                                 ) # (N,P,T)
     
