@@ -7,9 +7,9 @@ from render_images import multi_param_experiment
 PAPER_BASELINE = dict(
     azimuth_spread=90,
     debug_gif=False,
-    num_pulse=32,
-    spatial_bw=3650 / 40.8,
-    spatial_fs=3650 / 40.8,
+    num_pulse=64,
+    spatial_bw=3650 / 50, # the denominator is in mm
+    spatial_fs=3650 / 50, # the denominator is in mm
     wavelength=0.5,
     use_sig_magnitude=True,
     snr_db=50,
@@ -30,7 +30,7 @@ PAPER_BASELINE = dict(
     trajectory_noise_var=0,
     num_bounce=2,
     object_x_flip=False,
-    object_rotate_xyz=(0.0, 0.0, 0.0),
+    object_rotate_xyz=(90.0, 0.0, 0.0),
 )
 
 

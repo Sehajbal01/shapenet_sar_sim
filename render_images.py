@@ -259,7 +259,13 @@ def render_random_image(
     mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')
     rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
     pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
-    
+
+    # print the center azimuth and elevation for the selected pose
+    pose_info = extract_pose_info(torch.tensor(pose))
+    center_az, center_el = pose_info[6].item(), pose_info[5].item()
+    print('Center azimuth (deg):   ', center_az)
+    print('Center elevation (deg): ', center_el)
+
     # get azimuth, elevation, and distance from the pose
     target_poses = torch.tensor(pose, device='cuda') # (1, 4, 4)
     # target_poses = generate_pose_mat(0,90,1.3, device='cuda').reshape(1,4,4)  # (1, 4, 4)
@@ -427,7 +433,7 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     else:
         stitched = np.hstack(cropped_images)
     stitched_img = PIL.Image.fromarray(stitched)
-    path = f'figures/sar_{experiment_name}_stitched.png'
+    path = f'figures/sar_stitched_{experiment_name}.png'
     stitched_img.save(path)
     print('Saved stitched image to: %s' % path)
 
