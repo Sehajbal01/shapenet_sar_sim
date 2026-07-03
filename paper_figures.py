@@ -66,7 +66,7 @@ def _paper_experiments():
 
     # Wavelength sweep with magnitude-only CBP — how carrier wavelength shapes the image.
     wavelength_vals = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2]
-    wavelengthmagnitude = dict(
+    wavelength = dict(
         name='wavelength',
         vary={'wavelength': wavelength_vals},
         custom_title_strings=['wavelength: %.2f' % w for w in wavelength_vals],
@@ -92,8 +92,7 @@ def _paper_experiments():
         # num_pulse,
         # fsbw,
         # snrdb,
-        wavelengthmagnitude,
-        wavelengthcomplex,
+        wavelength,
         trajectory_type,
         trajectory_noise_var,
     ]

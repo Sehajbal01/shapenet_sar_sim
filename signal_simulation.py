@@ -181,6 +181,56 @@ def make_barker13_window(spatial_bw, device, dtype, oversample=32):
     return _matched_filter_window(x, dz, device, dtype)
 
 
+def make_transmit_waveform(window_func, spatial_bw, oversample=32, time_bandwidth=100.0):
+    """
+    Build the complex baseband transmit waveform x(z) for a given window, sampled on
+    a common fine range grid.  This exposes the pulse whose matched-filter
+    autocorrelation is used as the window in interpolate_signal, so callers can
+    characterize the transmitted pulse alongside its compressed matched-filter output.
+
+    The 'lfm' and 'barker13' branches mirror the pulses built inside make_lfm_window
+    and make_barker13_window.  'sinc' and 'gaussian' have no separate transmit pulse
+    in the simulator (their windows are defined directly in the range domain), so the
+    window itself is returned as the waveform.  All four are placed on the same grid
+    z in [-T/2, T/2], dz = 1/(B*oversample), T = time_bandwidth/B, so their spectra
+    are directly comparable.
+
+    Inputs:
+        window_func (str): 'sinc', 'gaussian', 'lfm' or 'barker13'
+        spatial_bw (float): waveform bandwidth B
+        oversample (int): grid samples per resolution cell (1/B)
+        time_bandwidth (float): time-bandwidth product B*T; sets the grid span T
+    Returns:
+        x (np.ndarray): complex transmit waveform on the grid, unit peak magnitude
+        z (np.ndarray): range grid the waveform is sampled on (centered on 0)
+        dz (float): grid spacing (so the sampling rate is 1/dz)
+    """
+    B = float(spatial_bw)
+    dz = 1.0 / (B * oversample)              # fine grid spacing in range units
+    T = time_bandwidth / B                   # common grid span (= LFM pulse duration)
+    n = int(round(T / dz)) + 1
+    z = (np.arange(n) - (n - 1) / 2.0) * dz  # centered support, length n
+
+    if window_func == "sinc":
+        x = np.sinc(B * z).astype(np.complex128)
+    elif window_func == "gaussian":
+        sigma_x = math.sqrt(math.log(2.0)) / (math.pi * B)
+        x = np.exp(-0.5 * (z / sigma_x) ** 2).astype(np.complex128)
+    elif window_func == "lfm":
+        K = B / T                            # chirp rate, B = K*T (see make_lfm_window)
+        x = np.exp(1j * np.pi * K * z ** 2)  # inst. freq K*z spans [-B/2, B/2]
+    elif window_func == "barker13":
+        chips = np.repeat(np.array(BARKER13, dtype=np.float64), oversample)  # 13/B wide
+        x = np.zeros(n, dtype=np.complex128)
+        start = (n - len(chips)) // 2        # center the 13-chip code in the grid
+        x[start:start + len(chips)] = chips
+    else:
+        raise ValueError("window_func should be 'sinc', 'gaussian', 'lfm' or 'barker13', but got %s" % window_func)
+
+    x = x / (np.max(np.abs(x)) + 1e-30)      # unit peak magnitude
+    return x, z, dz
+
+
 def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
         region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
