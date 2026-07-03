@@ -65,16 +65,9 @@ def _paper_experiments():
     )
 
     # Wavelength sweep with magnitude-only CBP — how carrier wavelength shapes the image.
-    wavelength_vals = [0.01, 0.02, 0.05, 0.1]
+    wavelength_vals = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2]
     wavelengthmagnitude = dict(
-        name='wavelengthmagnitude',
-        vary={'wavelength': wavelength_vals},
-        custom_title_strings=['wavelength: %.2f' % w for w in wavelength_vals],
-    )
-
-    # Wavelength sweep with coherent (complex) CBP — same sweep, phase preserved.
-    wavelengthcomplex = dict(
-        name='wavelengthcomplex',
+        name='wavelength',
         vary={'wavelength': wavelength_vals},
         custom_title_strings=['wavelength: %.2f' % w for w in wavelength_vals],
     )
@@ -95,10 +88,10 @@ def _paper_experiments():
     )
 
     return [
-        az_spread,
-        num_pulse,
-        fsbw,
-        snrdb,
+        # az_spread,
+        # num_pulse,
+        # fsbw,
+        # snrdb,
         wavelengthmagnitude,
         wavelengthcomplex,
         trajectory_type,

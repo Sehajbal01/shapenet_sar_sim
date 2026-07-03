@@ -222,7 +222,13 @@ def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
     if window_func == "sinc":
         window = lambda x: torch.sinc(spatial_bw * x)
     elif window_func == "gaussian":
-        window = lambda x: torch.exp(-0.5 * (x * spatial_bw) ** 2)
+        # Gaussian pulse whose half-power (-3 dB) two-sided bandwidth equals
+        # spatial_bw, matching the sinc window's occupied band [-bw/2, bw/2].
+        # Frequency-domain std: |G(f)|^2 = 1/2 at f = bw/2  =>  sigma_f =
+        # (bw/2)/sqrt(ln2), so the spatial-domain std is
+        # sigma_x = 1/(2*pi*sigma_f) = sqrt(ln2)/(pi*bw).
+        sigma_x = math.sqrt(math.log(2.0)) / (math.pi * spatial_bw)
+        window = lambda x: torch.exp(-0.5 * (x / sigma_x) ** 2)
     elif window_func == "lfm":
         window = make_lfm_window(spatial_bw, device, scatter_z.dtype)
     elif window_func == "barker13":
@@ -497,108 +503,4 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
     return verts,faces
 
 
-def analyze_window_functions(
-        # window_funcs=('sinc', 'gaussian', 'lfm', 'barker13'),
-        window_funcs=('sinc', 'lfm', 'barker13'),
-        bw_list=(20.0,),
-        fs_list=(40.0, 80.0),
-        region_radius=1.0,
-        db_floor=-60.0,
-        device='cpu',
-        save_dir='figures',
-):
-    """
-    Characterize the range impulse response (point-spread function) of each
-    interpolate_signal window.  A single unit scatter at z=0 is fed to
-    interpolate_signal with sensor_distance=0, so the recovered signal is exactly
-    the effective window w(z) sampled at the radar sampling frequency:
-        s(z_o) = sum_r E_r w(-z_o - z_r/2) = w(-z_o)   (E=1, z=0).
-    For each (bw, fs) pair this plots the impulse response in the time/range domain
-    (linear and dB, to expose mainlobe width and range sidelobes) and its spectrum
-    in the frequency domain (dB, to expose the spectral support and any aliasing
-    when fs < bw).  Figures are written to save_dir for use in the paper.
 
-    Inputs:
-        window_funcs (iterable of str): window functions to compare
-        bw_list (iterable of float): spatial bandwidths to sweep
-        fs_list (iterable of float): spatial sampling frequencies to sweep
-        region_radius (float): radius of the sampled range region
-        db_floor (float): lower dB limit for the log-scale plots
-        device (str): torch device to run on
-        save_dir (str): directory to write the figures to
-    """
-    os.makedirs(save_dir, exist_ok=True)
-
-    # one unit scatter at the origin: shape (1, R=1)
-    scatter_z = torch.zeros(1, 1, device=device)
-    scatter_e = torch.ones(1, 1, device=device, dtype=torch.complex64)
-    sensor_distance = torch.zeros(1, device=device)
-
-    def to_db(mag):  # normalized magnitude -> dB, floored for plotting
-        mag = mag / (mag.max() + 1e-30)
-        return 20.0 * np.log10(np.clip(mag, 10.0 ** (db_floor / 20.0), None))
-
-    for bw in bw_list:
-        for fs in fs_list:
-            fig, (ax_lin, ax_db, ax_freq) = plt.subplots(1, 3, figsize=(18, 5))
-
-            for wf in window_funcs:
-                signal, sample_z = interpolate_signal(
-                    scatter_z, scatter_e, region_radius, sensor_distance,
-                    spatial_bw=bw, spatial_fs=fs, window_func=wf,
-                )
-                s = signal[0].cpu().numpy()           # (Z,) complex impulse response
-                z = sample_z[0].cpu().numpy()         # (Z,) range axis (sensor_distance=0)
-                mag = np.abs(s)
-
-                # time/range domain
-                ax_lin.plot(z, mag / (mag.max() + 1e-30), label=wf, marker='.', ms=3)
-                ax_db.plot(z, to_db(mag), label=wf, marker='.', ms=3)
-
-                # frequency domain: spectrum of the sampled impulse response
-                Z = len(s)
-                spec = np.fft.fftshift(np.fft.fft(s))
-                freq = np.fft.fftshift(np.fft.fftfreq(Z, d=1.0 / fs))  # [-fs/2, fs/2)
-                ax_freq.plot(freq, to_db(np.abs(spec)), label=wf, marker='.', ms=3)
-
-            ax_lin.set_title('Range impulse response (linear)')
-            ax_lin.set_xlabel('range z'); ax_lin.set_ylabel('|s| (normalized)')
-            ax_lin.grid(True, alpha=0.3); ax_lin.legend()
-
-            ax_db.set_title('Range impulse response (dB)')
-            ax_db.set_xlabel('range z'); ax_db.set_ylabel('|s| (dB)')
-            ax_db.set_ylim(db_floor, 3); ax_db.grid(True, alpha=0.3); ax_db.legend()
-
-            # mark the bandwidth edges +-bw/2 to show spectral support
-            ax_freq.axvline(+bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
-            ax_freq.axvline(-bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
-            ax_freq.set_title('Spectrum (dB),  dashed = +-bw/2')
-            ax_freq.set_xlabel('spatial frequency'); ax_freq.set_ylabel('|S| (dB)')
-            ax_freq.set_ylim(db_floor, 3); ax_freq.grid(True, alpha=0.3); ax_freq.legend()
-
-            fig.suptitle('Window impulse response   bw=%g   fs=%g   region_radius=%g'
-                         % (bw, fs, region_radius))
-            path = get_next_path(os.path.join(save_dir, 'window_analysis.png'))
-            savefig(path)
-            print('saved %s' % path)
-
-
-if __name__ == '__main__':
-    # characterize the interpolate_signal window functions for the paper
-    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(20.0, 40.0, 80.0))
-
-    # # test the trajectory generation
-    # device = 'cuda'
-    # T = 1
-    # center_az = 45
-    # center_el = 45
-    # n_pulses = 30
-    # azimuth_spread_deg = 120
-    # pose = generate_pose_mat(center_az, center_el, distance=5, device=device).unsqueeze(0).repeat(T,1,1)  # (T,4,4)
-    # true_trajectory, perceived_trajectory, cam_azimuth_deg = generate_trajectory(pose, trajectory_type='linear', n_pulses=n_pulses, azimuth_spread_deg=azimuth_spread_deg,debug=True)  # (T,P,3)
-    # print('true_trajectory: ', true_trajectory)
-    # print('true_trajectory.shape: ', true_trajectory.shape)
-    # print('perceived_trajectory: ', perceived_trajectory)
-    # print('perceived_trajectory.shape: ', perceived_trajectory.shape)
-    # print('cam_azimuth_deg: ', cam_azimuth_deg)
-    # print('cam_azimuth_deg.shape: ', cam_azimuth_deg.shape)
