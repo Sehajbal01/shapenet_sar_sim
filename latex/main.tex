@@ -323,30 +323,37 @@ where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ 
 We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. In all images, only the bottom side of the image shows illumination; this is a design choice. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params}. All results in this section are on the car model from the Shapenet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 \begin{table}[h!]
 \centering
-\caption{Default experiment parameters.}
+\caption{Default experiment parameters, matching the \texttt{PAPER\_BASELINE} in \texttt{paper\_figures.py}.}
 \label{tab:params}
-\begin{tabular}{ll}
+\begin{tabular}{lll}
 \toprule
-\textbf{Parameter} & \textbf{Value} \\
+\textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
 \midrule
-num\_pulse & 32 \\
-azimuth\_spread & 90 \\
-spatial\_bw & 90 \\
-spatial\_fs & 90 \\
-wavelength & 0.5 \\
-use\_sig\_magnitude & True \\
-snr\_db & 50 \\
-image\_width & 128 \\
-image\_height & 128 \\
-image\_plane\_width & 1 \\
-image\_plane\_height & 1 \\
-grid\_width & 1.2 \\
-grid\_height & 1.2 \\
-n\_ray\_width & 256 \\
-n\_ray\_height & 256 \\
-range\_near & 0.5 \\
-range\_far & 2.1 \\
-render\_method & raytracing \\
+$P$                       & num\_pulse             & $64$ \\
+$\Delta\theta$            & azimuth\_spread        & $90^\circ$ \\
+$B_s$                     & spatial\_bw            & $73$ \\
+$F_s$                     & spatial\_fs            & $73$ \\
+$\lambda$                 & wavelength             & $0.5$ \\
+SNR                       & snr\_db                & $50$~dB \\
+$\sigma^2$                & trajectory\_noise\_var & $0$ \\
+$R_w$                     & n\_ray\_width          & $128$ \\
+$R_h$                     & n\_ray\_height         & $128$ \\
+$W_g$                     & grid\_width            & $1.2$ \\
+$H_g$                     & grid\_height           & $1.2$ \\
+$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids            & $(0.8, 0.0, 0.9, 0.1, 0.2)$ \\
+$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids         & $(0.5, 0.0, 0.8, 0.2, 0.5)$ \\
+---                       & num\_bounce            & $2$ \\
+---                       & image\_width           & $128$ \\
+---                       & image\_height          & $128$ \\
+---                       & image\_plane\_width    & $1$ \\
+---                       & image\_plane\_height   & $1$ \\
+---                       & region\_radius         & $1.7$ \\
+---                       & trajectory\_type       & circular \\
+---                       & imaging\_algorithm     & cbp \\
+---                       & cbp\_batch\_size       & $4096$ \\
+---                       & use\_sig\_magnitude    & False \\
+---                       & object\_x\_flip        & False \\
+---                       & object\_rotate\_xyz    & $(90^\circ, 0^\circ, 0^\circ)$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -355,7 +362,7 @@ In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimu
         
 \begin{figure}
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.4\textwidth]{figs/stitched_az_spread.png}
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_az_spread.png}
   \caption{Varying the azimuth spread in our simulation.}
   \label{fig:az-spread}
 \end{figure}
@@ -364,7 +371,7 @@ In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of
         
 \begin{figure}
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.4\textwidth]{figs/stitched_num_pulse.png}
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_num_pulse.png}
   \caption{Effect of varying the number of pulses in our simulation.}
   \label{fig:num-pulse}
 \end{figure}
@@ -373,27 +380,17 @@ In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (S
         
 \begin{figure}
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.4\textwidth]{figs/stitched_snr.png}
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_snrdb.png}
   \caption{Varying the SNR in our simulation.}
   \label{fig:snr}
 \end{figure}
 
-In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. The top row (Figure \ref{fig:wavelength}.a) shows results obtained when operating directly on complex-valued signals, while the bottom row (Figure \ref{fig:wavelength}.b) corresponds to imaging using only the signal magnitude. The complex-valued outputs exhibit poor image quality across all tested wavelengths, with significant incoherent patterns. In contrast, the magnitude-based results yield clear images once the wavelength exceeds 0.05 units, as constructive and destructive interference between nearby rays becomes less pronounced.
+In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals in both spotlight-mode and strip-map SAR. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
 
 \begin{figure}[h!]
   \centering
-  \begin{subfigure}[b]{0.4\textwidth}
-    \centering
-    \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/stitched_wavelength_complex.png}
-    \caption{Complex-valued imaging}
-  \end{subfigure}
-  \hfill
-  \begin{subfigure}[b]{0.4\textwidth}
-    \centering
-    \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/stitched_wavelength_magnitude.png}
-    \caption{Magnitude-based imaging}
-  \end{subfigure}
-  \caption{Varying the wavelength in our simulation. (a) Complex-valued SAR imaging. (b) Magnitude-based SAR imaging.}
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_wavelength.png}
+  \caption{Varying the wavelength in our simulation with coherent integration.}
   \label{fig:wavelength}
 \end{figure}
 
@@ -403,8 +400,8 @@ In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample ra
 
 \begin{figure}
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.4\textwidth]{figs/stitched_fsbw.png}
-  \caption{Varying the SNR in our simulation.}
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_fsbw.png}
+  \caption{Varying the spatial sample rate and bandwidth in our simulation.}
   \label{fig:fsbw}
 \end{figure}
 
@@ -449,6 +446,26 @@ We further look into this problem in Figure \ref{fig:signals-square}. The figure
 \end{figure}
 
 There are two ways to mitigate this effect: increasing the number of rays $(R_h, R_w)$, and decreasing the spatial bandwidth $B_s$. A denser ray grid allows for more scatters near the center of the sinc pulses in interposummation, which reduces the variable sums between neighboring sincs. Decreasing the spatial bandwidth $B_s$ of the interposummation accomplishes the same goal, but by widening the sinc pulses to accumulate more scatters instead of adding more scatters. The trade-offs between the two solutions are that increasing the ray density increases the computational complexity, and decreasing the bandwidth reduces image quality.
+
+\subsection{Sensor Trajectory}
+
+In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_trajectory_type.png}
+  \caption{Comparison of circular and linear sensor trajectories in our simulation.}
+  \label{fig:trajectory-type}
+\end{figure}
+
+In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
+  \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
+  \label{fig:trajectory-noise}
+\end{figure}
 
 \section{Conclusion}
 \label{sec:conclusion}
