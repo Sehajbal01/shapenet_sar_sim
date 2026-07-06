@@ -312,6 +312,11 @@ def render_random_image(
                             ground_raids = ground_raids,
     ) # (1,H,W)
 
+    # save raw SAR amplitude so downstream stitching can use a shared color scale
+    sar_amp = sar.squeeze(0).cpu().numpy()  # (H,W) raw amplitude
+    if log_scale:
+        sar_amp = np.log1p(sar_amp)
+
     # plot the SAR image next to the RGB image
     sar = torch.tile(sar, (3,1,1)).permute(1,2,0)  # (H,W,3)
     if log_scale:
@@ -331,9 +336,12 @@ def render_random_image(
 
     if suffix is None:
         path = get_next_path('figures/sar_rgb_image.png')
+        npy_path = path[:-4] + '.npy'
     else:
         path = 'figures/sar_rgb_image_%s.png'%(suffix)
+        npy_path = 'figures/sar_amp_%s.npy'%(suffix)
     image.save(path)  # save the image
+    np.save(npy_path, sar_amp)
     print('Saved SAR and RGB image to: ', path)
 
 
@@ -361,7 +369,7 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
 
     # remove all files in figures with the experiment name
     for f in os.listdir('figures'):
-        if experiment_name in f:
+        if experiment_name in f and (f.endswith('.png') or f.endswith('.npy')):
             os.remove(os.path.join('figures', f))
 
     # create strings to title each experiment
@@ -403,38 +411,54 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         # render the image with the current parameters
         render_random_image(**kwargs)
 
-    # find all files in figures that have the experiment name
-    figure_files = [f for f in os.listdir('figures') if f'sar_rgb_image_{experiment_name}' in f]
-    
+    # find all raw SAR amplitude arrays saved for this experiment
+    npy_files = [f for f in os.listdir('figures') if f'sar_amp_{experiment_name}' in f and f.endswith('.npy')]
+
     # Extract the figure ID (the 3-digit number after experiment_name_)
-    figure_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in figure_files]
-    
+    npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
+
     # Sort files by the figure ID
-    sorted_files = [f for _, f in sorted(zip(figure_ids, figure_files))]
+    sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
 
-    # Load images, crop left 128 columns, and collect
-    cropped_images = []
-    for i, fname in enumerate(sorted_files):
-        img = PIL.Image.open(os.path.join('figures', fname))
-        cropped = img.crop((128, 0, img.width, img.height))
-        draw = ImageDraw.Draw(cropped)
-        
-        draw.text((10, 10), experiment_strings[i], fill=(255, 255, 255))
-        cropped_images.append(np.array(cropped))
+    # Load raw SAR amplitude arrays; use a shared color scale so brightness is comparable
+    sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
+    vmin = 0.0
+    vmax = float(max(a.max() for a in sar_arrays))
 
-    # Stitch horizontally
-    # if divisible by 2, split into 2 rows
-    n_image = len(cropped_images)
-    if n_image%2 == 0 and n_image > 4:
-        stitched = np.vstack([
-            np.hstack(cropped_images[:n_image//2 ]),
-            np.hstack(cropped_images[ n_image//2:]),
-        ])
+    # Layout: if even and > 4, use 2 rows; else 1 row
+    n_image = len(sar_arrays)
+    if n_image % 2 == 0 and n_image > 4:
+        n_rows, n_cols = 2, n_image // 2
     else:
-        stitched = np.hstack(cropped_images)
-    stitched_img = PIL.Image.fromarray(stitched)
+        n_rows, n_cols = 1, n_image
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(2.2 * n_cols, 2.2 * n_rows + 0.5),
+        squeeze=False,
+    )
+    for i, (ax, arr, title) in enumerate(zip(axes.flat, sar_arrays, experiment_strings)):
+        im = ax.imshow(arr, cmap='gray', vmin=vmin, vmax=vmax)
+        ax.set_title(title, fontsize=8)
+        ax.axis('off')
+    # hide any unused axes (defensive; shouldn't happen given layout math)
+    for ax in axes.flat[n_image:]:
+        ax.axis('off')
+
+    fig.subplots_adjust(right=0.9, wspace=0.05, hspace=0.15)
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    # Image data is linear amplitude, but label ticks in dB relative to the shared max
+    # so brightness differences remain readable across the whole dynamic range.
+    db_ticks = [0, -3, -6, -10, -20, -30]
+    tick_positions = [vmax * (10 ** (db / 20.0)) for db in db_ticks]
+    cbar.set_ticks(tick_positions)
+    cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
+    cbar.set_label('SAR amplitude (dB re max)')
+
     path = f'figures/sar_stitched_{experiment_name}.png'
-    stitched_img.save(path)
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
     print('Saved stitched image to: %s' % path)
 
 

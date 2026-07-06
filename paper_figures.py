@@ -84,14 +84,14 @@ def _paper_experiments():
     trajectory_noise_var = dict(
         name='trajectory_noise_var',
         vary={'trajectory_noise_var': noise_vals},
-        custom_title_strings=['%.2e' % v for v in noise_vals],
+        custom_title_strings=['Turbulence: %.2e' % v for v in noise_vals],
     )
 
     return [
-        # az_spread,
-        # num_pulse,
-        # fsbw,
-        # snrdb,
+        az_spread,
+        num_pulse,
+        fsbw,
+        snrdb,
         wavelength,
         trajectory_type,
         trajectory_noise_var,
