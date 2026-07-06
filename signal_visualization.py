@@ -199,7 +199,7 @@ def analyze_window_functions(
 
     # human-readable legend labels for each window function
     window_labels = {
-        'sinc': 'Ideal',
+        'sinc': 'Sinc Interpolation',
         'gaussian': 'Gaussian Pulse',
         'lfm': 'LFM Chirp',
         'barker13': 'Barker 13',
@@ -216,7 +216,7 @@ def analyze_window_functions(
 
     for bw in bw_list:
         for fs in fs_list:
-            fig, (ax_lin, ax_db, ax_freq) = plt.subplots(1, 3, figsize=(18, 5))
+            fig, (ax_lin, ax_freq) = plt.subplots(1, 2, figsize=(12, 5))
 
             for wf in window_funcs:
                 signal, sample_z = interpolate_signal(
@@ -229,29 +229,25 @@ def analyze_window_functions(
                 label = window_labels.get(wf, wf)
 
                 # time/range domain
-                ax_lin.plot(z, mag / (mag.max() + 1e-30), label=label, marker='.', ms=3)
-                ax_db.plot(z, to_db(mag), label=label, marker='.', ms=3)
+                ax_lin.plot(z, mag / (mag.max() + 1e-30), label=label, ms=3)
 
                 # frequency domain: spectrum of the sampled impulse response
                 Z = len(s)
                 spec = np.fft.fftshift(np.fft.fft(s))
                 freq = np.fft.fftshift(np.fft.fftfreq(Z, d=1.0 / fs))  # [-fs/2, fs/2)
-                ax_freq.plot(freq, to_db(np.abs(spec)), label=label, marker='.', ms=3)
+                ax_freq.plot(freq, to_db(np.abs(spec)), label=label, ms=3)
 
             ax_lin.set_title('Range impulse response (linear)')
             ax_lin.set_xlabel('range z'); ax_lin.set_ylabel('|s| (normalized)')
             ax_lin.grid(True, alpha=0.3); ax_lin.legend()
 
-            ax_db.set_title('Range impulse response (dB)')
-            ax_db.set_xlabel('range z'); ax_db.set_ylabel('|s| (dB)')
-            ax_db.set_ylim(db_floor, 3); ax_db.grid(True, alpha=0.3); ax_db.legend()
-
             # mark the bandwidth edges +-bw/2 to show spectral support
-            ax_freq.axvline(+bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
+            ax_freq.axvline(+bw / 2, color='k', ls='--', lw=0.8, alpha=0.5, label='+-bw/2')
             ax_freq.axvline(-bw / 2, color='k', ls='--', lw=0.8, alpha=0.5)
             ax_freq.set_title('Spectrum (dB),  dashed = +-bw/2')
             ax_freq.set_xlabel('spatial frequency'); ax_freq.set_ylabel('|S| (dB)')
             ax_freq.set_ylim(db_floor, 3); ax_freq.grid(True, alpha=0.3); ax_freq.legend()
+            ax_freq.set_xlim(-bw , +bw)
 
             fig.suptitle('Window impulse response   bw=%g   fs=%g   region_radius=%g'
                          % (bw, fs, region_radius))
@@ -262,4 +258,4 @@ def analyze_window_functions(
 
 if __name__ == '__main__':
     # characterize the interpolate_signal window functions for the paper
-    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(20.0, 40.0, 80.0))
+    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(2000.0,))
