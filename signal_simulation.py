@@ -504,6 +504,13 @@ def load_mesh(  file_name,
     # ensure material properties are valid
     raids = correct_material_properties(raids)
 
+    # report mesh size for debugging/profiling
+    try:
+        print(f"load_mesh: verts={verts.shape[0].item() if hasattr(verts.shape[0],'item') else verts.shape[0]}  faces={faces.shape[0].item() if hasattr(faces.shape[0],'item') else faces.shape[0]}")
+    except Exception:
+        # best-effort; don't crash callers if printing fails
+        print(f"load_mesh: verts={int(verts.shape[0])} faces={int(faces.shape[0])}")
+
     return mesh, face_normals, raids
     #      obj   (F,3)         (F,5)
 

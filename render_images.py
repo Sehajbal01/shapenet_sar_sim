@@ -347,7 +347,25 @@ def render_random_image(
 
 
 
-def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None):
+def _prepare_stitched_plot_arrays(sar_arrays, plot_db_scale=False, db_floor=-60.0):
+    """Convert raw SAR amplitudes into the plotting data for stitched figures."""
+    if not plot_db_scale:
+        return sar_arrays, dict(vmin=0.0, vmax=float(max(a.max() for a in sar_arrays)))
+
+    reference = float(max(a.max() for a in sar_arrays))
+    if reference <= 0.0:
+        plot_arrays = [np.zeros_like(a, dtype=np.float32) for a in sar_arrays]
+        return plot_arrays, dict(vmin=db_floor, vmax=0.0)
+
+    plot_arrays = []
+    for arr in sar_arrays:
+        amplitude = np.asarray(arr, dtype=np.float32)
+        db_values = 20.0 * np.log10(np.clip(amplitude / reference, 1e-12, None))
+        plot_arrays.append(db_values)
+    return plot_arrays, dict(vmin=db_floor, vmax=0.0)
+
+
+def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None, plot_db_scale=False, db_floor=-60.0):
     """
     A modular function to run experiments by varying multiple parameters together
     
@@ -357,6 +375,7 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         default_kwargs (dict): Default arguments for render_random_image
         experiment_name (str): Name of the experiment for saving files
         seed (int): Random seed for reproducibility
+        plot_db_scale (bool): If True, render the stitched plots in dB relative to a shared max.
     """
     # Verify all parameter arrays have the same length
     lengths = [len(vals) for vals in param_dict.values()]
@@ -422,8 +441,13 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
 
     # Load raw SAR amplitude arrays; use a shared color scale so brightness is comparable
     sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
-    vmin = 0.0
-    vmax = float(max(a.max() for a in sar_arrays))
+    plot_arrays, plot_range = _prepare_stitched_plot_arrays(
+        sar_arrays,
+        plot_db_scale=plot_db_scale,
+        db_floor=db_floor,
+    )
+    vmin = plot_range['vmin']
+    vmax = plot_range['vmax']
 
     # Layout: if even and > 4, use 2 rows; else 1 row
     n_image = len(sar_arrays)
@@ -437,7 +461,7 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         figsize=(2.2 * n_cols, 2.2 * n_rows + 0.5),
         squeeze=False,
     )
-    for i, (ax, arr, title) in enumerate(zip(axes.flat, sar_arrays, experiment_strings)):
+    for i, (ax, arr, title) in enumerate(zip(axes.flat, plot_arrays, experiment_strings)):
         im = ax.imshow(arr, cmap='gray', vmin=vmin, vmax=vmax)
         ax.set_title(title, fontsize=8)
         ax.axis('off')
@@ -448,13 +472,16 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     fig.subplots_adjust(right=0.9, wspace=0.05, hspace=0.15)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax)
-    # Image data is linear amplitude, but label ticks in dB relative to the shared max
-    # so brightness differences remain readable across the whole dynamic range.
-    db_ticks = [0, -3, -6, -10, -20, -30]
-    tick_positions = [vmax * (10 ** (db / 20.0)) for db in db_ticks]
-    cbar.set_ticks(tick_positions)
-    cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
-    cbar.set_label('SAR amplitude (dB re max)')
+    if plot_db_scale:
+        db_ticks = [0, -3, -6, -10, -20, -30]
+        if db_floor < -30:
+            db_ticks = [db_floor] + [t for t in db_ticks if t > db_floor]
+        cbar.set_ticks(db_ticks)
+        cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
+        cbar.set_label('SAR amplitude (dB re shared max)')
+    else:
+        # Image data is linear amplitude, so show a simple linear colorbar.
+        cbar.set_label('SAR amplitude (linear)')
 
     path = f'figures/sar_stitched_{experiment_name}.png'
     fig.savefig(path, dpi=200, bbox_inches='tight')

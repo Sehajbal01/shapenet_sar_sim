@@ -1,5 +1,5 @@
 % \documentclass[conference]{IEEEtran}
-\documentclass[onecolumn]{IEEEtran}
+\documentclass[twocolumn]{IEEEtran}
 \usepackage[compatibility=false]{caption}
 \usepackage{subcaption}
 \usepackage{booktabs}
@@ -396,12 +396,12 @@ In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength 
 
 \subsection{Bandwidth and Ray Density}
 
-In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$, and to a lesser extent at $F_s = 256$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation. The result is a strange devolving of the constructed SAR image.
+In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. The images are shown in dB scale with a shared DC maximum. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$, and to a lesser extent at $F_s = 256$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation. The result is a strange devolving of the constructed SAR image.
 
 \begin{figure}
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_fsbw.png}
-  \caption{Varying the spatial sample rate and bandwidth in our simulation.}
+  \caption{Varying the spatial sample rate and bandwidth in our simulation. Images are dB-scaled and share a common DC maximum.}
   \label{fig:fsbw}
 \end{figure}
 

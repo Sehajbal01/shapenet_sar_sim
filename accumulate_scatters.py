@@ -92,7 +92,11 @@ def accumulate_scatters(mesh, face_normals, material_properties,
     t_setup_total   = 0.0
     t_bounce_totals = [0.0] * num_bounce
 
+    # time octree build separately (it can be expensive and was previously
+    # omitted from the profiling breakdown)
+    t_octree_start = sync_time()
     octree = build_octree(mesh)
+    t_octree_build = sync_time() - t_octree_start
 
     debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True
 
@@ -140,7 +144,12 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                 t_b_start = sync_time()
                 hit_indices, distance = ray_trace(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
 
+                # always account for the time spent in this bounce's ray-trace call
+                t_b_elapsed = sync_time() - t_b_start
+                t_bounce_totals[b-1] += t_b_elapsed
+
                 hit_b = distance >= 0
+                # if no rays hit for this bounce, nothing else to do; report time above
                 if not hit_b.any():
                     break
 
@@ -226,7 +235,8 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
     t_overall = sync_time() - t_overall_start
     bounce_times = '  '.join(f'bounce{b+1}={t:.3f}s' for b, t in enumerate(t_bounce_totals))
-    print(f"accumulate_scatters: overall={t_overall:.3f}s  setup={t_setup_total:.3f}s  {bounce_times}")
+    # report octree build time separately and ensure breakdown is clear
+    print(f"accumulate_scatters: overall={t_overall:.3f}s  octree={t_octree_build:.3f}s  setup={t_setup_total:.3f}s  {bounce_times}")
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
