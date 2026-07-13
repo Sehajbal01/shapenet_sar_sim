@@ -97,7 +97,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         n_ray_height   = n_ray_height,
 
         num_bounce = num_bounce,
-        second_bounce_batch_size = 2**10,
+        second_bounce_batch_size = 2**9,
     )
     if verbose:
         print('done.')

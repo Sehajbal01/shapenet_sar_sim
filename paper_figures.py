@@ -143,7 +143,7 @@ def _normalize_sar_for_display(sar_image, rgb_shape):
 
 def generate_linear_sar_comparison_figure(
     num_examples=4,
-    output_path='latex/figs/linear_sar_comparison.png',
+    output_path='figures/linear_sar_comparison.png',
     baseline=PAPER_BASELINE,
     seed=8134,
 ):

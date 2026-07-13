@@ -7,6 +7,34 @@ from utils import cartesian_to_spherical, generate_pose_mat, dot_product, direct
 from ray_tracer_v2 import ray_trace, build_octree
 
 
+def ray_trace_oom_safe(ray_origins, ray_directions, mesh, face_normals,
+                       octree=None, batch_size=2**20, min_batch_size=1,
+                       show_pbar=False):
+    '''
+    Call ray_trace, halving batch_size on CUDA OOM until it fits.
+
+    The octree path builds a padded (K, max_Fl, 3) face matrix whose size scales
+    with the ray batch B; on dense scenes this can exceed VRAM. Rather than tune
+    batch_size per scene, we catch OutOfMemoryError, free the cache, and retry the
+    whole call with a smaller batch. ray_trace allocates fresh output tensors each
+    call, so a failed attempt leaves nothing to clean up but the allocator cache.
+    '''
+    R = ray_origins.shape[0]
+    # clamp to R so the first halving is actually effective (callers may pass a
+    # huge sentinel batch size like 2**100 == "all rays in one batch")
+    bs = min(batch_size, R) if R > 0 else batch_size
+    while True:
+        try:
+            return ray_trace(ray_origins, ray_directions, mesh, face_normals,
+                             octree=octree, batch_size=bs, show_pbar=show_pbar)
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            if bs <= min_batch_size:
+                raise
+            bs = max(min_batch_size, bs // 2)
+            print(f'ray_trace_oom_safe: CUDA OOM, retrying with batch_size={bs}')
+
+
 def points_visible_to_sensor(points, sensor_direction, mesh, face_normals,
                              octree=None, surface_bias=1e-3, batch_size=2**20):
     '''
@@ -41,8 +69,8 @@ def points_visible_to_sensor(points, sensor_direction, mesh, face_normals,
     # point sits on (leg~=0 self-intersection)
     origins = points + surface_bias * directions  # (N, 3)
 
-    _, distance = ray_trace(origins, directions, mesh, face_normals,
-                            octree=octree, batch_size=batch_size)  # (N,)
+    _, distance = ray_trace_oom_safe(origins, directions, mesh, face_normals,
+                                     octree=octree, batch_size=batch_size)  # (N,)
 
     # a hit (distance >= 0) means geometry blocks the path to the sensor
     visible = distance < 0  # (N,)
@@ -142,7 +170,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
             # ray-trace all bounces
             for b in range(1, num_bounce + 1):
                 t_b_start = sync_time()
-                hit_indices, distance = ray_trace(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
+                hit_indices, distance = ray_trace_oom_safe(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
 
                 # always account for the time spent in this bounce's ray-trace call
                 t_b_elapsed = sync_time() - t_b_start
