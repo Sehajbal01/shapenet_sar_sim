@@ -1,6 +1,11 @@
 """Paper figure experiments. `main` runs the full suite via one call."""
 import os
 
+# MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the
+# second to initialize aborts with "OMP: Error #15". Allow the duplicate.
+# Must be set before numpy/torch import.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import cv2
 import numpy as np
 import PIL
