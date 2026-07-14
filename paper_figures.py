@@ -13,6 +13,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from render_images import multi_param_experiment, sar_render_image
+from utils import extract_pose_info
 
 
 PAPER_BASELINE = dict(
@@ -146,6 +147,7 @@ def generate_linear_sar_comparison_figure(
     output_path='figures/linear_sar_comparison.png',
     baseline=PAPER_BASELINE,
     seed=8134,
+    min_elevation_deg=20,
 ):
     """Create a 4-row figure with RGB, spotlight, and strip-map SAR panels."""
     dataset_dir = '/workspace/data/srncars/cars_train/'
@@ -158,7 +160,6 @@ def generate_linear_sar_comparison_figure(
     comparison_kwargs['trajectory_type'] = 'linear'
 
     fig, axes = plt.subplots(num_examples, 3, figsize=(9, 3.2 * num_examples), squeeze=False)
-    fig.suptitle('RGB vs. linear-trajectory SAR reconstructions', fontsize=12)
 
     for row_idx in range(num_examples):
         obj_ids = sorted(os.listdir(dataset_dir))
@@ -166,16 +167,23 @@ def generate_linear_sar_comparison_figure(
 
         pose_dir = os.path.join(dataset_dir, obj_id, 'pose')
         pose_files = sorted(os.listdir(pose_dir))
-        pose_file = pose_files[rng.randint(0, len(pose_files))]
-        pose_num = os.path.splitext(pose_file)[0]
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        # Keep drawing random poses until the camera elevation is high enough.
+        while True:
+            pose_file = pose_files[rng.randint(0, len(pose_files))]
+            pose_num = os.path.splitext(pose_file)[0]
+            pose_path = os.path.join(pose_dir, pose_file)
+            pose = np.loadtxt(pose_path).reshape(1, 4, 4).astype(np.float32)
+            target_poses = torch.tensor(pose, device=device)
+            elevation_deg = extract_pose_info(target_poses)[5].item()
+            if elevation_deg >= min_elevation_deg:
+                break
 
         rgb_path = os.path.join(dataset_dir, obj_id, 'rgb', f'{pose_num}.png')
-        pose_path = os.path.join(pose_dir, pose_file)
         mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')
 
         rgb = np.array(PIL.Image.open(rgb_path))[..., :3]
-        pose = np.loadtxt(pose_path).reshape(1, 4, 4).astype(np.float32)
-        target_poses = torch.tensor(pose, device='cuda' if torch.cuda.is_available() else 'cpu')
 
         render_kwargs = {
             'spatial_bw': comparison_kwargs['spatial_bw'],
@@ -224,15 +232,12 @@ def generate_linear_sar_comparison_figure(
         stripmap_vis = _normalize_sar_for_display(stripmap, rgb.shape)
 
         axes[row_idx, 0].imshow(rgb)
-        axes[row_idx, 0].set_title('RGB', fontsize=10)
         axes[row_idx, 0].axis('off')
 
         axes[row_idx, 1].imshow(spotlight_vis, cmap='gray')
-        axes[row_idx, 1].set_title('Spotlight', fontsize=10)
         axes[row_idx, 1].axis('off')
 
         axes[row_idx, 2].imshow(stripmap_vis, cmap='gray')
-        axes[row_idx, 2].set_title('Strip-map', fontsize=10)
         axes[row_idx, 2].axis('off')
 
     fig.subplots_adjust(wspace=0.02, hspace=0.1)
