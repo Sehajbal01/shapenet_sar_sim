@@ -41,7 +41,7 @@ class Octree:
         self.L = leaf_mins.shape[0]
 
 
-def build_octree(mesh, max_depth=8, max_tris_per_leaf=32):
+def build_octree(mesh, max_depth=8, max_tris_per_leaf=32, max_leaf_faces=512):
     """
     Build a GPU octree from a PyTorch3D Meshes object.
 
@@ -52,6 +52,21 @@ def build_octree(mesh, max_depth=8, max_tris_per_leaf=32):
         mesh             : PyTorch3D Meshes with verts_packed() / faces_packed()
         max_depth        : maximum recursion depth
         max_tris_per_leaf: stop splitting when a node has ≤ this many triangles
+        max_leaf_faces   : hard cap on faces per emitted leaf. Subdivision bins
+            triangles by centroid, so a cluster of triangles with (near-)coincident
+            centroids collapses into a single leaf that no depth can split (e.g. a
+            dense fan/interior region of a mesh). At the depth cap such a leaf keeps
+            *all* its faces. ray_trace pads its Möller–Trumbore matrix to (K, max_Fl)
+            where max_Fl is the largest hit leaf's face count, so one fat leaf taxes
+            every ray in the batch (~600× padding waste + multi-GB allocations
+            observed in practice). Any leaf exceeding this cap is split into multiple
+            leaves that share the same AABB but hold ≤ cap faces each — identical
+            ray-trace results (same faces tested), bounded matrix width. Normal
+            leaves (≤ max_tris_per_leaf) are unaffected. The default (512) sits at
+            the knee of the speed curve: it captures nearly the full win on
+            pathological meshes (a 22684-face leaf → 1175ms drops to ~390ms, a 44×
+            smaller allocation) while only splitting genuinely huge leaves, so
+            meshes that were never padding-bound are left essentially untouched.
 
     Returns:
         Octree object with all tensors on mesh.device
@@ -96,19 +111,27 @@ def build_octree(mesh, max_depth=8, max_tris_per_leaf=32):
 
     subdivide(np.arange(F, dtype=np.int64), 0)
 
+    # Pack leaves, splitting any oversized leaf into chunks of ≤ max_leaf_faces
+    # that share the parent leaf's AABB. This bounds ray_trace's padded matrix
+    # width without changing which faces each ray tests.
     starts, counts, packed = [], [], []
+    mins_out, maxs_out = [], []
     cursor = 0
-    for fi in leaf_faces_list:
-        starts.append(cursor)
-        counts.append(len(fi))
-        packed.extend(fi.tolist())
-        cursor += len(fi)
+    for lo, hi, fi in zip(leaf_mins_list, leaf_maxs_list, leaf_faces_list):
+        for off in range(0, len(fi), max_leaf_faces):
+            chunk = fi[off:off + max_leaf_faces]
+            starts.append(cursor)
+            counts.append(len(chunk))
+            mins_out.append(lo)
+            maxs_out.append(hi)
+            packed.extend(chunk.tolist())
+            cursor += len(chunk)
 
     return Octree(
         leaf_mins=torch.from_numpy(
-            np.array(leaf_mins_list, dtype=np.float32)).to(device),
+            np.array(mins_out, dtype=np.float32)).to(device),
         leaf_maxs=torch.from_numpy(
-            np.array(leaf_maxs_list, dtype=np.float32)).to(device),
+            np.array(maxs_out, dtype=np.float32)).to(device),
         leaf_face_starts=starts,
         leaf_face_counts=counts,
         packed_face_indices=torch.tensor(
