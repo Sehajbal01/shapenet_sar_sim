@@ -544,9 +544,12 @@ def make_big_ground( size, ground_dim, ground_level = 0.0, max_triangle_len = 0.
                           torch.arange(N-1, device=device, dtype=torch.int64), # (N-1,)
     indexing='ij') # (N-1,N-1), (N-1,N-1)
 
+    # square corners: A=(h,w) B=(h+1,w) C=(h,w+1) D=(h+1,w+1)
     squares = torch.stack((h*N+w, (h+1)*N+w, h*N+w+1, (h+1)*N + w+1), dim=-1).reshape(-1,4)  # (F/2,4)
-    upper_triangles = squares[..., :3] # (F/2,3)
-    lower_triangles = squares[..., 1:] # (F/2,3)
+    # both triangles must wind consistently so their normals agree; A,B,C is CCW (+ground_dim),
+    # so the second triangle is B,D,C (not B,C,D, which winds the opposite way and flips its normal)
+    upper_triangles = squares[..., [0, 1, 2]] # (F/2,3) A,B,C
+    lower_triangles = squares[..., [1, 3, 2]] # (F/2,3) B,D,C
     faces = torch.cat((upper_triangles, lower_triangles), dim=1)  # (F,3)
     faces = torch.reshape(faces, (-1, 3))  # (F,3)
 

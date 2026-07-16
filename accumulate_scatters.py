@@ -120,6 +120,13 @@ def accumulate_scatters(mesh, face_normals, material_properties,
     t_setup_total   = 0.0
     t_bounce_totals = [0.0] * num_bounce
 
+    # diagnostics for cos(theta/2): sqrt() of a negative silently yields NaN rather than
+    # raising, so track how often it happens and how far below zero the argument gets.
+    n_nan_cos       = 0
+    n_nan_arg       = 0
+    n_cos_total     = 0
+    min_sqrt_arg    = float('inf')
+
     # time octree build separately (it can be expensive and was previously
     # omitted from the profiling breakdown)
     t_octree_start = sync_time()
@@ -193,15 +200,47 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
                 hit_b_pos = prev_origins + distance.unsqueeze(-1) * prev_directions  # (N, 3)
 
+                n = face_normals[hit_indices]  # (N, 3)
+
+                # orient each normal to face the incoming ray (outward on the side the ray came
+                # from). Mesh triangle winding is not guaranteed consistent, so face_normals may
+                # point either way; the reflection below is invariant to n's sign, but poly_input
+                # (dot(n, next_directions)) is linear in n and would otherwise flip sign on
+                # back-facing normals, collapsing the directional-scatter denominator and spiking
+                # the returned energy. prev_directions points into the surface, so an outward
+                # normal has dot(prev_directions, n) <= 0; only flip the strictly back-facing ones
+                # (a where() rather than -sign(), so an exactly grazing dot==0 leaves n intact
+                # instead of being zeroed).
+                n = torch.where(dot_product(prev_directions, n, keepdim=True) > 0, -n, n)
+
+                # calculate reflected ray direction
+                next_directions = prev_directions - 2 * dot_product(prev_directions, n, keepdim=True) * n
+
                 # calculate returned energy
                 s = material_properties[hit_indices, 4]
                 i = material_properties[hit_indices, 2]
                 d = material_properties[hit_indices, 3]
-                n = face_normals[hit_indices]  # (N, 3)
-                cos_theta_over_2 = torch.abs(dot_product(n, prev_directions))
+                poly_input = dot_product(n, next_directions)
+
+                # half-angle identity: cos(theta/2) = sqrt((1 + cos theta)/2), where theta is the
+                # angle between the reflected ray and the direction back to the sensor. Both are
+                # unit vectors, so the argument is mathematically in [0, 1]; it only dips below 0
+                # by float error when the reflected ray points ~directly away from the sensor
+                # (cos theta = -1), where the true value is 0. NaN -> 0 is that exact limit.
+                sqrt_arg = (1 + dot_product(sensor_direction, next_directions)) / 2
+                cos_theta_over_2 = torch.sqrt(sqrt_arg)
+                n_nan_cos   += int(torch.isnan(cos_theta_over_2).sum())
+                n_cos_total += cos_theta_over_2.numel()
+                # an already-NaN argument means NaN arrived from upstream (a bad normal or
+                # direction), which is a real bug rather than boundary rounding; count it apart
+                # and keep it out of the min so it cannot masquerade as a benign undershoot.
+                n_nan_arg    += int(torch.isnan(sqrt_arg).sum())
+                min_sqrt_arg  = min(min_sqrt_arg,
+                                    float(torch.nan_to_num(sqrt_arg, nan=float('inf')).min()))
+                cos_theta_over_2 = torch.nan_to_num(cos_theta_over_2, nan=0.0)
                 energy_b = cumulative_reflectivity * s * (
                     (i * cos_theta_over_2**5) /
-                    directional_scatter_polynomial_alpha5(cos_theta_over_2) +
+                    directional_scatter_polynomial_alpha5(poly_input) +
                     d / 2 / np.pi
                 )  # (N,) attenuated by the reflectivity of all prior bounces
 
@@ -246,15 +285,19 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                 cumulative_reflectivity = cumulative_reflectivity * r
 
                 # reflect for next bounce
-                prev_directions = prev_directions - 2 * dot_product(prev_directions, n, keepdim=True) * n
+                prev_directions = next_directions
+
                 # bias the new origin off the surface along the normal so the reflected ray
                 # cannot spuriously re-hit the surface it just left. Without this, a reflected
                 # ray that grazes the (flat, finely tessellated) ground re-intersects an adjacent
                 # coplanar triangle at leg~=0, dumping a duplicate full-energy scatter at the
                 # first-bounce range. Those pile up coherently and spike the signal on pulses
                 # whose geometry produces many grazing ground reflections.
-                offset_sign  = torch.sign(dot_product(prev_directions, n, keepdim=True))
-                prev_origins = hit_b_pos + surface_bias * offset_sign * n
+                # n faces the incoming ray, so the reflected ray always departs into the +n
+                # half-space (reflected.n = -(incoming.n) >= 0); pushing along +n is always the
+                # correct side. (Previously this used sign(dot(reflected, n)) to stay robust to
+                # arbitrary normal orientation, but the orientation fix above makes that always +1.)
+                prev_origins = hit_b_pos + surface_bias * n
 
                 t_bounce_totals[b-1] += sync_time() - t_b_start
 
@@ -265,6 +308,12 @@ def accumulate_scatters(mesh, face_normals, material_properties,
     bounce_times = '  '.join(f'bounce{b+1}={t:.3f}s' for b, t in enumerate(t_bounce_totals))
     # report octree build time separately and ensure breakdown is clear
     print(f"accumulate_scatters: overall={t_overall:.3f}s  octree={t_octree_build:.3f}s  setup={t_setup_total:.3f}s  {bounce_times}")
+    if n_nan_cos:
+        print(f"accumulate_scatters: cos(theta/2) NaN -> 0 on {n_nan_cos}/{n_cos_total} scatters "
+              f"({100*n_nan_cos/n_cos_total:.3f}%); min sqrt arg={min_sqrt_arg:.3e}")
+        if n_nan_arg:
+            print(f"accumulate_scatters: WARNING {n_nan_arg} of those had a NaN argument (not "
+                  f"boundary rounding) — check face normals / ray directions for NaN")
 
     # apply complex value to the energy according to wavelength
     if wavelength is not None:
