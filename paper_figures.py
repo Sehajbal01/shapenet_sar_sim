@@ -101,13 +101,13 @@ def _paper_experiments():
     )
 
     return [
-        # az_spread,
-        # num_pulse,
+        az_spread,
+        num_pulse,
         fsbw,
-        # snrdb,
-        # wavelength,
-        # trajectory_type,
-        # trajectory_noise_var,
+        snrdb,
+        wavelength,
+        trajectory_type,
+        trajectory_noise_var,
     ]
 
 
@@ -260,5 +260,5 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
 
 
 if __name__ == '__main__':
-    # run_paper_experiments(plot_db_scale=False)
+    run_paper_experiments(plot_db_scale=False)
     generate_linear_sar_comparison_figure()

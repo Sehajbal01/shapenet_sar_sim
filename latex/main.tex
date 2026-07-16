@@ -263,8 +263,9 @@ which yields our final expression for returned energy as
     E_r = E_{in} S \Bigg(\frac{I \cos({\theta/2})^\alpha}{f_{\alpha,poly}(\vec{u}_{r} \cdot \vec{n})} + \frac{D}{2\pi}\Bigg)
 \end{equation}
 The $\theta / 2$ in the numerator in (\ref{eq:almost}) refers to the angle between the direction 
-back to the radar and the direction of the reflected ray. Whereas the $\theta / 2$ in (\ref{eq:big-
-int}) refers to the angle between the reflected ray direction and all possible line-of-sight vectors.
+back to the radar and the direction of the reflected ray. Whereas the $\theta / 2$ in
+(\ref{eq:big-int}) refers to the angle between the reflected ray direction and all possible
+line-of-sight vectors.
 Again, to avoid trigonometric computations for each ray we can substitute $\cos(\theta/2)$ as
 \begin{equation}
     \label{eq:returned-energy}
@@ -284,8 +285,8 @@ direction of the $i^{th}$ path of the $r^{th}$ ray, $z_r^{(i)}$ is the total dis
 the ray from and back to the ray grid plane after its $i^{th}$ bounce, and $\lambda$ is the 
 wavelength of the radar wave. This is illustrated in Figure \ref{fig:terminology}.
 If the next path of a ray hits a location that is out of the line-of-sight, it is not considered 
-for returned energy. If a ray has no intersections, it is also not considered. We only consider two
--bounce returns $E_r^{(1)},E_r^{(2)}$.
+for returned energy. If a ray has no intersections, it is also not considered. We only consider
+two-bounce returns $E_r^{(1)},E_r^{(2)}$.
 
 We treat the returned energy from ray tracing as a continuous spatial signal made up of Dirac 
 delta functions.
@@ -311,8 +312,9 @@ temporal bandwidth and sampling rate of the received signal are $B_t$ and $F_t$ 
 are related to \emph{spatial bandwidth} and \emph{spatial sampling rate} as $B_s = 2B_t/c$ and $
 F_s = 2F_t/c$ where $c=3\times10^8m/s$ is the speed of light.
 
-We propose to simultaneously interpolate and sum the received set of scatters in \ref{eq:returned-
-scatters} using a sinc pulse train given by\begin{equation}
+We propose to simultaneously interpolate and sum the received set of scatters in
+\ref{eq:returned-scatters} using a sinc pulse train given by
+\begin{equation}
     p(z) = \sum_{n=-\infty}^{\infty}\sinc\big(B_s(z-nT_s)\big)
 \end{equation}
 where $\sinc(x) = \sin(\pi x)/\pi x$. The final simulated digital signal $s(n)$ evaluated at the 
@@ -328,15 +330,15 @@ samples with their position in space. Then with the sifting property $s(z_o)$ is
     .
     \label{eq:interposummation}
 \end{equation}
-The $n^{th}$ sample in $s(n)$ corresponds to the range $z=nT_s$. The sinc function acts as both low
--pass-filter interpolation as well as summation between nearby samples in the energy-range scatter
-. We name this processing in (\ref{eq:interposummation}) \emph{interposummation}.
+The $n^{th}$ sample in $s(n)$ corresponds to the range $z=nT_s$. The sinc function acts as both
+low-pass-filter interpolation as well as summation between nearby samples in the energy-range
+scatter. We name this processing in (\ref{eq:interposummation}) \emph{interposummation}.
 
 
 \subsection{Simulating pulse compression waveforms}
 
-We can express a received continuous signal $r(z)$ from our scatters model in (\ref{eq:returned-
-scatters}) with an arbitrary transmitted waveform $x(z)$ as 
+We can express a received continuous signal $r(z)$ from our scatters model in
+(\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
 \begin{equation}
     r(z) = x(z) * g(z)
     ,
