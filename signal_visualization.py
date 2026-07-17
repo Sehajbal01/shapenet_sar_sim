@@ -64,21 +64,6 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
     # scatter x-axis matches sample_z extent (sensor_distance ± region_radius)
     sz_min, sz_max = sample_z.min().item(), sample_z.max().item()
 
-    # precompute neighbor error ratio for all pulses
-    sigs_np = signals[0].cpu().numpy()  # (P, Z)
-    neighbor_error = np.zeros(P)
-    for i in range(P):
-        diffs = []
-        if i > 0:
-            diffs.append(np.sum((sigs_np[i] - sigs_np[i - 1]) ** 2))
-        if i < P - 1:
-            diffs.append(np.sum((sigs_np[i] - sigs_np[i + 1]) ** 2))
-        neighbor_error[i] = np.mean(diffs)
-    signal_energy = np.sum(sigs_np ** 2, axis=-1)  # (P,)
-    neighbor_error_ratio = neighbor_error / (signal_energy + 1e-10)
-    pulse_indices = np.arange(P)
-    ne_max = neighbor_error_ratio.max() * 1.1 if neighbor_error_ratio.max() > 0 else 1.0
-
     if scatter_view not in SCATTER_VIEWS:
         raise ValueError("scatter_view must be one of %s, got %r" % (list(SCATTER_VIEWS), scatter_view))
     plot_energy_view = SCATTER_VIEWS[scatter_view]
@@ -109,14 +94,13 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         ranges_p   = all_ranges[0][p].cpu().numpy() / 2                      # (R',) half round-trip
         energies_p = torch.abs(all_energies[0][p]).cpu().numpy()             # (R',)
 
-        fig = plt.figure(figsize=(12, 13))
-        gs = gridspec.GridSpec(3, 2, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35)
+        fig = plt.figure(figsize=(12, 10))
+        gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.35)
 
         ax00 = fig.add_subplot(gs[0, 0])
         ax01 = fig.add_subplot(gs[0, 1])
         ax10 = fig.add_subplot(gs[1, 0])
         ax11 = fig.add_subplot(gs[1, 1])
-        ax_ne = fig.add_subplot(gs[2, :])  # double-wide bottom panel
 
         ax00.imshow(depth_map,  cmap='gray')
         ax00.set_title('Depth Map')
@@ -133,14 +117,6 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         ax11.set_xlabel('Range')
         ax11.set_ylabel('Amplitude')
         ax11.set_ylim(sig_min, sig_max)
-
-        ax_ne.plot(pulse_indices, neighbor_error_ratio, color='steelblue')
-        ax_ne.plot(p, neighbor_error_ratio[p], '*', color='red', markersize=14, zorder=5)
-        ax_ne.set_title('Neighbor Error / Signal Energy')
-        ax_ne.set_xlabel('Pulse Index')
-        ax_ne.set_ylabel('Neighbor Error Ratio')
-        ax_ne.set_xlim(0, P - 1)
-        ax_ne.set_ylim(0, ne_max)
 
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
