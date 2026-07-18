@@ -35,12 +35,24 @@ berian, sehajdeepbal, jhihyangwu, dbrignac, amahalan@arizona.edu
 \maketitle
 
 \begin{abstract}
-There is currently a lack of open-source SAR simulators. \emph{RaySAR} supports only stripmap mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray.
-We present an \emph{open-source SAR simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration}. It supports arbitrary \texttt{.obj} 3D models, configurable wavelengths, sample rate, radar pulse bandwidth, and configurable material properties. It simulates the recovered signal from a variety of azimuth and elevation angles to allow for a variety of applications including both strip-map and spotlight mode imaging radar cross section modeling, simulating different noise types, jamming, and imperfect sensor trajectories. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption.
-We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{Interposummation}. Interposummation accounts for the effective bandwidth and sample rate of the radar system. We test our simulator on Shapenet Cars 3D models with spotlight-mode imaging.\end{abstract}
+There is currently a lack of open-source SAR simulators. \emph{RaySAR} supports only stripmap mode 
+imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD 
+models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray.
+We present an \emph{open-source SAR simulator} implemented in \emph{PyTorch} with \emph{GPU 
+acceleration}. It supports arbitrary \texttt{.obj} 3D models, configurable wavelengths, sample rate
+, radar pulse bandwidth, and configurable material properties. It simulates the recovered signal 
+from a variety of azimuth and elevation angles to allow for a variety of applications including 
+both strip-map and spotlight mode imaging radar cross section modeling, simulating different noise 
+types, jamming, and imperfect sensor trajectories. We simulate multi-bounce ray tracing to model 
+realistic reflectivity, scattering, and absorption.
+
+We introduce an efficient low-pass filtering technique for summation and interpolation of ray 
+returns, termed \emph{Interposummation}. Interposummation accounts for the effective bandwidth and 
+sample rate of the radar system. We test our simulator on Shapenet Cars 3D models with spotlight-
+mode imaging.\end{abstract}
 
 \begin{IEEEkeywords}
-Spotlight-mode, SAR, Radar, Ray Tracing, Simulation
+SAR, Radar, Ray Tracing, Simulator
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -107,22 +119,50 @@ Spotlight-mode, SAR, Radar, Ray Tracing, Simulation
 
 SAR simulators are crucial for developing and validating radar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CV Domes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility and rely on outdated software.
+Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility and rely on outdated software.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, material properties (reflectivity, scatter, absorbtion), and sensor trajectory.
 The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the radar system's wavelength, bandwidth, and sample rate. We use two bounces from each ray. From signals obtained from various azimuth and elvation angles, imaging algorithms such as spotlight-mode \cite{spotlightmodesar} SAR or strip map-mode can be used. Figure \ref{fig:linear-sar} highlights this flexibility, reconstructing both spotlight-mode and strip map-mode SAR images from the same set of simulated signals for four different Shapenet car models.
 
-Figure \ref{fig:main-fig} showcases an example of our simulator on a Shapenet \cite{shapenet} car model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b with a mean azimuth angle of $210.8^\circ$, a fixed elevation angle of $32.2^\circ$. Figure \ref{fig:main-fig}.(c,d,e,f) are examples from just one pulse, but to construct the SAR image we aggregate $30$ pulses over a $90^\circ$ azimuth angle spread. depth (Figure \ref{fig:main-fig}.c) and energy (Figure \ref{fig:main-fig}.d) maps shown are only for the first bounce of each ray, the actual simulation uses $2$ bounces for realism.
-The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim} Our simulation functions by simulating a grid of parallel rays with equal energy. The rays hit a triangle on the \texttt{.obj} mesh. When a ray hits the mesh, some of the energy is reflected, some energy is scattered back to the sensor, and some energy is lost to absorption. The reflected energy is part of a second bounce ray that once again hits another triangle on the mesh with reflectivity, scattering, and absorption. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range scatter plot (Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width corresponding to the radar system bandwidth, to sum and interpolate (Interposummation) the scatters into a single sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing between each sinc pulse corresponds to the sample rate of the radar system. Once there is a received signal for each pulse at different azimuth and elevation angles, further analysis or imaging (Figure \ref{fig:main-fig}.b) can be done.
+Figure \ref{fig:main-fig} showcases an example of our simulator on a Shapenet \cite{shapenet} car 
+model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b with a mean azimuth 
+angle of $210.8^\circ$, a fixed elevation angle of $32.2^\circ$. Figure \ref{fig:main-fig}.(c,d,e,f
+) are examples from just one pulse, but to construct the SAR image we aggregate $30$ pulses over a 
+$90^\circ$ azimuth angle spread. depth (Figure \ref{fig:main-fig}.c) and energy (Figure 
+\ref{fig:main-fig}.d) maps shown are only for the first bounce of each ray, the actual simulation 
+uses $2$ bounces for realism.
+The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim} Our simulation 
+functions by simulating a grid of parallel rays with equal energy. The rays hit a triangle on the 
+\texttt{.obj} mesh. When a ray hits the mesh, some of the energy is reflected, some energy is 
+scattered back to the sensor, and some energy is lost to absorption. The reflected energy is part 
+of a second bounce ray that once again hits another triangle on the mesh with reflectivity, 
+scattering, and absorption. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its 
+corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range scatter plot (
+Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width 
+corresponding to the radar system bandwidth, to sum and interpolate (Interposummation) the 
+scatters into a single sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing 
+between each sinc pulse corresponds to the sample rate of the radar system. Once there is a 
+received signal for each pulse at different azimuth and elevation angles, further analysis or 
+imaging (Figure \ref{fig:main-fig}.b) can be done.
 
 \section{Related Works}
 \label{sec:related}
 
-To the best of our knowledge, there are only two other publicly available SAR data simulators. RaySAR \cite{raysar} is a MATLAB repository for simulating stripmap-mode SAR images via ray tracing. CVDomes \cite{cvdomes} is a MATLAB repository that simulates spotlight-mode SAR images from a small set of CAD models.
-\subsection{CV Domes}
+To the best of our knowledge, there are only two other publicly available SAR data simulators. 
+RaySAR \cite{raysar} is a MATLAB repository for simulating stripmap-mode SAR images via ray tracing
+. CVDomes \cite{cvdomes} is a MATLAB repository that simulates spotlight-mode SAR images from a 
+small set of CAD models.
+
+\subsection{CVDomes}
 \label{sec:cvdomes}
 
-CVDomes is a physics-calibrated pipeline where facet CADs are augmented with an explicit asphalt ground plane and per-facet material labels (PEC, absorber, glass, plastic, asphalt). Monostatic scattering is computed with a high-frequency SBR front end followed by a physical-optics surface-current integral. Sampling is co-designed in frequency (512 bins spanning 5.35 Ghz and center frequency of 9.6 Ghz), an angle of 0.5° sectors with ±0.25° extrapolation for a 0.0625° step in order to yield doe-wide phase histories over 360° azimuth and 30°–60° elevation, exported as MATLAB “data domes” with fully polarimetric channels (HH, HV, VV) for downstream imaging.
+CVDomes is a physics-calibrated pipeline where facet CADs are augmented with an explicit asphalt 
+ground plane and per-facet material labels (PEC, absorber, glass, plastic, asphalt). Monostatic 
+scattering is computed with a high-frequency SBR front end followed by a physical-optics surface-
+current integral. Sampling is co-designed in frequency (512 bins spanning 5.35 Ghz and center 
+frequency of 9.6 Ghz), an angle of 0.5° sectors with ±0.25° extrapolation for a 0.0625° step in 
+order to yield doe-wide phase histories over 360° azimuth and 30°–60° elevation, exported as 
+MATLAB “data domes” with fully polarimetric channels (HH, HV, VV) for downstream imaging.
 
 \begin{figure}[t]
   \centering
@@ -135,11 +175,25 @@ CVDomes is a physics-calibrated pipeline where facet CADs are augmented with an 
 \subsection{RaySAR}
 \label{sec:raysar}
 
-RaySAR \cite{raysar} is a 3D SAR simulation tool that generates SAR-like images from detailed 3D object models. The framework is built on a modified version of the POV-Ray tracer, using it to simulate interactions between electromagnetic waves and surfaces of objects. Instead of transmitting pulses or collecting real echoes, RaySAR performs geometric ray tracing to determine which surfaces are illuminated and estimates their relative backscatter intensity based on local incident geometry being reflected back towards a radar sensor for each surface. This simulated backscatter is then projected into the SAR slant-range coordinate system which eventually produces realistic radar-like images that capture geometric effects such as layover, shadowing, and foreshortening. Users can define synthetic flight paths \cite{drozdowicz2021open} and viewing geometries to analyze how different radar positions influence the resulting image. In this way, RaySAR serves as a forward-modeling tool—it predicts how 3D scenes would appear in SAR imagery rather than simulating raw signal acquisition.
+RaySAR \cite{raysar} is a 3D SAR simulation tool that generates SAR-like images from detailed 3D 
+object models. The framework is built on a modified version of the POV-Ray tracer, using it to 
+simulate interactions between electromagnetic waves and surfaces of objects. Instead of 
+transmitting pulses or collecting real echoes, RaySAR performs geometric ray tracing to determine 
+which surfaces are illuminated and estimates their relative backscatter intensity based on local 
+incident geometry being reflected back towards a radar sensor for each surface. This simulated 
+backscatter is then projected into the SAR slant-range coordinate system which eventually produces 
+realistic radar-like images that capture geometric effects such as layover, shadowing, and 
+foreshortening. Users can define synthetic flight paths \cite{drozdowicz2021open} and viewing 
+geometries to analyze how different radar positions influence the resulting image. In this way, 
+RaySAR serves as a forward-modeling tool—it predicts how 3D scenes would appear in SAR imagery 
+rather than simulating raw signal acquisition.
 
 \section{Problem Statement}
 \label{sec:problem}
-A .obj file is a collection of $V$ vertices in 3D space, and $F$ triangle faces. Our goal is to generate a SAR/SONAR image generated from $P$ pulses. A signal needs to be simulated for each pulse from a known azimuth angle $a$ and elevation angle $e$. From the simulated signals, we can do further processing to produce SAR images or other analyses.
+A .obj file is a collection of $V$ vertices in 3D space, and $F$ triangle faces. Our goal is to 
+generate a SAR/SONAR image generated from $P$ pulses. A signal needs to be simulated for each 
+pulse from a known azimuth angle $a$ and elevation angle $e$. From the simulated signals, we can 
+do further processing to produce SAR images or other analyses.
 
 \section{Method}
 \label{sec:method}
@@ -167,8 +221,9 @@ to 1 to ensure law of conservation of energy.
 \begin{equation}
     R+S+A = 1
 \end{equation}
-Only scattering is considered for returned energy. Scattering occurs in two main ways: directional intensity 
-$I$ and diffuse scattering $D$. To satisfy the law of conservation of energy, once again the components must add up to 1.
+Only scattering is considered for returned energy. Scattering occurs in two main ways: directional 
+intensity $I$ and diffuse scattering $D$. To satisfy the law of conservation of energy, once again 
+the components must add up to 1.
 \begin{equation}
     D + I = 1
 \end{equation}
@@ -526,12 +581,29 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
 
 \section{Conclusion}
 \label{sec:conclusion}
-In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and configurable radar parameters such as wavelength, bandwidth, sample rate, and material properties. Our framework bridges the gap between flexibility, realism, and accessibility, addressing the limitations of existing open-source tools like \emph{RaySAR} and \emph{CVDomes}, which are constrained in mode support and rely on outdated software such as MATLAB.
+In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch 
+that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and configurable radar 
+parameters such as wavelength, bandwidth, sample rate, and material properties. Our framework 
+bridges the gap between flexibility, realism, and accessibility, addressing the limitations of 
+existing open-source tools like \emph{RaySAR} and \emph{CVDomes}, which are constrained in mode 
+support and rely on outdated software such as MATLAB.
 
-The proposed \emph{Interposummation} technique enables efficient low-pass filtering during the summation and interpolation of ray returns, effectively accounting for the radar system's bandwidth and sampling rate. This allows the simulator to generate physically meaningful signals without aliasing or distortion due to improper interpolation.
+The proposed \emph{Interposummation} technique enables efficient low-pass filtering during the 
+summation and interpolation of ray returns, effectively accounting for the radar system's 
+bandwidth and sampling rate. This allows the simulator to generate physically meaningful signals 
+without aliasing or distortion due to improper interpolation.
 
-We conducted a series of experiments using spotlight-mode SAR simulations over ShapeNet car models while varying key parameters such as radar bandwidth, wavelength, and sampling rate. These experiments demonstrate how system parameters influence image quality and signal fidelity. In particular, we observed that excessive oversampling of the energy–range scatter leads to poor signal quality and numerical artifacts. This can be mitigated either by reducing the effective bandwidth, which lowers the required sampling rate, or by increasing the ray density to maintain consistent energy coverage across the target surface.
-Future work will extend the simulator to support strip-map mode imaging, arbitrary flight paths, synthetic aperture SONAR, and simulations that include jamming. These enhancements will broaden the simulator's applicability to a wider set of radar and sonar scenarios and enable a more comprehensive evaluation of imaging algorithms under realistic operational conditions.
+We conducted a series of experiments using spotlight-mode SAR simulations over ShapeNet car models 
+while varying key parameters such as radar bandwidth, wavelength, and sampling rate. These 
+experiments demonstrate how system parameters influence image quality and signal fidelity. In 
+particular, we observed that excessive oversampling of the energy–range scatter leads to poor 
+signal quality and numerical artifacts. This can be mitigated either by reducing the effective 
+bandwidth, which lowers the required sampling rate, or by increasing the ray density to maintain 
+consistent energy coverage across the target surface.
+Future work will extend the simulator to support strip-map mode imaging, arbitrary flight paths, 
+synthetic aperture SONAR, and simulations that include jamming. These enhancements will broaden 
+the simulator's applicability to a wider set of radar and sonar scenarios and enable a more 
+comprehensive evaluation of imaging algorithms under realistic operational conditions.
 
 
 

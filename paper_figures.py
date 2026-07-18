@@ -260,5 +260,5 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
 
 
 if __name__ == '__main__':
-    run_paper_experiments(plot_db_scale=False)
+    # run_paper_experiments(plot_db_scale=False)
     generate_linear_sar_comparison_figure()
