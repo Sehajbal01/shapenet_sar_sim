@@ -422,6 +422,15 @@ $ is then given by
 \end{equation}
 where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. One may view the ideal band-limited digital signal in \ref{eq:interposummation} as $w(z)=sinc(z)$ which has no frequency domain side-lobes.
 
+Each transmit waveform therefore replaces the ideal sinc of interposummation with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly-decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression. In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because interposummation is agnostic to the choice of $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's pulse-compression waveform.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figs/window_analysis_bw10_fs2000.png}
+  \caption{Effective interposummation windows $w(z) = h(z) * x(z)$ for a sinc, Gaussian, LFM chirp, and Barker-13 transmit waveform, all with spatial bandwidth $B_s = 10$. Left: range impulse response (linear, normalized). Right: spectrum in dB, with dashed lines marking $\pm B_s/2$.}
+  \label{fig:effective-windows}
+\end{figure}
+
 \subsection{Coherent Integrtion}
 \begin{equation}
     s'(z) = s(z)e^{-j4\pi z/\lambda}

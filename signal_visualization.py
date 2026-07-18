@@ -225,8 +225,6 @@ def analyze_window_functions(
             ax_freq.set_ylim(db_floor, 3); ax_freq.grid(True, alpha=0.3); ax_freq.legend()
             ax_freq.set_xlim(-bw , +bw)
 
-            fig.suptitle('Window impulse response   bw=%g   fs=%g   region_radius=%g'
-                         % (bw, fs, region_radius))
             path = os.path.join(save_dir, 'window_analysis_bw%g_fs%g.png' % (bw, fs))
             savefig(path)
             print('saved %s' % path)
@@ -234,4 +232,4 @@ def analyze_window_functions(
 
 if __name__ == '__main__':
     # characterize the interpolate_signal window functions for the paper
-    analyze_window_functions(bw_list=(10.0, 20.0, 40.0), fs_list=(2000.0,))
+    analyze_window_functions(bw_list=(10.0,), fs_list=(2000.0,))

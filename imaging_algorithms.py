@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import sys
 import warnings
+from utils import dot_product
 
 def projected_CBP(
     signal,
@@ -235,8 +236,7 @@ def strip_map_imaging(  signal,
     if planar_wave:
         mag_trajectory = torch.norm(trajectory, dim=-1, keepdim=True)  # (N,P,1)
         forward_vector = -trajectory / mag_trajectory  # (N,P,3)
-        distance_to_pixel = torch.sum( trajectory.reshape(N,P,1,3) * forward_vector.reshape(N,P,1,3), dim=-1 )  - mag_trajectory # (N,P,T)
-        print('distance_to_pixel.shape: ', distance_to_pixel.shape)
+        distance_to_pixel = mag_trajectory + dot_product( coord_grid.reshape(N,1,T,3), forward_vector.reshape(N,P,1,3) )  # (N,P,T)
     else:
         distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
 
