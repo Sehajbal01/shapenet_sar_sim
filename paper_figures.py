@@ -100,14 +100,26 @@ def _paper_experiments():
         custom_title_strings=['Turbulence: %.2e' % v for v in noise_vals],
     )
 
+    # Transmit-waveform comparison — how the pulse / range-compression window shapes
+    # the image. window_func selects the effective range window used inside
+    # interpolate_signal: an ideal sinc, a Gaussian pulse, and the matched-filter
+    # responses of an LFM chirp and a Barker-13 phase code.
+    waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13']
+    waveform = dict(
+        name='waveform',
+        vary={'window_func': waveform_vals},
+        custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13'],
+    )
+
     return [
-        az_spread,
-        num_pulse,
-        fsbw,
-        snrdb,
-        wavelength,
-        trajectory_type,
-        trajectory_noise_var,
+        # az_spread,
+        # num_pulse,
+        # fsbw,
+        # snrdb,
+        # wavelength,
+        # trajectory_type,
+        # trajectory_noise_var,
+        waveform,
     ]
 
 
@@ -260,5 +272,7 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
 
 
 if __name__ == '__main__':
-    # run_paper_experiments(plot_db_scale=False)
-    generate_linear_sar_comparison_figure()
+    # Only the transmit-waveform stitched experiment is enabled; the other paper
+    # plots are commented out in _paper_experiments() and here.
+    run_paper_experiments(plot_db_scale=False)
+    # generate_linear_sar_comparison_figure()

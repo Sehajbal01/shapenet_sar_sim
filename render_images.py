@@ -21,6 +21,7 @@ from signal_visualization import signal_gif
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         spatial_bw = 64,
                         spatial_fs = 64,
+                        window_func = 'sinc',
                         debug_gif = False,
                         debug_gif_suffix = None,
                         snr_db = None,
@@ -119,6 +120,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                 region_radius,
                 torch.linalg.norm(true_trajectory[t, p], dim=-1).reshape(1),  # (1,)
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
+                window_func = window_func,
                 batch_size = None,
             )
             signals_list[t].append(sig_tp.squeeze(0))    # (Z,)
@@ -192,8 +194,9 @@ def render_random_image(
         debug_gif = False, 
         num_pulse = 120,
         azimuth_spread = 180,
-        spatial_fs = 64, 
+        spatial_fs = 64,
         spatial_bw = 64,
+        window_func = 'sinc',
         snr_db = None,
         wavelength = None,
         use_sig_magnitude=True,
@@ -278,6 +281,7 @@ def render_random_image(
 
                             spatial_bw = spatial_bw,
                             spatial_fs = spatial_fs,
+                            window_func = window_func,
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,

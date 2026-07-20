@@ -15,7 +15,7 @@ shift $((OPTIND - 1))
 # Each entry is "remote_subdir:local_path"
 FOLDERS=(
     "figures:/home/berian/Documents/remote-figures"
-    "latex:/home/berian/Documents/paper"
+    "latex:/home/berian/Documents/remote-paper"
 )
 
 RSYNC_ARGS=(-avz --progress)

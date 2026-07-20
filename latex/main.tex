@@ -515,6 +515,17 @@ In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength 
   \label{fig:wavelength}
 \end{figure}
 
+\subsection{Transmit Waveform}
+
+In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the ideal sinc of interposummation with the effective window $w(z)$ of the corresponding pulse-compression matched filter as described in Section \ref{sec:experiments} and illustrated in Figure \ref{fig:effective-windows}. We compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp, and Barker-13 reconstructions share a comparable range resolution but are accompanied by the range sidelobes characteristic of each waveform, which appear as faint replicas alongside the strong scatterers. The Gaussian pulse suppresses these sidelobes at the cost of a slightly wider mainlobe, yielding a cleaner but softer image. This confirms that our interposummation is agnostic to the choice of $w(z)$ and can emulate the range response of a real radar's pulse-compression waveform.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sar_stitched_waveform.png}
+  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
+  \label{fig:waveform}
+\end{figure}
+
 \subsection{Bandwidth and Ray Density}
 
 In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. The images are shown in dB scale with a shared DC maximum. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$, and to a lesser extent at $F_s = 256$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation. The result is a strange devolving of the constructed SAR image.
