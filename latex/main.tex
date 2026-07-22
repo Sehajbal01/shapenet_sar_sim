@@ -599,6 +599,25 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
   \label{fig:trajectory-noise}
 \end{figure}
 
+\subsection{Sphere Rendering}
+
+In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved scales---$1$, $1/2$, $1/4$, $1/8$, and $1/16$ of the mesh's native size---with the ground plane removed and the pulse count raised to $256$ to resolve the smaller targets. As the sphere shrinks, its return contracts toward the image center while preserving the curved signature of the illuminated surface, showing that the simulated response tracks object scale. Notably, the sidelobes of the response appear in all directions around the target: because the sphere backscatters equally from every observable angle, the sidelobe energy is distributed symmetrically, producing the concentric ring pattern visible around each target.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/sphere_size_comparison.png}
+  \\[-0.3em]
+  \makebox[0.48\textwidth]{%
+    \makebox[0.096\textwidth]{\small (a)}%
+    \makebox[0.096\textwidth]{\small (b)}%
+    \makebox[0.096\textwidth]{\small (c)}%
+    \makebox[0.096\textwidth]{\small (d)}%
+    \makebox[0.096\textwidth]{\small (e)}%
+  }
+  \caption{SAR reconstruction of a sphere at decreasing scale: (a) $1$, (b) $1/2$, (c) $1/4$, (d) $1/8$, and (e) $1/16$.}
+  \label{fig:sphere-size}
+\end{figure}
+
 \section{Conclusion}
 \label{sec:conclusion}
 In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch 

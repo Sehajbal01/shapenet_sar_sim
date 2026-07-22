@@ -3,8 +3,6 @@ modify accumulate scatters to only return the rays that hit stuff. No more retur
 
 Others
 
-- manual trajectory
-    - make image mosaic for the paper
 
 - simple object imaging
     - replicate sinc pattern in the image
@@ -15,10 +13,6 @@ Others
         - i suspect some imaging effects we observe aredue to the CBP running with the object in the center, which is not the case for the real world
         - they often run CBP on a large swath of land, then chip into individual targets
 
-- implement strip map mode simulation
-    DONE - implement the imaging function
-    - utilize phase in strip map
-    - make image mosaic for the paper
 
 - Produce images for CV domes object for comparative analysis
     DONE - play with the model
@@ -28,7 +22,7 @@ Others
     DONE - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
 
 - for arete
-    - Implement depth map rendering mode
+    DONE - Implement depth map rendering mode
     - Implement range-angle imaging that converts to range-range with various beam patterns
 
 - Adress reviewre concerns
