@@ -33,6 +33,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         trajectory_type = 'circular',
                         trajectory_noise_var = 0,
                         mesh_scale = None,
+                        make_ground = True,
                         num_bounce = 2,
                         object_x_flip = False,
                         object_rotate_xyz = (0.0, 0.0, 0.0),
@@ -60,10 +61,15 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     # set device
     device = poses.device
 
+    # override the object path if desired
+    if override_obj_path is not None:
+        print('Overriding object path to %s.'%override_obj_path)
+        file_name = override_obj_path
+
     # load the mesh and hardcode the material properties
     mesh, normals, material_properties = load_mesh( file_name,
                                                     device=device,
-                                                    make_ground=True,
+                                                    make_ground=make_ground,
                                                     scale=mesh_scale,
                                                     obj_raids = obj_raids,
                                                     ground_raids = ground_raids,
@@ -205,6 +211,8 @@ def render_random_image(
         cbp_batch_size = None,
         trajectory_type = 'circular',
         trajectory_noise_var = 0,
+        mesh_scale = None,
+        make_ground = True,
         num_bounce = 2,
         object_x_flip = False,
         object_rotate_xyz = (0.0, 0.0, 0.0),
@@ -295,6 +303,8 @@ def render_random_image(
                             cbp_batch_size = cbp_batch_size,
                             trajectory_type=trajectory_type,
                             trajectory_noise_var = trajectory_noise_var,
+                            mesh_scale = mesh_scale,
+                            make_ground = make_ground,
                             num_bounce = num_bounce,
                             object_x_flip = object_x_flip,
                             object_rotate_xyz = object_rotate_xyz,
@@ -428,8 +438,11 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         for param_name, param_vals in param_dict.items():
             kwargs[param_name] = param_vals[i]
 
-        # Add a numeric ID to ensure correct sorting
-        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{experiment_strings[i]}"
+        # Add a numeric ID to ensure correct sorting.
+        # Sanitize the title for use in a filename: '/' (and '\\') are path
+        # separators, so a title like "Scale: 1/2" must not leak into the path.
+        safe_title = experiment_strings[i].replace('/', '_').replace('\\', '_')
+        kwargs['suffix'] = f"{experiment_name}_{i:03d}_{safe_title}"
         
         # render the image with the current parameters
         render_random_image(**kwargs)
@@ -482,10 +495,9 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
             db_ticks = [db_floor] + [t for t in db_ticks if t > db_floor]
         cbar.set_ticks(db_ticks)
         cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
-        cbar.set_label('SAR amplitude (dB re shared max)')
     else:
         # Image data is linear amplitude, so show a simple linear colorbar.
-        cbar.set_label('SAR amplitude (linear)')
+        pass
 
     path = f'figures/sar_stitched_{experiment_name}.png'
     fig.savefig(path, dpi=200, bbox_inches='tight')

@@ -111,6 +111,20 @@ def _paper_experiments():
         custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13'],
     )
 
+    # sphere
+    scale_vals = [1/8, 1/16, 1/32, 1/64, 1/128]
+    override_obj_path = os.path.join('/workspace','berian','sphere.obj')
+    sphere = dict(
+        name='sphere_size',
+        vary={'mesh_scale': scale_vals},
+        overrides = {'override_obj_path': override_obj_path,
+                     # 'debug_gif': True,
+                     'make_ground': False,
+                    },
+        custom_title_strings=['Scale: 1','Scale: 1/2','Scale: 1/4','Scale: 1/8','Scale: 1/16'],
+        plot_db_scale=True,
+    )
+
     return [
         # az_spread,
         # num_pulse,
@@ -119,7 +133,8 @@ def _paper_experiments():
         # wavelength,
         # trajectory_type,
         # trajectory_noise_var,
-        waveform,
+        # waveform,
+        sphere,
     ]
 
 
@@ -153,174 +168,6 @@ def _normalize_sar_for_display(sar_image, rgb_shape):
     )
     return sar_image
 
-
-_DEFAULT_TITLE = object()
-
-
-def render_obj_sar_image(
-    obj_path,
-    elevation_deg,
-    azimuth_deg,
-    scale=None,
-    distance=1.3,
-    output_path='figures/obj_sar_render.png',
-    baseline=PAPER_BASELINE,
-    imaging_algorithm=None,
-    title=_DEFAULT_TITLE,
-):
-    """Render a SAR image of an arbitrary .obj file from a chosen viewing angle.
-
-    Args:
-        obj_path (str): path to the .obj mesh to render.
-        elevation_deg (float): camera elevation angle in degrees.
-        azimuth_deg (float): camera azimuth angle in degrees.
-        scale (float or None): optional uniform scale applied to the mesh
-            (forwarded to sar_render_image's mesh_scale). None leaves it unscaled.
-        distance (float): camera distance from the origin.
-        output_path (str): where to save the rendered SAR PNG.
-        baseline (dict): default rendering parameters (defaults to PAPER_BASELINE).
-        imaging_algorithm (str or None): override the baseline imaging algorithm.
-        title (str or None): axis title. Defaults to an "Az/El" string; pass
-            None or '' to render without any title.
-
-    Returns:
-        The output path the SAR image was saved to.
-    """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    # build a single camera pose from the chosen viewing angles
-    target_poses = generate_pose_mat(
-        azimuth_deg, elevation_deg, distance, device=device
-    ).reshape(1, 4, 4)
-
-    # pull the shared rendering parameters from the baseline config
-    render_kwargs = {
-        'spatial_bw': baseline['spatial_bw'],
-        'spatial_fs': baseline['spatial_fs'],
-        'snr_db': baseline['snr_db'],
-        'wavelength': baseline['wavelength'],
-        'use_sig_magnitude': baseline['use_sig_magnitude'],
-        'cbp_batch_size': baseline['cbp_batch_size'],
-        'trajectory_type': baseline['trajectory_type'],
-        'trajectory_noise_var': baseline['trajectory_noise_var'],
-        'num_bounce': baseline['num_bounce'],
-        'object_x_flip': baseline['object_x_flip'],
-        'object_rotate_xyz': baseline['object_rotate_xyz'],
-        'image_width': baseline['image_width'],
-        'image_height': baseline['image_height'],
-        'image_plane_width': baseline['image_plane_width'],
-        'image_plane_height': baseline['image_plane_height'],
-        'grid_width': baseline['grid_width'],
-        'grid_height': baseline['grid_height'],
-        'n_ray_width': baseline['n_ray_width'],
-        'n_ray_height': baseline['n_ray_height'],
-        'region_radius': baseline['region_radius'],
-        'obj_raids': baseline['obj_raids'],
-        'ground_raids': baseline['ground_raids'],
-    }
-
-    sar_image = sar_render_image(
-        obj_path,
-        baseline['num_pulse'],
-        target_poses,
-        baseline['azimuth_spread'],
-        mesh_scale=scale,
-        imaging_algorithm=imaging_algorithm or baseline['imaging_algorithm'],
-        **render_kwargs,
-    )
-
-    # normalize to an 8-bit grayscale image at native resolution and save
-    sar_vis = _normalize_sar_for_display(
-        sar_image, (baseline['image_height'], baseline['image_width'])
-    )
-
-    if title is _DEFAULT_TITLE:
-        title = 'Az: %.1f, El: %.1f' % (azimuth_deg, elevation_deg)
-
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.imshow(sar_vis, cmap='gray')
-    if title:
-        ax.set_title(title, fontsize=9)
-    ax.axis('off')
-    fig.savefig(output_path, dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('Saved SAR render to: %s' % output_path)
-    return output_path
-
-
-def render_sphere_size_comparison(
-    obj_path='/workspace/berian/sphere.obj',
-    elevation_deg=30.0,
-    azimuth_deg=45.0,
-    output_path='figures/sphere_size_comparison.png',
-    baseline=PAPER_BASELINE,
-    num_sizes=5,
-):
-    """Render an .obj at successively halved scales and stitch them side-by-side.
-
-    The first (largest) render uses quarter scale (scale=0.25); each subsequent
-    render halves the scale (1/8, 1/16, 1/32, 1/64, ...), for num_sizes renders
-    total. The absolute scale is arbitrary (quarter scale is simply the largest
-    that stays fully within the frame), so the paper presents these panels as
-    the relative sequence 1, 1/2, 1/4, 1/8, 1/16. The ground plane is dropped
-    and the baseline pulse count is quadrupled for these renders. The panels are
-    concatenated horizontally into a single comparison figure with no titles.
-
-    Args:
-        obj_path (str): path to the .obj mesh to render (defaults to sphere.obj).
-        elevation_deg (float): camera elevation angle in degrees.
-        azimuth_deg (float): camera azimuth angle in degrees.
-        output_path (str): where to save the stitched comparison PNG.
-        baseline (dict): default rendering parameters (defaults to PAPER_BASELINE).
-        num_sizes (int): number of successively halved renders (defaults to 5).
-
-    Returns:
-        The output path the stitched comparison image was saved to.
-    """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    # Drop the ground plane (ground_raids=None) and quadruple the pulse count.
-    baseline = dict(baseline, ground_raids=None, num_pulse=baseline['num_pulse'] * 4)
-
-    # Start at quarter scale, halving for each successive render (1/4, 1/8, ...).
-    # Presented in the paper as the relative sequence 1, 1/2, 1/4, 1/8, 1/16.
-    scales = [0.25 * 0.5 ** i for i in range(num_sizes)]
-
-    panel_paths = []
-    for i, scale in enumerate(scales):
-        panel_paths.append(render_obj_sar_image(
-            obj_path, elevation_deg, azimuth_deg,
-            scale=scale,
-            output_path='figures/sphere_size_%d.png' % i,
-            baseline=baseline,
-            title='',
-        ))
-
-    # Load all renders and match heights before stitching horizontally.
-    imgs = [cv2.imread(p) for p in panel_paths]
-    target_h = max(im.shape[0] for im in imgs)
-
-    def _match_height(img):
-        h, w = img.shape[:2]
-        if h == target_h:
-            return img
-        return cv2.resize(img, (int(round(w * target_h / h)), target_h))
-
-    imgs = [_match_height(im) for im in imgs]
-
-    separator = 255 * np.ones((target_h, 10, 3), dtype=np.uint8)
-    panels = []
-    for i, im in enumerate(imgs):
-        if i > 0:
-            panels.append(separator)
-        panels.append(im)
-    stitched = np.hstack(panels)
-
-    cv2.imwrite(output_path, stitched)
-    print('Saved sphere size comparison to: %s' % output_path)
-    return output_path
 
 
 def generate_linear_sar_comparison_figure(
@@ -441,7 +288,5 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
 
 
 if __name__ == '__main__':
-    # Render sphere.obj at five successively halved scales and stitch them.
-    render_sphere_size_comparison()
-    # run_paper_experiments(plot_db_scale=False)
+    run_paper_experiments(plot_db_scale=False)
     # generate_linear_sar_comparison_figure()

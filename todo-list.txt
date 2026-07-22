@@ -1,7 +1,5 @@
-TOP PRIORITY:
-modify accumulate scatters to only return the rays that hit stuff. No more returning zeros.
-
-Others
+- train a crossmodalitydiffusion for sarport dataset for the sony proposal
+- make a "range angle profile vs range dataset" for the L3 harris project
 
 
 - simple object imaging
