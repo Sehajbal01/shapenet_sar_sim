@@ -185,6 +185,7 @@ def sar_render_range_angle_image(
                                                     scale=mesh_scale,
                                                     obj_raids = obj_raids,
                                                     ground_raids = ground_raids,
+                                                    level_with_ground = level_with_ground,
                                                     x_flip = object_x_flip,
                                                     rotate_xyz = object_rotate_xyz,
                                                 )
