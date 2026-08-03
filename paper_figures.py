@@ -126,14 +126,14 @@ def _paper_experiments():
     )
 
     return [
-        # az_spread,
-        # num_pulse,
-        # fsbw,
-        # snrdb,
-        # wavelength,
-        # trajectory_type,
-        # trajectory_noise_var,
-        # waveform,
+        az_spread,
+        num_pulse,
+        fsbw,
+        snrdb,
+        wavelength,
+        trajectory_type,
+        trajectory_noise_var,
+        waveform,
         sphere,
     ]
 

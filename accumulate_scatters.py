@@ -323,8 +323,13 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                     1j * 2 * np.pi / wavelength * scatter_ranges[t][p]
                 )
 
-    # normalized by number of rays
-    scatter_energies = scatter_energies/n_ray_width/n_ray_height
+    # normalized by number of rays. scatter_energies is list[T][P] of 1-D tensors, so the
+    # division has to be applied per pulse (dividing the list itself raises TypeError).
+    # The divisor is the constant *transmitted* ray count, not the per-pulse hit count,
+    # which would vary with aspect and taper the aperture.
+    for t in range(T):
+        for p in range(P):
+            scatter_energies[t][p] = scatter_energies[t][p]/n_ray_width/n_ray_height
 
     return scatter_ranges, scatter_energies, debugging_maps if debug_gif else None
     #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse), dict (t,p)->(H,W) or None
