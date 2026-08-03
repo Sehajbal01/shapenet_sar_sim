@@ -51,17 +51,17 @@ def _paper_experiments():
     # Synthetic aperture arc length sweep — how azimuth coverage shapes the image.
     az_spread = dict(
         name='az_spread',
-        vary={'azimuth_spread': np.linspace(0, 360, 8).tolist()},
+        vary={'azimuth_spread': np.linspace(0, 360, 4).tolist()},
     )
 
     # Pulse count sweep — how along-track sampling density affects the image.
     num_pulse = dict(
         name='num_pulse',
-        vary={'num_pulse': np.linspace(2, 32, 8).astype(np.int32).tolist()},
+        vary={'num_pulse': np.linspace(2, 32, 4).astype(np.int32).tolist()},
     )
 
     # Spatial bandwidth / sample rate sweep — how BW=Fs affects range resolution.
-    bwfs_vals = [4, 8, 16, 32, 64, 128, 256, 512]
+    bwfs_vals = [4, 16, 128, 512]
     fsbw = dict(
         name='fsbw',
         vary={'spatial_bw': bwfs_vals, 'spatial_fs': bwfs_vals},
@@ -70,7 +70,7 @@ def _paper_experiments():
     )
 
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
-    snr_db_vals = np.linspace(0, 22, 8).tolist()
+    snr_db_vals = np.linspace(0, 22, 4).tolist()
     snrdb = dict(
         name='snrdb',
         vary={'snr_db': snr_db_vals},
@@ -78,7 +78,7 @@ def _paper_experiments():
     )
 
     # Wavelength sweep with magnitude-only CBP — how carrier wavelength shapes the image.
-    wavelength_vals = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2]
+    wavelength_vals = [0.01, 0.05, 0.5, 2]
     wavelength = dict(
         name='wavelength',
         vary={'wavelength': wavelength_vals},
@@ -93,7 +93,7 @@ def _paper_experiments():
     )
 
     # Trajectory noise sweep — how sensor position error along the path degrades the image.
-    noise_vals = [0] + (10 ** np.linspace(-5, -2, 7, endpoint=True)).tolist()
+    noise_vals = [0] + (10 ** np.linspace(-4, -2, 3, endpoint=True)).tolist()
     trajectory_noise_var = dict(
         name='trajectory_noise_var',
         vary={'trajectory_noise_var': noise_vals},

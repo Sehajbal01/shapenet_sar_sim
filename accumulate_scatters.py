@@ -333,3 +333,362 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
     return scatter_ranges, scatter_energies, debugging_maps if debug_gif else None
     #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse), dict (t,p)->(H,W) or None
+
+
+def points_visible_to_finite_sensor(points, sensor_position, mesh, face_normals,
+                                    octree=None, surface_bias=1e-3, batch_size=2**20):
+    '''
+    Perspective counterpart of points_visible_to_sensor: line of sight to a sensor at a
+    finite location rather than an infinitely far one.
+
+    Each point aims its shadow ray at the sensor itself, so the direction varies point to
+    point, and only geometry *between* the point and the sensor occludes it -- a hit beyond
+    the sensor is behind it and blocks nothing.
+
+    Inputs:
+        points (N,3): points in space to test
+        sensor_position (3,): location of the sensor, i.e. trajectory[t,p]
+        mesh (obj): pytorch3d mesh of the scene
+        face_normals (F,3): face normals (passed through to ray_trace)
+        octree: prebuilt Octree for the mesh, or None to build one here
+        surface_bias (float): distance to push each ray origin off its surface toward the
+            sensor, to avoid self-intersection (same issue as the bounce origins)
+        batch_size (int): max rays per ray_trace batch
+
+    Outputs:
+        visible (N,): boolean tensor, True where the point can see the sensor
+    '''
+    if octree is None:
+        octree = build_octree(mesh)
+
+    to_sensor = sensor_position.reshape(1, 3) - points          # (N, 3)
+    distance_to_sensor = to_sensor.norm(dim=-1)                 # (N,)
+    directions = to_sensor / distance_to_sensor.unsqueeze(-1).clamp_min(1e-12)  # (N, 3)
+
+    # bias origins toward the sensor so the shadow ray doesn't re-hit the surface the
+    # point sits on (leg~=0 self-intersection)
+    origins = points + surface_bias * directions  # (N, 3)
+
+    _, distance = ray_trace_oom_safe(origins, directions, mesh, face_normals,
+                                     octree=octree, batch_size=batch_size)  # (N,)
+
+    # a hit (distance >= 0) blocks the path only if it lands short of the sensor. Origins were
+    # already pushed surface_bias along the way, so that much less of the path remains.
+    visible = (distance < 0) | (distance > distance_to_sensor - surface_bias)  # (N,)
+    return visible
+
+
+def centered_linspace(span, n, device, flip=False):
+    '''
+    n evenly spaced samples covering `span`, centered on 0.
+
+    torch.linspace(-s/2, s/2, 1) returns the *left edge* rather than the center, which would
+    aim a single ray at the corner of the fan instead of down boresight; n==1 is special-cased.
+
+    inputs:
+        span (float): total extent covered by the samples
+        n (int): number of samples
+        flip (bool): return the samples in descending order (top->bottom image rows)
+    outputs:
+        offsets (n,): sample offsets about 0
+    '''
+    if n == 1:
+        return torch.zeros(1, device=device)
+    lo, hi = -span / 2, span / 2
+    if flip:
+        lo, hi = hi, lo
+    return torch.linspace(lo, hi, n, device=device)
+
+
+def accumulate_scatters_perspective(mesh, face_normals, material_properties,
+                                    trajectory,
+                                    wavelength=None,
+                                    fov_width_deg=30.0, fov_height_deg=30.0,
+                                    n_ray_width=1, n_ray_height=1,
+                                    num_bounce = 1,
+                                    second_bounce_batch_size = 2**100,
+                                    surface_bias = 1e-3,
+                                    debug_gif = False,
+                                ):
+    '''
+    Perspective clone of accumulate_scatters: returns the energy, range, and azimuth angle of
+    every scatter, for a sensor that is a *point* rather than an infinitely distant plane.
+
+    Four things differ from accumulate_scatters, all consequences of that one change:
+      1. Rays. All first-bounce rays leave the sensor position and fan out over
+         fov_width_deg x fov_height_deg, instead of leaving a parallel grid of origins.
+      2. Range. Path lengths are true distances to and from the sensor point, instead of
+         distances to the sensor plane under a planar-wavefront model.
+      3. Direction back to the sensor. Evaluated per scatter (it varies across the scene)
+         rather than once per pulse, both for the returned energy and for occlusion culling.
+      4. Spreading loss. Energies are attenuated by 1/r^2 over the round-trip range r, which
+         a planar wavefront does not suffer.
+
+    The fan is parameterized spherically rather than as a pinhole image plane, so a ray's
+    azimuth is exactly its azimuth offset and the angular sampling stays uniform -- range
+    angle imaging bins on that angle, so an even fan matters more than a flat image plane.
+
+    inputs:
+        mesh (obj): pytorch3d mesh object of the 3d model
+        face_normals (F,3): the normal vector of each face on the mesh
+        material_properties (F,5): the r,a,i,d,s of each face of the mesh
+        trajectory (T,P,3): the locations of the sensor for each pulse for each target scene
+        wavelength (float): the wavelength of the radar signal, if none, there will be no complex value in the energy
+        fov_width_deg/fov_height_deg (float): angular extent of the ray fan, in azimuth (about
+            the sensor's up axis) and elevation (about its right axis)
+        n_ray_width/height (int): the number of rays in the fan along the azimuth and elevation axis.
+        surface_bias (float): distance to push each bounce's outgoing ray origin off the surface
+            along the normal, to prevent self-intersection (spurious leg~=0 re-hits). Should be
+            small relative to scene features but large relative to float error at the scene scale.
+
+    outputs:
+        range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only).
+            Round-trip path length, so ~2x the distance to the scatter on a first bounce
+        energy (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only),
+            attenuated by the 1/r^2 spreading loss over that round-trip range
+        azimuth (T,)[P,][R']: list of lists of 1-D tensors; scatter azimuth in degrees off
+            boresight, positive toward the sensor's right vector
+        debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None. The energy map
+            is the raw first-bounce energy, before the spreading loss and ray-count normalization
+    '''
+    device = trajectory.device
+    T = trajectory.shape[0]  # no. of camera views
+    P = trajectory.shape[1]  # no. of pulses per view
+
+    def sync_time():
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        return time.perf_counter()
+
+    t_overall_start = sync_time()
+    t_setup_total   = 0.0
+    t_bounce_totals = [0.0] * num_bounce
+
+    # diagnostics for cos(theta/2): sqrt() of a negative silently yields NaN rather than
+    # raising, so track how often it happens and how far below zero the argument gets.
+    n_nan_cos       = 0
+    n_nan_arg       = 0
+    n_cos_total     = 0
+    min_sqrt_arg    = float('inf')
+
+    t_octree_start = sync_time()
+    octree = build_octree(mesh)
+    t_octree_build = sync_time() - t_octree_start
+
+    debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True
+
+    scatter_ranges = []
+    scatter_energies = []
+    scatter_azimuths = []
+    for t in range(T):
+        scatter_ranges.append([])
+        scatter_energies.append([])
+        scatter_azimuths.append([])
+        for p in range(P):
+
+            t_b1_start = sync_time()
+
+            # compute camera axes from pose matrix (columns: right, up, forward)
+            cam_azimuth_deg, cam_elevation_deg, cam_distance = cartesian_to_spherical(trajectory[t, p])
+            pose           = generate_pose_mat(cam_azimuth_deg, cam_elevation_deg, cam_distance, device=device)
+            right_vector   = pose[:3, 0]  # (3,)
+            up_vector      = pose[:3, 1]  # (3,)
+            forward_vector = pose[:3, 2]  # (3,)
+
+            # set up the ray fan: every ray leaves the sensor point, spread over the field of view
+            az_offsets = centered_linspace(fov_width_deg  * np.pi/180, n_ray_width,  device)                # (W,) left→right
+            el_offsets = centered_linspace(fov_height_deg * np.pi/180, n_ray_height, device, flip=True)     # (H,) top→bottom
+            grid_el, grid_az = torch.meshgrid(el_offsets, az_offsets, indexing='ij')  # (H, W)
+            first_bounce_directions = (
+                  (torch.cos(grid_el) * torch.cos(grid_az)).unsqueeze(-1) * forward_vector
+                + (torch.cos(grid_el) * torch.sin(grid_az)).unsqueeze(-1) * right_vector
+                + torch.sin(grid_el).unsqueeze(-1)                        * up_vector
+            )  # (H, W, 3), already unit length
+
+            prev_directions = first_bounce_directions.reshape(-1, 3)                                    # (H*W, 3)
+            prev_origins    = trajectory[t, p].reshape(1, 3).expand(prev_directions.shape[0], -1)       # (H*W, 3)
+            cumulative_legs = torch.zeros(prev_origins.shape[0], device=device)                         # (H*W,)
+            cumulative_reflectivity = torch.ones(prev_origins.shape[0], device=device)                  # (H*W,) product of r of prior bounces
+            outbound_range  = None  # sensor -> first hit, shared by every later bounce of that ray
+
+            scatter_ranges[t].append(torch.empty(0, device=device))
+            scatter_energies[t].append(torch.empty(0, device=device))
+            scatter_azimuths[t].append(torch.empty(0, device=device))
+
+            t_setup_total += sync_time() - t_b1_start
+
+            # ray-trace all bounces
+            for b in range(1, num_bounce + 1):
+                t_b_start = sync_time()
+                hit_indices, distance = ray_trace_oom_safe(prev_origins, prev_directions, mesh, face_normals, octree=octree, batch_size=second_bounce_batch_size)
+
+                # always account for the time spent in this bounce's ray-trace call
+                t_b_elapsed = sync_time() - t_b_start
+                t_bounce_totals[b-1] += t_b_elapsed
+
+                hit_b = distance >= 0
+                # if no rays hit for this bounce, nothing else to do; report time above
+                if not hit_b.any():
+                    break
+
+                # filter state to rays that hit
+                prev_origins    = prev_origins[hit_b]
+                prev_directions = prev_directions[hit_b]
+                distance        = distance[hit_b]
+                hit_indices     = hit_indices[hit_b]
+                cumulative_legs = cumulative_legs[hit_b]
+                cumulative_reflectivity = cumulative_reflectivity[hit_b]
+                if outbound_range is not None:
+                    outbound_range = outbound_range[hit_b]
+
+                hit_b_pos = prev_origins + distance.unsqueeze(-1) * prev_directions  # (N, 3)
+
+                # vector from each scatter back to the sensor. Unlike the planar-wavefront
+                # model this is a per-scatter quantity, since the sensor is a finite point.
+                to_sensor = trajectory[t, p].reshape(1, 3) - hit_b_pos                          # (N, 3)
+                return_leg = to_sensor.norm(dim=-1)                                             # (N,)
+                sensor_direction = to_sensor / return_leg.unsqueeze(-1).clamp_min(1e-12)        # (N, 3)
+
+                n = face_normals[hit_indices]  # (N, 3)
+
+                # orient each normal to face the incoming ray (outward on the side the ray came
+                # from). Mesh triangle winding is not guaranteed consistent, so face_normals may
+                # point either way; the reflection below is invariant to n's sign, but poly_input
+                # (dot(n, next_directions)) is linear in n and would otherwise flip sign on
+                # back-facing normals, collapsing the directional-scatter denominator and spiking
+                # the returned energy. prev_directions points into the surface, so an outward
+                # normal has dot(prev_directions, n) <= 0; only flip the strictly back-facing ones
+                # (a where() rather than -sign(), so an exactly grazing dot==0 leaves n intact
+                # instead of being zeroed).
+                n = torch.where(dot_product(prev_directions, n, keepdim=True) > 0, -n, n)
+
+                # calculate reflected ray direction
+                next_directions = prev_directions - 2 * dot_product(prev_directions, n, keepdim=True) * n
+
+                # calculate returned energy
+                s = material_properties[hit_indices, 4]
+                i = material_properties[hit_indices, 2]
+                d = material_properties[hit_indices, 3]
+                poly_input = dot_product(n, next_directions)
+
+                # half-angle identity: cos(theta/2) = sqrt((1 + cos theta)/2), where theta is the
+                # angle between the reflected ray and the direction back to the sensor. Both are
+                # unit vectors, so the argument is mathematically in [0, 1]; it only dips below 0
+                # by float error when the reflected ray points ~directly away from the sensor
+                # (cos theta = -1), where the true value is 0. NaN -> 0 is that exact limit.
+                sqrt_arg = (1 + dot_product(sensor_direction, next_directions)) / 2
+                cos_theta_over_2 = torch.sqrt(sqrt_arg)
+                n_nan_cos   += int(torch.isnan(cos_theta_over_2).sum())
+                n_cos_total += cos_theta_over_2.numel()
+                # an already-NaN argument means NaN arrived from upstream (a bad normal or
+                # direction), which is a real bug rather than boundary rounding; count it apart
+                # and keep it out of the min so it cannot masquerade as a benign undershoot.
+                n_nan_arg    += int(torch.isnan(sqrt_arg).sum())
+                min_sqrt_arg  = min(min_sqrt_arg,
+                                    float(torch.nan_to_num(sqrt_arg, nan=float('inf')).min()))
+                cos_theta_over_2 = torch.nan_to_num(cos_theta_over_2, nan=0.0)
+                energy_b = cumulative_reflectivity * s * (
+                    (i * cos_theta_over_2**5) /
+                    directional_scatter_polynomial_alpha5(poly_input) +
+                    d / 2 / np.pi
+                )  # (N,) attenuated by the reflectivity of all prior bounces
+
+                # store per-pixel depth and energy maps for the first bounce (misses get -1 / 0)
+                if b == 1 and debug_gif:
+                    HW = n_ray_height * n_ray_width
+                    depth_map_flat = torch.full((HW,), -1.0, device=device, dtype=distance.dtype)
+                    depth_map_flat[hit_b] = distance
+                    energy_map_flat = torch.zeros(HW, device=device, dtype=energy_b.dtype)
+                    energy_map_flat[hit_b] = energy_b
+                    debugging_maps[(t, p)] = {
+                        'depth':  depth_map_flat.reshape(n_ray_height, n_ray_width),
+                        'energy': energy_map_flat.reshape(n_ray_height, n_ray_width),
+                    }
+
+                # round-trip range: the outbound leg from the sensor to the first hit, plus any
+                # inter-bounce legs, plus the leg straight back to the sensor. First-bounce rays
+                # start at the sensor itself, so their traced distance *is* the outbound range,
+                # and b=1 gives 2x it.
+                if b == 1:
+                    outbound_range = distance  # cumulative_legs stays 0
+                else:
+                    cumulative_legs = cumulative_legs + distance
+                total_range = outbound_range + cumulative_legs + return_leg  # (N,)
+
+                # azimuth of each scatter as seen from the sensor: the angle off boresight in the
+                # forward/right plane, positive toward the sensor's right vector. For a first
+                # bounce this recovers the launch azimuth of the ray.
+                azimuth_b = torch.atan2(dot_product(-to_sensor, right_vector),
+                                        dot_product(-to_sensor, forward_vector)) * 180 / np.pi  # (N,)
+
+                # cull occluded scatters: a hit only returns energy if its path back to the
+                # sensor is unobstructed. First-bounce hits are the nearest intersection along
+                # the incoming ray, so they are always visible; only later bounces can be
+                # occluded (e.g. a ground point hidden behind the object). This filters what we
+                # store, NOT the ray that propagates onward to the next bounce.
+                if b > 1:
+                    visible = points_visible_to_finite_sensor(
+                        hit_b_pos, trajectory[t, p], mesh, face_normals,
+                        octree=octree, surface_bias=surface_bias, batch_size=second_bounce_batch_size,
+                    )  # (N,)
+                else:
+                    visible = torch.ones(hit_b_pos.shape[0], dtype=torch.bool, device=device)
+
+                scatter_ranges[t][-1]   = torch.cat((scatter_ranges[t][-1],   total_range[visible]))
+                scatter_energies[t][-1] = torch.cat((scatter_energies[t][-1], energy_b[visible]))
+                scatter_azimuths[t][-1] = torch.cat((scatter_azimuths[t][-1], azimuth_b[visible]))
+
+                # attenuate future bounces by this surface's reflectivity
+                r = material_properties[hit_indices, 0]
+                cumulative_reflectivity = cumulative_reflectivity * r
+
+                # reflect for next bounce
+                prev_directions = next_directions
+
+                # bias the new origin off the surface along the normal so the reflected ray
+                # cannot spuriously re-hit the surface it just left. Without this, a reflected
+                # ray that grazes the (flat, finely tessellated) ground re-intersects an adjacent
+                # coplanar triangle at leg~=0, dumping a duplicate full-energy scatter at the
+                # first-bounce range. n faces the incoming ray, so the reflected ray always
+                # departs into the +n half-space and pushing along +n is always the correct side.
+                prev_origins = hit_b_pos + surface_bias * n
+
+                t_bounce_totals[b-1] += sync_time() - t_b_start
+
+    t_overall = sync_time() - t_overall_start
+    bounce_times = '  '.join(f'bounce{b+1}={t:.3f}s' for b, t in enumerate(t_bounce_totals))
+    print(f"accumulate_scatters_perspective: overall={t_overall:.3f}s  octree={t_octree_build:.3f}s  setup={t_setup_total:.3f}s  {bounce_times}")
+    if n_nan_cos:
+        print(f"accumulate_scatters_perspective: cos(theta/2) NaN -> 0 on {n_nan_cos}/{n_cos_total} scatters "
+              f"({100*n_nan_cos/n_cos_total:.3f}%); min sqrt arg={min_sqrt_arg:.3e}")
+        if n_nan_arg:
+            print(f"accumulate_scatters_perspective: WARNING {n_nan_arg} of those had a NaN argument (not "
+                  f"boundary rounding) — check face normals / ray directions for NaN")
+
+    # spreading loss. A finite sensor is a point source, so its energy density falls off with
+    # distance -- unlike the planar-wavefront model, where every scatter sits on the same
+    # wavefront and the loss is a constant that folds into the overall scale. r is the scatter's
+    # full round-trip path length, so this attenuates far returns relative to near ones within
+    # the same pulse, which is what makes the near field of a range angle image bright.
+    for t in range(T):
+        for p in range(P):
+            scatter_energies[t][p] = scatter_energies[t][p] / scatter_ranges[t][p].clamp_min(1e-12)**2
+
+    # apply complex value to the energy according to wavelength
+    if wavelength is not None:
+        for t in range(T):
+            for p in range(P):
+                scatter_energies[t][p] = scatter_energies[t][p] * torch.exp(
+                    1j * 2 * np.pi / wavelength * scatter_ranges[t][p]
+                )
+
+    # normalized by number of rays. scatter_energies is list[T][P] of 1-D tensors, so the
+    # division has to be applied per pulse (dividing the list itself raises TypeError).
+    # The divisor is the constant *transmitted* ray count, not the per-pulse hit count,
+    # which would vary with aspect and taper the aperture.
+    for t in range(T):
+        for p in range(P):
+            scatter_energies[t][p] = scatter_energies[t][p]/n_ray_width/n_ray_height
+
+    return scatter_ranges, scatter_energies, scatter_azimuths, debugging_maps if debug_gif else None
+    #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse) x3, dict (t,p)->(H,W) or None
