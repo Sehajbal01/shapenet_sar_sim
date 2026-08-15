@@ -231,7 +231,7 @@ def make_transmit_waveform(window_func, spatial_bw, oversample=32, time_bandwidt
     return x, z, dz
 
 
-def interpolate_signal(scatter_z, scatter_e,# range_near, range_far,
+def interpolate_signal(scatter_z, scatter_e,
         region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
         batch_size = None, window_func = 'sinc',
