@@ -323,6 +323,27 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     #      list[T][P] of 1-D tensors (R' hit rays, varies per ping) x3, dict (t,p)->(H,W) or None
 
 
+def target_vertices(object_mesh, material_properties):
+    '''
+    Vertices of the target alone, with load_mesh's 200-unit ground plane left out.
+
+    load_mesh appends the ground's faces after the object's and gives them their own material
+    row, so "same material as face 0" separates the two. Falls back to every vertex when no
+    ground was added or both materials match.
+
+    inputs:
+        object_mesh (obj): pytorch3d mesh of the scene, object faces first
+        material_properties (F,5): the r,a,i,d,s of each face
+    outputs:
+        verts (V',3): the object's vertices
+    '''
+    faces = object_mesh.faces_packed()
+    is_object = (material_properties == material_properties[0:1]).all(dim=-1)  # (F,)
+    if bool(is_object.all()):
+        return object_mesh.verts_packed()
+    return object_mesh.verts_packed()[faces[is_object].reshape(-1).unique()]
+
+
 def side_scan_sonar_image(
     mean_sensor_position,
     track_length,
@@ -346,10 +367,6 @@ def side_scan_sonar_image(
 
         ):
 
-    # flying the region radius covers the whole scene along track without overrunning it
-    if track_length is None:
-        track_length = region_radius
-
     # figure out each sensor position. The track is a straight line through
     # mean_sensor_position, running along the sensor's right vector, so the object stays off
     # to one side of the platform the whole way -- that sidelong look is what makes this a
@@ -359,6 +376,27 @@ def side_scan_sonar_image(
     world_up        = torch.tensor([0.0, 0.0, 1.0], device=device)                  # +z
     track_direction = torch.nn.functional.normalize(
         torch.linalg.cross(line_of_sight, world_up), dim=-1)                        # (3,) sensor's right
+
+    # a ray at depression theta meets the flat seafloor at one-way range altitude/sin(theta)
+    altitude             = mean_sensor_position[2]
+    boresight_depression = torch.asin(-line_of_sight[2].clamp(-1.0, 1.0))
+    half_fan             = np.pi / 180 * elevation_fov_deg / 2
+    # clamp the shallow edge below horizontal, since a fan edge above it never meets the ground
+    min_depression = (boresight_depression - half_fan).clamp_min(np.pi / 180)
+    max_depression = (boresight_depression + half_fan).clamp_max(np.pi / 2)
+    swath_near     = altitude / torch.sin(max_depression)                           # () one-way
+    swath_far      = altitude / torch.sin(min_depression)                           # () one-way
+
+    # an unset radius images the whole swath and nothing else
+    if region_radius is None:
+        region_radius = float((swath_far - swath_near) / 2)
+
+    # fly the object's own along-track extent plus a beam footprint of run-in and run-out
+    if track_length is None:
+        along_track    = target_vertices(object_mesh, material_properties) @ track_direction  # (V',)
+        beam_footprint = 2 * float(torch.linalg.norm(mean_sensor_position)) * np.tan(
+            np.pi / 180 * azimuth_beam_width_deg / 2)
+        track_length   = float(along_track.max() - along_track.min()) + 2 * beam_footprint
 
     # ping offsets along the track, centered on mean_sensor_position. centered_linspace puts
     # a lone ping at the track center rather than at its left edge, which is where
@@ -408,8 +446,9 @@ def side_scan_sonar_image(
         for energies_t, azimuths_t in zip(scatter_energies, scatter_azimuths)
     ]  # list[T][P] of (R',)
 
-    # interpolate signal, on one range window shared by every ping so the columns line up
-    window_center = torch.linalg.norm(mean_sensor_position).reshape(1)  # (1,)
+    # interpolate signal, on one range window shared by every ping so the columns line up.
+    # Anchored on the swath near edge, so the first row is the first return that can exist.
+    window_center = (swath_near + region_radius).reshape(1)  # (1,)
     signals = []
     sample_z = []
     for ranges_t, energies_t in zip(scatter_ranges, scatter_energies):
@@ -461,7 +500,7 @@ def render_side_scan_image(
         azimuth_beam_width_deg = 1.0,
         num_ray_width = 64,
         num_ray_height = 512,
-        region_radius = 1.0,
+        region_radius = None,
 
         # signal / physics
         wavelength = None,
@@ -481,7 +520,7 @@ def render_side_scan_image(
         make_ground = True,
         level_with_ground = True,
         object_x_flip = False,
-        object_rotate_xyz = (0.0, 0.0, 0.0),
+        object_rotate_xyz = (90.0, 0.0, 0.0),
 
         # material properties
         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
@@ -502,11 +541,14 @@ def render_side_scan_image(
         suffix (str): name for the saved files, defaults to '<pose_num>_<obj_id>'
         override_obj_path (str): render this .obj instead of the selected object's mesh
         track_length (float): along-track extent the platform flies, centered on the pose
-            position; defaults to region_radius when None
+            position; when None, the object's own along-track extent plus a beam footprint of
+            run-in and run-out on each end
         num_pings (int): pings along the track, i.e. columns of the image
         elevation_fov_deg (float): vertical extent of the ray fan, about the boresight
         azimuth_beam_width_deg (float): FWHM of the along-track beam, which sets the along-track
             resolution; the ray fan spans 3x this
+        region_radius (float): half the range extent imaged, starting at the near edge of the
+            swath; when None, exactly the whole swath the elevation fan illuminates
         num_ray_width/num_ray_height (int): rays per ping across the fan
         db (bool): display the panel in dB relative to its brightest pixel, floored at db_floor,
             as plot_range_angle_image does. A linear stretch is all seafloor and specular glint,
@@ -552,8 +594,10 @@ def render_side_scan_image(
     print('Center azimuth (deg):   ', az)
     print('Center elevation (deg): ', el)
 
-    # the track runs along cross(line of sight, +z), which collapses for a nadir look
-    assert abs(el) < 85.0, 'pose elevation %.1f deg is too close to vertical for a side scan track' % el
+    # the track runs along cross(line of sight, +z), which collapses for a nadir look, and the
+    # swath geometry needs the platform above the seafloor rather than below it
+    assert el < 85.0, 'pose elevation %.1f deg is too close to vertical for a side scan track' % el
+    assert el > 0.0,  'pose elevation %.1f deg puts the sensor below the seafloor' % el
 
     mean_sensor_position = pose_info[0].reshape(3)  # (3,) camera center of the rgb view
 

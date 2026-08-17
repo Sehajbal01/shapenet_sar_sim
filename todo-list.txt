@@ -23,6 +23,14 @@
     DONE - Implement depth map rendering mode
     - Implement range-angle imaging that converts to range-range with various beam patterns
 
+- side scan sonar
+    - add a TVG so the waterfall is displayable, gain = (R/R_ref)^n per range row
+        - seafloor falls ~70 dB across the swath, so near range saturates and far range is black
+        - n=2 undoes the spreading the sim models (r^2 over the round trip, not r^4), ~5.3
+          flattens this geometry, 4 is the textbook number. expose n, 0 = off
+    - far swath not converged at num_ray_height=512, ~15x off at one-way range 4.5 vs 2048 rays
+        - uniform-in-angle elevation spacing oversamples near range and starves far
+
 - Adress reviewre concerns
     - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
     - i have some slides about this in my updates presentation
