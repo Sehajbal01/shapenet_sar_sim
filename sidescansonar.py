@@ -140,9 +140,6 @@ def side_scan_sonar_image(
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
                 window_func = window_func,
             )
-            print('window_center: ',window_center)
-            print('region_radius: ',region_radius)
-            print('window_center.shape: ',window_center.shape)
             signals_t.append(signal_p.squeeze(0))      # (Z,)
             sample_z_t.append(sample_z_p.squeeze(0))   # (Z,)
         signals.append(torch.stack(signals_t))         # (P,Z)
@@ -153,6 +150,7 @@ def side_scan_sonar_image(
     # time varying gain: a receiver ramp of R^n against the seafloor's fall with range. Absolute
     # rather than referenced to a range, so it rescales the image as well as tilting it. n=0 turns it off.
     if tvg_exponent:
+        print('tvg_exponent: tvg_exponent')
         signals = signals * sample_z ** tvg_exponent  # (T,P,Z)
 
     # per-ping debug movie: depth map, energy map, range-vs-energy scatter, and the interpolated

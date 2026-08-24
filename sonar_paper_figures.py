@@ -21,7 +21,7 @@ SONAR_PAPER_BASELINE = dict(
     # track geometry
     track_length = 2.0,
     num_pings = 64,
-    elevation_fov_deg = 60.0,
+    elevation_fov_deg = 45.0,
     azimuth_beam_width_deg = 0.1,
     num_ray_width = 3,
     num_ray_height = 256,
@@ -36,9 +36,9 @@ SONAR_PAPER_BASELINE = dict(
     # signal / physics
     wavelength = None,
     num_bounce = 1,
-    spherical_spread = True,
+    spherical_spread = False,
     water_absorption = 0.0,
-    tvg_exponent = 8.0,
+    tvg_exponent = 0.0,
     spatial_bw = 64,
     spatial_fs = 32,
     window_func = 'sinc',
