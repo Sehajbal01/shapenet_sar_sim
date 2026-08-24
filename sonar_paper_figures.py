@@ -49,9 +49,9 @@ SONAR_PAPER_BASELINE = dict(
     # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
     # sweeps' stitched figures and debug_side_scan.py's render_side_scan_image call read these
     # off the baseline
-    compression = 'linear',  # 'linear' | 'db' | 'asinh'
+    compression = 'asinh',  # 'linear' | 'db' | 'asinh'
     db_floor = -60.0,
-    asinh_k_ratio = 0.1,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
+    asinh_k_ratio = 0.005,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
 
     # mesh
     make_ground = True,
@@ -86,9 +86,25 @@ def _sonar_experiments():
         custom_title_strings=['TVG Exponent: %.1f' % t for t in tvg_vals],
     )
 
+    # asinh softening scale sweep -- k = asinh_k_ratio * ref sets where the display rolls from
+    # linear to logarithmic. Small k pushes almost everything above the seafloor into the log
+    # regime (dB-like, texture-heavy); k near 1 keeps most of the image linear, close to the
+    # 'linear' panel. Logarithmic spacing for the same reason as beam width. The raw amplitude
+    # this sweep renders is identical panel to panel -- only display changes -- but it still goes
+    # through render_side_scan_image so this sweep reuses multi_param_sonar_experiment like the
+    # others instead of a one-off display-only path.
+    asinh_k_vals = np.logspace(-3, 0, 5).tolist()
+    asinh_k = dict(
+        name='asinh_k',
+        vary={'asinh_k_ratio': asinh_k_vals},
+        overrides={'compression': 'asinh'},
+        custom_title_strings=['asinh k/ref: %.2g' % k for k in asinh_k_vals],
+    )
+
     return [
         beam_width,
         tvg,
+        asinh_k,
     ]
 
 
@@ -148,7 +164,9 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
             be the same length
         default_kwargs (dict): the baseline passed to render_side_scan_image. Its
             'compression'/'db_floor'/'asinh_k_ratio' entries also set the stitched figure's
-            display, so SONAR_PAPER_BASELINE is the one place that decides all three
+            display, so SONAR_PAPER_BASELINE is the one place that decides all three -- unless
+            param_dict itself varies one of those three (e.g. an asinh_k_ratio sweep), in which
+            case each panel is displayed with its own swept value instead of the baseline's
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
     outputs:
@@ -188,11 +206,19 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     else:
         experiment_strings = custom_title_strings
 
-    # generate the image for each parameter value
+    # generate the image for each parameter value, keeping each panel's own display kwargs -- a
+    # sweep can vary compression/db_floor/asinh_k_ratio themselves, not just physics params, so
+    # the stitched figure must not assume every panel shares the baseline's display settings
+    panel_display_kwargs = []
     for i in range(n_experiments):
         kwargs = default_kwargs.copy()
         for param_name, param_vals in param_dict.items():
             kwargs[param_name] = param_vals[i]
+        panel_display_kwargs.append(dict(
+            compression=kwargs.get('compression', 'linear'),
+            db_floor=kwargs.get('db_floor', -60.0),
+            asinh_k_ratio=kwargs.get('asinh_k_ratio', 0.1),
+        ))
 
         # a numeric id keeps the panels in sweep order once they are read back off disk, and the
         # title is stripped down to filename-safe characters before it joins the suffix
@@ -202,15 +228,16 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
         print('=== %s [%d/%d] %s ===' % (experiment_name, i + 1, n_experiments, experiment_strings[i]))
         render_side_scan_image(**kwargs)
 
-    # find all raw side scan amplitude arrays saved for this experiment, in sweep order
+    # find all raw side scan amplitude arrays saved for this experiment, in sweep order. the
+    # numeric id embedded in the suffix above is the panel's index i, so it also indexes
+    # panel_display_kwargs
     npy_files = [f for f in os.listdir('figures')
                  if 'side_scan_amp_%s' % experiment_name in f and f.endswith('.npy')]
     npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
-    sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
+    sorted_ids, sorted_npy = zip(*sorted(zip(npy_ids, npy_files)))
 
-    panels = [_panel(np.load(os.path.join('figures', f)), compression=compression,
-                      db_floor=db_floor, asinh_k_ratio=asinh_k_ratio)
-              for f in sorted_npy]
+    panels = [_panel(np.load(os.path.join('figures', f)), **panel_display_kwargs[idx])
+              for idx, f in zip(sorted_ids, sorted_npy)]
 
     # every panel is already normalized to its own peak, so the scale runs to that peak either way
     vmin, vmax = (db_floor, 0.0) if compression == 'db' else (0.0, 1.0)
@@ -231,7 +258,10 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
         cbar.set_ticklabels(['%d dB' % t for t in db_ticks])
         cbar.set_label('dB below panel peak', fontsize=8)
     elif compression == 'asinh':
-        cbar.set_label('asinh-compressed amplitude (k=%.2g x ref)' % asinh_k_ratio, fontsize=8)
+        if 'asinh_k_ratio' in param_dict:  # k varies per panel -- see panel titles for each value
+            cbar.set_label('asinh-compressed amplitude (k/ref varies by panel)', fontsize=8)
+        else:
+            cbar.set_label('asinh-compressed amplitude (k=%.2g x ref)' % asinh_k_ratio, fontsize=8)
     else:
         cbar.set_label('amplitude / panel peak', fontsize=8)
 
