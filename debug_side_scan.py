@@ -3,9 +3,11 @@ Debug harness for sidescansonar.render_side_scan_image.
 
 Runs the geometry the paper figures are rendered from -- the defaults are sonar_paper_figures'
 SONAR_PAPER_BASELINE, imported rather than copied so the debug output cannot drift away from the
-panels it is meant to explain -- with the debug output turned on. Writes the per-ping debug movie,
-the interpolated signals as one column per ping, and the rgb-beside-sonar panel with its raw
-amplitudes. Any render_side_scan_image keyword passed here overrides the baseline.
+panels it is meant to explain -- with the debug output turned on. Writes the per-ping debug movie
+(debug_gif), the interpolated signals as one column per ping (debug_columns), and the
+rgb-beside-sonar panel with its raw amplitudes. debug_gif and debug_columns are independent, so
+the columns still can be checked without waiting on the movie -- pass debug_gif=False to skip it.
+Any render_side_scan_image keyword passed here overrides the baseline.
 '''
 import os
 
@@ -25,8 +27,8 @@ def debug_side_scan(
     ):
 
     kwargs = dict(SONAR_PAPER_BASELINE)
+    kwargs.update(suffix=suffix, device=device, debug_gif=True, debug_columns=True)
     kwargs.update(overrides)
-    kwargs.update(suffix=suffix, device=device, debug_gif=True)
 
     if kwargs.get('pose_num') is None:  # lowest numbered pose, so reruns keep the same geometry
         dataset_dir = '/workspace/data/srncars/cars_train/'
@@ -50,5 +52,8 @@ if __name__ == '__main__':
             spatial_fs = 64,    # 2x SONAR_PAPER_BASELINE's 32
             spatial_bw = 128,   # 2x SONAR_PAPER_BASELINE's 64
             region_radius = 2.0,  # 2x SONAR_PAPER_BASELINE's 1.0
+            sensor_distance = 10.0,  # both poses sit at range ~1.3; push out to sonar-scale range
+            elevation_fov_deg = 15.0,  # baseline's 45 deg * 1.3/10, so the fan covers the same ground swath at the new range
             # db/db_floor come from SONAR_PAPER_BASELINE unless overridden here
+            debug_gif = False,  # skip the slow per-ping movie; debug_columns still runs
         )

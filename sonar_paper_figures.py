@@ -17,6 +17,7 @@ SONAR_PAPER_BASELINE = dict(
     # reads as a sweep when the geometry is the one thing that does not change between panels.
     obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
     pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
+    sensor_distance = None,  # None keeps the pose file's own range; set to override it
 
     # track geometry
     track_length = 2.0,

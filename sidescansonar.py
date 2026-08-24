@@ -50,6 +50,7 @@ def side_scan_sonar_image(
     window_func = 'sinc',
     use_sig_magnitude = True,
     debug_gif = False,
+    debug_columns = False,
     debug_gif_suffix = None,
 
         ):
@@ -153,12 +154,13 @@ def side_scan_sonar_image(
         print('tvg_exponent: tvg_exponent')
         signals = signals * sample_z ** tvg_exponent  # (T,P,Z)
 
-    # per-ping debug movie: depth map, energy map, range-vs-energy scatter, and the interpolated
-    # signal. signal_gif only ever looks at track 0, so feed it one track at a time rather than
-    # indexing T away here.
-    if debug_gif:
+    # debug outputs, independently switched: debug_columns is one still (fast), debug_gif is a
+    # per-ping movie (slow) -- split so the still can be checked without waiting on the movie.
+    if debug_gif or debug_columns:
         T = signals.shape[0]
         base_suffix = 'side_scan' if debug_gif_suffix is None else 'side_scan_%s' % debug_gif_suffix
+
+    if debug_columns:
         # the same signals as one still, pings as columns, before the ground plane projection.
         # the depression angle is what lets it put its range axis on the ground, to the same
         # scale as the along-track axis
@@ -166,6 +168,11 @@ def side_scan_sonar_image(
         elevation_angle_deg = float(torch.asin(-line_of_sight[2].clamp(-1.0, 1.0))) * 180 / np.pi
         signal_column_image(signals, sample_z, ping_offsets, suffix = base_suffix,
                             depression_deg = elevation_angle_deg)
+
+    # per-ping debug movie: depth map, energy map, range-vs-energy scatter, and the interpolated
+    # signal. signal_gif only ever looks at track 0, so feed it one track at a time rather than
+    # indexing T away here.
+    if debug_gif:
         for t in range(T):
             track_suffix = '' if T == 1 else '_track%02d' % t
             maps_t = {(0, p): debugging_maps[(t, p)] for p in range(num_pings)}
@@ -199,6 +206,7 @@ def render_side_scan_image(
         device = 'cuda',
 
         override_obj_path = None,
+        sensor_distance = None,
 
         # track geometry
         track_length = 2.0,
@@ -229,6 +237,7 @@ def render_side_scan_image(
 
         # debug
         debug_gif = False,
+        debug_columns = False,
 
         # display
         db = True,
@@ -260,6 +269,9 @@ def render_side_scan_image(
         pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
         suffix (str): name for the saved files, defaults to '<pose_num>_<obj_id>'
         override_obj_path (str): render this .obj instead of the selected object's mesh
+        sensor_distance (float): overrides the pose's sensor range from the origin, keeping its
+            azimuth and elevation. The sensor position is normalized then scaled to this distance;
+            None keeps the pose file's own distance
         track_length (float): along-track extent the platform flies, centered on the pose
             position. Keep it at least image_plane_width: a track shorter than the patch is wide
             leaves the outer image columns with no ping abeam of them, and they come out zero
@@ -286,9 +298,10 @@ def render_side_scan_image(
             as plot_range_angle_image does. A linear stretch is all seafloor and specular glint,
             since the returns span ~100 dB
         db_floor (float): black point of the dB display
-        debug_gif (bool): also write the debug outputs: a per-ping movie of the depth map,
-            energy map, range-vs-energy scatter, and interpolated signal, as sar_render_image
-            does, plus a still of the interpolated signals with one column per ping
+        debug_gif (bool): also write a per-ping movie of the depth map, energy map,
+            range-vs-energy scatter, and interpolated signal, as sar_render_image does
+        debug_columns (bool): also write a still of the interpolated signals with one column
+            per ping. Independent of debug_gif -- much faster, since it skips the per-ping movie
         remaining arguments: as in side_scan_sonar_image / render_images.render_random_image
 
     outputs:
@@ -335,6 +348,9 @@ def render_side_scan_image(
     assert el > 0.0,  'pose elevation %.1f deg puts the sensor below the seafloor' % el
 
     mean_sensor_position = pose_info[0].reshape(3)  # (3,) camera center of the rgb view
+    if sensor_distance is not None:
+        # normalize then rescale so azimuth/elevation (a ratio of components) survive the change
+        mean_sensor_position = torch.nn.functional.normalize(mean_sensor_position, dim=-1) * sensor_distance
 
     mesh, normals, material_properties = load_mesh( mesh_path,
                                                     device=device,
@@ -373,6 +389,7 @@ def render_side_scan_image(
         window_func = window_func,
         use_sig_magnitude = use_sig_magnitude,
         debug_gif = debug_gif,
+        debug_columns = debug_columns,
         debug_gif_suffix = suffix,
     )  # (T,H,W), (H,), (W,)
 
