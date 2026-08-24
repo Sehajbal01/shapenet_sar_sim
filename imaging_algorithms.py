@@ -169,6 +169,119 @@ def CBP_2D( pf,
     return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
 
 
+def side_scan_ground_plane_image(
+        signal,
+        range_bins,
+        ping_offsets,
+        sensor_pose,
+        image_width = 64,
+        image_height = 64,
+        image_plane_width = 1,
+        image_plane_height = 1,
+    ):
+    '''
+    Project a side scan's pings onto the ground plane.
+
+    Lining the pings up as columns gives an image in (range, along-track), which is not a
+    picture of the seafloor: range compresses towards nadir and stretches at the far edge of
+    the swath. This resamples them onto a flat patch of seafloor centered on the origin, so a
+    pixel is a place rather than a time of arrival.
+
+    Every ping shares one orientation and differs only in where it sits along the track, so one
+    change of basis into the sensor frame gives a ground pixel both of its lookups: the cross
+    range picks the ping abeam of it, and the range that ping measures picks the sample.
+
+    inputs:
+        signal (T,P,Z): received signal of each ping, real or complex
+        range_bins (T,Z): one-way range of each sample, one evenly spaced window for all pings
+        ping_offsets (P,): along-track offset of each ping, evenly spaced
+        sensor_pose (T,4,4) or (4,4): columns (right, up, forward, mean sensor position), the
+            orientation every ping shares. right is the track direction and lies flat
+        image_width/image_height (int): pixels across and down the ground patch
+        image_plane_width/image_plane_height (float): extent of the patch in world units, along
+            the ground right and ground forward directions
+
+    outputs:
+        image (T,H,W): the ground plane image, near range at the bottom row
+        row_coords (H,): ground forward offset of each row, far range first
+        col_coords (W,): ground right offset of each column, low ping offset first
+
+    Dimensions:
+        T: number of tracks
+        P: number of pings per track
+        Z: number of range samples per ping
+        H: image height
+        W: image width
+    '''
+    # get shapes
+    T,P,Z = signal.shape
+    H = image_height
+    W = image_width
+    device = signal.device
+    dtype = range_bins.dtype
+
+    assert P > 1, 'ground plane projection interpolates between pings, so it needs at least 2'
+    assert Z > 1, 'ground plane projection interpolates between range samples, so it needs at least 2'
+
+    # pose vectors shared by every ping
+    sensor_pose = sensor_pose.reshape(T,4,4)
+    right       = sensor_pose[:, :3, 0]  # (T,3)
+    up          = sensor_pose[:, :3, 1]  # (T,3)
+    forward     = sensor_pose[:, :3, 2]  # (T,3)
+    mean_sensor_position = sensor_pose[:, :3, 3]  # (T,3)
+
+    # ground axes: right already lies flat, and z cross right completes it pointing away from the track
+    world_up       = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=right.dtype)  # (3,)
+    ground_right   = torch.nn.functional.normalize(right, dim=-1)  # (T,3)
+    ground_forward = torch.nn.functional.normalize(
+        -torch.linalg.cross(ground_right, world_up.expand_as(ground_right)), dim=-1)  # (T,3)
+
+    # world position of every pixel, with row 0 at the far edge so near range lands at the bottom
+    r = torch.linspace(0, 1, H, device=device, dtype=dtype)  # (H,)
+    c = torch.linspace(0, 1, W, device=device, dtype=dtype)  # (W,)
+    row_coords = (0.5 - r) * image_plane_height  # (H,)
+    col_coords = (c - 0.5) * image_plane_width   # (W,)
+    pixel_xyz = (row_coords.reshape(1,H,1,1) * ground_forward.reshape(T,1,1,3) +
+                 col_coords.reshape(1,1,W,1) * ground_right.reshape(T,1,1,3))  # (T,H,W,3)
+
+    # into the sensor frame as [cross range, height off boresight, forward range]
+    basis = torch.stack([right, up, forward], dim=-1)  # (T,3,3), columns
+    relative_position = (pixel_xyz - mean_sensor_position.reshape(T,1,1,3)).reshape(T,H*W,3,1)  # (T,H*W,3,1)
+    sensor_xyz = (torch.linalg.inv(basis).reshape(T,1,3,3) @ relative_position).reshape(T,H,W,3)  # (T,H,W,3)
+    cross_range = sensor_xyz[..., 0]  # (T,H,W) which ping is abeam of the pixel
+    # the abeam ping sits at the pixel's cross range, so its range is the other two components
+    slant_range = torch.linalg.norm(sensor_xyz[..., 1:], dim=-1)  # (T,H,W)
+
+    # fractional sample and ping index of each pixel
+    range_step = (range_bins[:, 1] - range_bins[:, 0]).reshape(T,1,1)  # (T,1,1)
+    ping_step  = ping_offsets[1] - ping_offsets[0]  # ()
+    sample_index = (slant_range - range_bins[:, :1].reshape(T,1,1)) / range_step  # (T,H,W)
+    ping_index   = (cross_range - ping_offsets[0]) / ping_step  # (T,H,W)
+
+    # bilinear interpolation over the (P,Z) grid, zero outside it
+    z0 = torch.floor(sample_index)  # (T,H,W)
+    p0 = torch.floor(ping_index)    # (T,H,W)
+    z_weight = sample_index - z0  # (T,H,W)
+    p_weight = ping_index - p0    # (T,H,W)
+    z0 = z0.long()
+    p0 = p0.long()
+    flat_signal = signal.reshape(T,P*Z)  # (T,P*Z)
+    image = torch.zeros(T, H, W, dtype=signal.dtype, device=device)  # (T,H,W)
+    for dz in (0, 1):
+        for dp in (0, 1):
+            z_index = z0 + dz  # (T,H,W)
+            p_index = p0 + dp  # (T,H,W)
+            in_grid = (z_index >= 0) & (z_index < Z) & (p_index >= 0) & (p_index < P)  # (T,H,W)
+            weight  = (z_weight if dz else 1 - z_weight) * (p_weight if dp else 1 - p_weight) * in_grid  # (T,H,W)
+            corner  = torch.gather(
+                flat_signal, 1,
+                (p_index.clamp(0, P-1) * Z + z_index.clamp(0, Z-1)).reshape(T,H*W)
+            ).reshape(T,H,W)  # (T,H,W)
+            image = image + weight.to(corner.dtype) * corner  # (T,H,W)
+
+    return image, row_coords, col_coords
+
+
 def strip_map_imaging(  signal,
                         wavelength,
                         trajectory,

@@ -10,7 +10,8 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
-from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory, accumulate_scatters
+from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
+from accumulate_scatters import accumulate_scatters
 
 from imaging_algorithms import projected_CBP, strip_map_imaging
 

@@ -9,8 +9,8 @@ smears across the angle axis according to how the beam is shaped.
 
 Pipeline:
     1. accumulate_scatters_perspective ray-traces the scene from the sensor point, returning the
-       range, energy, and azimuth angle of every scatter. Energies carry the 1/r^2 spreading
-       loss of a point source, so near returns outshine far ones within a single image.
+       range, energy, and azimuth angle of every scatter. Energies carry the 1/(4*pi*r^2)
+       spreading loss of a point source, so near returns outshine far ones within a single image.
     2. Ranges are binned into rows, near range at the bottom of the image, far range at the top.
     3. Each scatter is spread over the angle axis by a Gaussian of the beam width, and every
        scatter in a row is summed into that row's pixels.

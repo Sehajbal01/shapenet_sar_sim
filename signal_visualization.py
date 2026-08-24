@@ -12,17 +12,15 @@ from utils import get_next_path, savefig
 from signal_simulation import interpolate_signal
 
 
-def plot_energy_scatter(ax, fig, ranges_p, energies_p, sz_min, sz_max, e_min, e_max):
+def plot_energy_scatter(ax, fig, ranges_p, energies_p):
     """Plot range vs energy as a raw scatter of points."""
     ax.scatter(ranges_p, energies_p, s=1)
     ax.set_title('Scatter')
     ax.set_xlabel('Range')
     ax.set_ylabel('Energy')
-    ax.set_xlim(sz_min, sz_max)
-    ax.set_ylim(e_min, e_max)
 
 
-def plot_energy_hexbin(ax, fig, ranges_p, energies_p, sz_min, sz_max, e_min, e_max,
+def plot_energy_hexbin(ax, fig, ranges_p, energies_p,
                        gridsize=80, cmap='viridis', count_min=1, count_max=None):
     """Plot range vs energy as a hexbin, coloring each cell by point count.
 
@@ -33,14 +31,11 @@ def plot_energy_hexbin(ax, fig, ranges_p, energies_p, sz_min, sz_max, e_min, e_m
     colorbar stays constant in an animation.
     """
     hb = ax.hexbin(ranges_p, energies_p, gridsize=gridsize, cmap=cmap,
-                   mincnt=1, extent=(sz_min, sz_max, e_min, e_max),
-                   vmin=count_min, vmax=count_max)
+                   mincnt=1, vmin=count_min, vmax=count_max)
     fig.colorbar(hb, ax=ax, label='count')
     ax.set_title('Hexbin (point count)')
     ax.set_xlabel('Range')
     ax.set_ylabel('Energy')
-    ax.set_xlim(sz_min, sz_max)
-    ax.set_ylim(e_min, e_max)
 
 
 # registry of available range-vs-energy viewing methods for signal_gif
@@ -57,13 +52,6 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
 
     sig_min, sig_max = signals.min().item(), signals.max().item()
 
-    # precompute energy axis limits across all pulses
-    all_energies_cat = torch.cat([torch.abs(all_energies[0][p]) for p in range(P)])
-    e_min, e_max = all_energies_cat.min().item(), all_energies_cat.max().item()
-
-    # scatter x-axis matches sample_z extent (sensor_distance ± region_radius)
-    sz_min, sz_max = sample_z.min().item(), sample_z.max().item()
-
     if scatter_view not in SCATTER_VIEWS:
         raise ValueError("scatter_view must be one of %s, got %r" % (list(SCATTER_VIEWS), scatter_view))
     plot_energy_view = SCATTER_VIEWS[scatter_view]
@@ -76,8 +64,7 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         for p in range(P):
             ranges_p   = all_ranges[0][p].cpu().numpy() / 2
             energies_p = torch.abs(all_energies[0][p]).cpu().numpy()
-            hb = tmp_ax.hexbin(ranges_p, energies_p, gridsize=80, mincnt=1,
-                               extent=(sz_min, sz_max, e_min, e_max))
+            hb = tmp_ax.hexbin(ranges_p, energies_p, gridsize=80, mincnt=1)
             counts = hb.get_array()
             if counts.size:
                 count_max = max(count_max, counts.max())
@@ -110,7 +97,7 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         ax01.set_title('Energy Map')
         ax01.axis('off')
 
-        plot_energy_view(ax10, fig, ranges_p, energies_p, sz_min, sz_max, e_min, e_max, **view_kwargs)
+        plot_energy_view(ax10, fig, ranges_p, energies_p, **view_kwargs)
 
         ax11.plot(sz, sig)
         ax11.set_title('Signal')
@@ -140,6 +127,106 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         path = f'figures/dm_em_sc_si_{suffix}.gif' if suffix is not None else get_next_path('figures/dm_em_sc_si.gif')
         imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
         print('GIF saved to: ', path)
+
+
+def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
+                        db=True, db_floor=-60.0, depression_deg=None):
+    '''
+    Save the interpolated signals as an image, one ping per column, left to right.
+
+    This is the raw (range, along-track) picture that side_scan_ground_plane_image resamples
+    onto the seafloor. It is not a picture of the ground -- range compresses towards nadir and
+    stretches at the far edge of the swath -- but it shows what the pings actually contain, so
+    a feature in the ground plane image can be traced back to a ping or blamed on the
+    projection.
+
+    inputs:
+        signals (T,P,Z): interpolated signal of each ping, real or complex
+        sample_z (T,P,Z) or (T,Z): one-way range of each sample; every ping shares one range
+            window, so ping 0's samples label the whole axis
+        ping_offsets (P,): along-track offset of each ping; column index is used when None
+        suffix (str): name for the saved file(s), numbered when None
+        db (bool): display in dB relative to the brightest sample, floored at db_floor, as
+            render_side_scan_image does. The returns span ~100 dB, so a linear stretch is all
+            near range
+        db_floor (float): black point of the dB display
+        depression_deg (float): boresight depression below horizontal. Given it, the range axis
+            is projected to ground range and the two axes are drawn at one shared scale, so a
+            metre down the image is a metre across it. Without it the range axis stays slant
+            and the image is stretched to fill the figure
+
+    outputs:
+        paths (list[str]): the files written, one per track
+    '''
+    signals = torch.abs(signals)  # (T,P,Z)
+    T, P, Z = signals.shape
+
+    if sample_z.dim() == 3:
+        sample_z = sample_z[:, 0, :]  # (T,Z) every ping shares the one range window
+
+    labelled_track = ping_offsets is not None
+    if ping_offsets is None:
+        ping_offsets = torch.arange(P, device=signals.device)
+
+    x = ping_offsets.detach().cpu().numpy()  # (P,)
+    paths = []
+    for t in range(T):
+        # (P,Z) -> (Z,P), so the ping axis runs left to right and range runs down the rows
+        columns = signals[t].detach().cpu().numpy().T  # (Z,P)
+        z = sample_z[t].detach().cpu().numpy()         # (Z,)
+
+        peak = columns.max()
+        if db and peak > 0:
+            columns = 20 * np.log10(np.clip(columns / peak, 10 ** (db_floor / 20), None))
+            color_label, vmin, vmax = 'Amplitude (dB re peak)', db_floor, 0.0
+        else:
+            color_label, vmin, vmax = 'Amplitude', None, None
+
+        # slant range is not a ground distance: the altitude is fixed and the seafloor flat, so
+        # ground range g = sqrt(R^2 - h^2) and dg/dR = 1/cos(depression). Linearizing that about
+        # the window center keeps the rows evenly spaced, which imshow's extent needs, and puts
+        # the window's region_radius half width at region_radius/cos(depression) on the ground.
+        ground_scale = depression_deg is not None and labelled_track
+        if ground_scale:
+            cos_el   = float(np.cos(np.pi / 180 * depression_deg))
+            z_center = (z[0] + z[-1]) / 2                # the window is centered on the target
+            y        = (z - z_center) / cos_el           # (Z,) ground range offset from target
+            y_label, aspect = 'Ground range offset from target', 'equal'
+        else:
+            y, y_label, aspect = z, 'One way range', 'auto'
+
+        # half a step of margin, so imshow centers the edge pixels on their samples
+        dx = (x[1] - x[0]) / 2 if P > 1 else 0.5
+        dy = (y[1] - y[0]) / 2 if Z > 1 else 0.5
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        # origin='lower' puts near range at the bottom, matching side_scan_ground_plane_image.
+        # aspect='equal' is what makes the two axes share a scale once y is a ground distance
+        im = ax.imshow(columns, cmap='gray', origin='lower', aspect=aspect,
+                       vmin=vmin, vmax=vmax,
+                       extent=[x[0] - dx, x[-1] + dx, y[0] - dy, y[-1] + dy])
+        # extra pad leaves the slant range axis room to sit between the image and the bar
+        fig.colorbar(im, ax=ax, label=color_label, pad=0.12 if ground_scale else 0.05)
+        ax.set_title('Interpolated signals, one column per ping')
+        ax.set_xlabel('Along track offset' if labelled_track else 'Ping')
+        ax.set_ylabel(y_label)
+        if ground_scale:
+            # keep the slant range readable, since that is the axis the samples actually live on.
+            # default args bind this track's window, so a later track cannot rebind the closure
+            slant = ax.secondary_yaxis(
+                'right',
+                functions=(lambda g, c = cos_el, z0 = z_center: z0 + g * c,
+                           lambda r, c = cos_el, z0 = z_center: (r - z0) / c))
+            slant.set_ylabel('One way range')
+
+        track_suffix = '' if T == 1 else '_track%02d' % t
+        path = ('figures/signal_columns_%s%s.png' % (suffix, track_suffix)
+                if suffix is not None else get_next_path('figures/signal_columns.png'))
+        savefig(path)
+        print('Signal column image saved to: ', path)
+        paths.append(path)
+
+    return paths
 
 
 def analyze_window_functions(

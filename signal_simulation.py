@@ -19,6 +19,7 @@ import math
 import time
 from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
 from ray_tracer_v2 import ray_trace, build_octree
+# re-exported for callers that reach it through this module rather than importing it directly
 from accumulate_scatters import accumulate_scatters
 
 
