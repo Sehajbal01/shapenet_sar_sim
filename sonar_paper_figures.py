@@ -10,6 +10,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from sidescansonar import render_side_scan_image
+from display_compression import asinh_compress
 
 
 SONAR_PAPER_BASELINE = dict(
@@ -45,10 +46,12 @@ SONAR_PAPER_BASELINE = dict(
     window_func = 'sinc',
     use_sig_magnitude = True,
 
-    # display -- the one place db/db_floor are decided; both the paper sweeps' stitched figures
-    # and debug_side_scan.py's render_side_scan_image call read these off the baseline
-    db = False,
+    # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
+    # sweeps' stitched figures and debug_side_scan.py's render_side_scan_image call read these
+    # off the baseline
+    compression = 'linear',  # 'linear' | 'db' | 'asinh'
     db_floor = -60.0,
+    asinh_k_ratio = 0.1,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
 
     # mesh
     make_ground = True,
@@ -92,9 +95,9 @@ def _sonar_experiments():
 SONAR_PAPER_EXPERIMENTS = _sonar_experiments()
 
 
-def _panel(amplitude, db=False, db_floor=-60.0):
+def _panel(amplitude, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
     '''
-    One panel normalized to its own peak, as linear amplitude or in dB.
+    One panel normalized to its own peak, as linear amplitude, in dB, or asinh-compressed.
 
     Each panel is normalized to itself rather than to a scale shared across the figure, because
     both sweeps move the absolute level by orders of magnitude and neither one means anything.
@@ -104,20 +107,31 @@ def _panel(amplitude, db=False, db_floor=-60.0):
 
     inputs:
         amplitude (H,W): raw side scan amplitude, as saved by render_side_scan_image
-        db (bool): display in dB below the panel's peak instead of linear amplitude. The returns
-            span ~100 dB, so linear is all specular glint and near range, and dB is what shows
-            the seafloor and the shadow
-        db_floor (float): black point of the dB display, ignored when db is False
+        compression (str): 'linear' peak-normalizes. 'db' shows dB below the panel's own peak --
+            the returns span ~100 dB, so linear is all specular glint and near range, and dB is
+            what shows the seafloor and the shadow. 'asinh' arcsinh-compresses (asinh_compress)
+            referenced to the panel's own 99.9th percentile amplitude -- stays linear near zero
+            and logarithmic past asinh_k_ratio * that reference, so it shows seafloor texture
+            like dB does but without a hard floor clipping the faint end to black
+        db_floor (float): black point of the dB display, ignored unless compression == 'db'
+        asinh_k_ratio (float): asinh softening scale as a fraction of the panel's own reference
+            level, ignored unless compression == 'asinh'
     outputs:
-        panel (H,W): amplitude in [0,1], or dB below the panel's own peak clipped to [db_floor,0]
+        panel (H,W): amplitude in [0,1] for 'linear'/'asinh', or dB below the panel's own peak
+            clipped to [db_floor,0] for 'db'
     '''
     amplitude = np.asarray(amplitude, dtype=np.float32)
     peak = float(amplitude.max())
     if peak <= 0.0:  # an all-dark panel has no peak to normalize against
-        return np.full_like(amplitude, db_floor if db else 0.0)
-    if not db:
-        return amplitude / peak
-    return np.clip(20.0 * np.log10(np.clip(amplitude / peak, 1e-12, None)), db_floor, 0.0)
+        return np.full_like(amplitude, db_floor if compression == 'db' else 0.0)
+    if compression == 'db':
+        return np.clip(20.0 * np.log10(np.clip(amplitude / peak, 1e-12, None)), db_floor, 0.0)
+    if compression == 'asinh':
+        ref = float(np.percentile(amplitude, 99.9))
+        if ref <= 0.0:  # nearly all-dark panel: 99.9th percentile can round to 0 even with peak > 0
+            return np.zeros_like(amplitude)
+        return asinh_compress(amplitude, asinh_k_ratio * ref, ref)
+    return amplitude / peak
 
 
 def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
@@ -132,16 +146,17 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     inputs:
         param_dict (dict): parameter name -> list of values, one entry per panel. Every list must
             be the same length
-        default_kwargs (dict): the baseline passed to render_side_scan_image. Its 'db'/'db_floor'
-            entries also set the stitched figure's display, so SONAR_PAPER_BASELINE is the one
-            place that decides both
+        default_kwargs (dict): the baseline passed to render_side_scan_image. Its
+            'compression'/'db_floor'/'asinh_k_ratio' entries also set the stitched figure's
+            display, so SONAR_PAPER_BASELINE is the one place that decides all three
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
     outputs:
         path (str): the stitched figure written
     '''
-    db = default_kwargs.get('db', False)
+    compression = default_kwargs.get('compression', 'linear')
     db_floor = default_kwargs.get('db_floor', -60.0)
+    asinh_k_ratio = default_kwargs.get('asinh_k_ratio', 0.1)
 
     lengths = [len(vals) for vals in param_dict.values()]
     if not all(l == lengths[0] for l in lengths):
@@ -193,11 +208,12 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
     sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
 
-    panels = [_panel(np.load(os.path.join('figures', f)), db=db, db_floor=db_floor)
+    panels = [_panel(np.load(os.path.join('figures', f)), compression=compression,
+                      db_floor=db_floor, asinh_k_ratio=asinh_k_ratio)
               for f in sorted_npy]
 
     # every panel is already normalized to its own peak, so the scale runs to that peak either way
-    vmin, vmax = (db_floor, 0.0) if db else (0.0, 1.0)
+    vmin, vmax = (db_floor, 0.0) if compression == 'db' else (0.0, 1.0)
 
     n_image = len(panels)
     fig, axes = plt.subplots(1, n_image, figsize=(2.2 * n_image, 2.7), squeeze=False)
@@ -209,11 +225,13 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     fig.subplots_adjust(right=0.9, wspace=0.05)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax)
-    if db:
+    if compression == 'db':
         db_ticks = [t for t in [0, -10, -20, -30, -40, -50, -60] if t >= db_floor]
         cbar.set_ticks(db_ticks)
         cbar.set_ticklabels(['%d dB' % t for t in db_ticks])
         cbar.set_label('dB below panel peak', fontsize=8)
+    elif compression == 'asinh':
+        cbar.set_label('asinh-compressed amplitude (k=%.2g x ref)' % asinh_k_ratio, fontsize=8)
     else:
         cbar.set_label('amplitude / panel peak', fontsize=8)
 

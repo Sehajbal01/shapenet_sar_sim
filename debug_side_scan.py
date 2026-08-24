@@ -54,6 +54,7 @@ if __name__ == '__main__':
             region_radius = 2.0,  # 2x SONAR_PAPER_BASELINE's 1.0
             sensor_distance = 10.0,  # both poses sit at range ~1.3; push out to sonar-scale range
             elevation_fov_deg = 15.0,  # baseline's 45 deg * 1.3/10, so the fan covers the same ground swath at the new range
-            # db/db_floor come from SONAR_PAPER_BASELINE unless overridden here
+            # compression/db_floor/asinh_k_ratio come from SONAR_PAPER_BASELINE unless overridden here
+            compression = 'asinh',  # 'linear' | 'db' | 'asinh'
             debug_gif = False,  # skip the slow per-ping movie; debug_columns still runs
         )

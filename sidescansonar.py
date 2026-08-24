@@ -18,7 +18,7 @@ from signal_simulation import interpolate_signal, load_mesh
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
 from imaging_algorithms import side_scan_ground_plane_image
 from signal_visualization import signal_gif, signal_column_image
-
+from display_compression import asinh_compress, to_asinh, compute_dataset_reference
 
 
 def side_scan_sonar_image(
@@ -52,6 +52,11 @@ def side_scan_sonar_image(
     debug_gif = False,
     debug_columns = False,
     debug_gif_suffix = None,
+
+    # display -- only used by the debug_columns still; the returned images are raw amplitude
+    compression = 'db',
+    db_floor = -60.0,
+    asinh_k_ratio = 0.1,
 
         ):
 
@@ -167,7 +172,9 @@ def side_scan_sonar_image(
         # how far the boresight sits above horizontal, which is what scales the still's range axis
         elevation_angle_deg = float(torch.asin(-line_of_sight[2].clamp(-1.0, 1.0))) * 180 / np.pi
         signal_column_image(signals, sample_z, ping_offsets, suffix = base_suffix,
-                            depression_deg = elevation_angle_deg)
+                            depression_deg = elevation_angle_deg,
+                            compression = compression, db_floor = db_floor,
+                            asinh_k_ratio = asinh_k_ratio)
 
     # per-ping debug movie: depth map, energy map, range-vs-energy scatter, and the interpolated
     # signal. signal_gif only ever looks at track 0, so feed it one track at a time rather than
@@ -240,8 +247,9 @@ def render_side_scan_image(
         debug_columns = False,
 
         # display
-        db = True,
+        compression = 'db',
         db_floor = -60.0,
+        asinh_k_ratio = 0.1,
 
         # mesh
         mesh_scale = None,
@@ -294,10 +302,16 @@ def render_side_scan_image(
         tvg_exponent (float): time varying gain, a receiver ramp of (R/R_ref)^n applied per
             range sample against the seafloor's fall with range, referenced to the window
             center so the target's own level is unchanged. 0 = off
-        db (bool): display the panel in dB relative to its brightest pixel, floored at db_floor,
-            as plot_range_angle_image does. A linear stretch is all seafloor and specular glint,
-            since the returns span ~100 dB
-        db_floor (float): black point of the dB display
+        compression (str): how the composite panel is displayed. 'db' (default here) shows dB
+            relative to the brightest pixel, floored at db_floor, as plot_range_angle_image does
+            -- a linear stretch is all seafloor and specular glint, since the returns span ~100
+            dB. 'linear' is that plain min-max stretch. 'asinh' arcsinh-compresses referenced to
+            this image's own 99.9th percentile amplitude (see asinh_compress) -- stays linear
+            near zero and logarithmic past asinh_k_ratio * that reference, so seafloor texture
+            survives without dB's hard floor
+        db_floor (float): black point of the dB display, ignored unless compression == 'db'
+        asinh_k_ratio (float): asinh softening scale as a fraction of this image's own reference
+            level (k = asinh_k_ratio * ref), ignored unless compression == 'asinh'
         debug_gif (bool): also write a per-ping movie of the depth map, energy map,
             range-vs-energy scatter, and interpolated signal, as sar_render_image does
         debug_columns (bool): also write a still of the interpolated signals with one column
@@ -391,6 +405,9 @@ def render_side_scan_image(
         debug_gif = debug_gif,
         debug_columns = debug_columns,
         debug_gif_suffix = suffix,
+        compression = compression,
+        db_floor = db_floor,
+        asinh_k_ratio = asinh_k_ratio,
     )  # (T,H,W), (H,), (W,)
 
     # one figure per track, so a multi-track run writes one file each instead of dropping all
@@ -404,13 +421,18 @@ def render_side_scan_image(
 
         # normalize to a displayable 8-bit gray, then widen to 3 channels to sit next to the rgb
         peak = sonar_amp.max()
-        if db and peak > 0:
+        ref = float(np.percentile(sonar_amp, 99.9)) if peak > 0 else 0.0
+        if compression == 'db' and peak > 0:
             sonar = 20 * np.log10(np.clip(sonar_amp / peak, 10 ** (db_floor / 20), None))
-            sonar = (sonar - db_floor) / -db_floor * 255.0
+            sonar = ((sonar - db_floor) / -db_floor * 255.0).astype(np.uint8)
+        elif compression == 'asinh' and ref > 0:
+            # ref is this one image's own 99.9th percentile; compute_dataset_reference exists for
+            # a real cross-dataset reference once there's a dataset of saved amplitudes to use
+            sonar = to_asinh(sonar_amp, asinh_k_ratio * ref, ref)
         else:
             span = max(float(peak - sonar_amp.min()), 1e-12)  # an all-dark image would divide by 0
-            sonar = (sonar_amp - sonar_amp.min()) / span * 255.0
-        sonar = np.tile(sonar[..., None], (1, 1, 3)).astype(np.uint8)  # (H,W,3)
+            sonar = ((sonar_amp - sonar_amp.min()) / span * 255.0).astype(np.uint8)
+        sonar = np.tile(sonar[..., None], (1, 1, 3))  # (H,W,3)
         sonar = cv2.resize(sonar, (rgb.shape[1], rgb.shape[0]))  # (H,W,3)
         image = np.concatenate((rgb, sonar), axis=1)
 

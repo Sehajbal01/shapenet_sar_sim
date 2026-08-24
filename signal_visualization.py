@@ -10,6 +10,7 @@ import matplotlib.gridspec as gridspec
 
 from utils import get_next_path, savefig
 from signal_simulation import interpolate_signal
+from display_compression import asinh_compress
 
 
 def plot_energy_scatter(ax, fig, ranges_p, energies_p):
@@ -130,7 +131,7 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
 
 
 def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
-                        db=True, db_floor=-60.0, depression_deg=None):
+                        compression='db', db_floor=-60.0, asinh_k_ratio=0.1, depression_deg=None):
     '''
     Save the interpolated signals as an image, one ping per column, left to right.
 
@@ -146,10 +147,16 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
             window, so ping 0's samples label the whole axis
         ping_offsets (P,): along-track offset of each ping; column index is used when None
         suffix (str): name for the saved file(s), numbered when None
-        db (bool): display in dB relative to the brightest sample, floored at db_floor, as
-            render_side_scan_image does. The returns span ~100 dB, so a linear stretch is all
-            near range
-        db_floor (float): black point of the dB display
+        compression (str): how the still is displayed, matching render_side_scan_image's knob of
+            the same name. 'db' shows dB relative to the brightest sample, floored at db_floor --
+            the returns span ~100 dB, so a linear stretch is all near range. 'linear' is a plain
+            stretch. 'asinh' arcsinh-compresses (asinh_compress) referenced to this still's own
+            99.9th percentile sample, staying linear near zero and logarithmic past
+            asinh_k_ratio * that reference, so it shows texture like dB does but without a hard
+            floor
+        db_floor (float): black point of the dB display, ignored unless compression == 'db'
+        asinh_k_ratio (float): asinh softening scale as a fraction of this still's own reference
+            level, ignored unless compression == 'asinh'
         depression_deg (float): boresight depression below horizontal. Given it, the range axis
             is projected to ground range and the two axes are drawn at one shared scale, so a
             metre down the image is a metre across it. Without it the range axis stays slant
@@ -176,9 +183,16 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
         z = sample_z[t].detach().cpu().numpy()         # (Z,)
 
         peak = columns.max()
-        if db and peak > 0:
+        if compression == 'db' and peak > 0:
             columns = 20 * np.log10(np.clip(columns / peak, 10 ** (db_floor / 20), None))
             color_label, vmin, vmax = 'Amplitude (dB re peak)', db_floor, 0.0
+        elif compression == 'asinh' and peak > 0:
+            ref = float(np.percentile(columns, 99.9))
+            if ref > 0:
+                columns = asinh_compress(columns, asinh_k_ratio * ref, ref)
+                color_label, vmin, vmax = 'Amplitude (asinh compressed)', 0.0, 1.0
+            else:  # nearly all-dark still: 99.9th percentile can round to 0 even with peak > 0
+                color_label, vmin, vmax = 'Amplitude', None, None
         else:
             color_label, vmin, vmax = 'Amplitude', None, None
 
