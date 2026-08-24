@@ -38,4 +38,10 @@ def debug_side_scan(
 
 
 if __name__ == '__main__':
-    debug_side_scan()
+    debug_side_scan(
+        num_pings  = 256,   # 4x SONAR_PAPER_BASELINE's 64
+        spatial_fs = 64,    # 2x SONAR_PAPER_BASELINE's 32
+        spatial_bw = 128,   # 2x SONAR_PAPER_BASELINE's 64
+        region_radius = 2.0,  # 2x SONAR_PAPER_BASELINE's 1.0
+        db_scale = False,
+    )
