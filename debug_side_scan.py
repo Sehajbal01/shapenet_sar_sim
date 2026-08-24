@@ -38,10 +38,17 @@ def debug_side_scan(
 
 
 if __name__ == '__main__':
-    debug_side_scan(
-        num_pings  = 256,   # 4x SONAR_PAPER_BASELINE's 64
-        spatial_fs = 64,    # 2x SONAR_PAPER_BASELINE's 32
-        spatial_bw = 128,   # 2x SONAR_PAPER_BASELINE's 64
-        region_radius = 2.0,  # 2x SONAR_PAPER_BASELINE's 1.0
-        db_scale = False,
-    )
+    # baseline's 000000 (40.6 deg elevation, shadow-throwing) vs a steeper 000043 (59.3 deg),
+    # same obj_id -- lets the debug output be diffed across pose for a fixed target
+    pose_nums = ('000000', '000043')
+
+    for pose_num in pose_nums:
+        debug_side_scan(
+            suffix = 'debug_%s' % pose_num,
+            pose_num = pose_num,
+            num_pings  = 256,   # 4x SONAR_PAPER_BASELINE's 64
+            spatial_fs = 64,    # 2x SONAR_PAPER_BASELINE's 32
+            spatial_bw = 128,   # 2x SONAR_PAPER_BASELINE's 64
+            region_radius = 2.0,  # 2x SONAR_PAPER_BASELINE's 1.0
+            # db/db_floor come from SONAR_PAPER_BASELINE unless overridden here
+        )

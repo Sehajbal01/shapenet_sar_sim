@@ -1,9 +1,13 @@
-- train a crossmodalitydiffusion for sarport dataset for the sony proposal
+- sonar
+    - asin image scaling
+    - fix the black region at image bottom
+        - play with elevation fov, distance, etc
+
 - make a "range angle profile vs range dataset" for the L3 harris project
+    - ask professor for how the data is made again...
 
 
 - simple object imaging
-    - replicate sinc pattern in the image
         - use small sphere
         - i think i just need to reduce the bw??
     - mosaic for raids

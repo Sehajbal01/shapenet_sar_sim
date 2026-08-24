@@ -44,6 +44,11 @@ SONAR_PAPER_BASELINE = dict(
     window_func = 'sinc',
     use_sig_magnitude = True,
 
+    # display -- the one place db/db_floor are decided; both the paper sweeps' stitched figures
+    # and debug_side_scan.py's render_side_scan_image call read these off the baseline
+    db = False,
+    db_floor = -60.0,
+
     # mesh
     make_ground = True,
     level_with_ground = True,
@@ -115,7 +120,7 @@ def _panel(amplitude, db=False, db_floor=-60.0):
 
 
 def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
-                                 custom_title_strings=None, db=False, db_floor=-60.0):
+                                 custom_title_strings=None):
     '''
     Run one side scan sweep and stitch its panels into a single figure.
 
@@ -126,14 +131,17 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     inputs:
         param_dict (dict): parameter name -> list of values, one entry per panel. Every list must
             be the same length
-        default_kwargs (dict): the baseline passed to render_side_scan_image
+        default_kwargs (dict): the baseline passed to render_side_scan_image. Its 'db'/'db_floor'
+            entries also set the stitched figure's display, so SONAR_PAPER_BASELINE is the one
+            place that decides both
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
-        db (bool): plot the panels in dB below their own peak instead of linear amplitude
-        db_floor (float): black point of the dB display, ignored when db is False
     outputs:
         path (str): the stitched figure written
     '''
+    db = default_kwargs.get('db', False)
+    db_floor = default_kwargs.get('db_floor', -60.0)
+
     lengths = [len(vals) for vals in param_dict.values()]
     if not all(l == lengths[0] for l in lengths):
         raise ValueError("All parameter arrays must have the same length")
@@ -216,8 +224,7 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
 
 
 def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
-                                baseline=SONAR_PAPER_BASELINE,
-                                db=False, db_floor=-60.0):
+                                baseline=SONAR_PAPER_BASELINE):
     paths = []
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
@@ -226,11 +233,9 @@ def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
-            db=exp.get('db', db),
-            db_floor=exp.get('db_floor', db_floor),
         ))
     return paths
 
 
 if __name__ == '__main__':
-    run_sonar_paper_experiments(db=False)
+    run_sonar_paper_experiments()
