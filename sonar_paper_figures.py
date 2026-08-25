@@ -29,11 +29,11 @@ SONAR_PAPER_BASELINE = dict(
     num_ray_height = 256,
     region_radius = 1.0,
 
-    # ground plane image geometry
+    # image plane geometry
     image_width  = 128,
     image_height = 128,
-    image_plane_width  = 1,
-    image_plane_height = 1,
+    image_plane_width  = 2,
+    image_plane_height = 2,
 
     # signal / physics
     wavelength = None,

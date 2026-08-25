@@ -16,7 +16,6 @@ from utils import extract_pose_info
 from range_angle_images import beam_spread_weights
 from signal_simulation import interpolate_signal, load_mesh
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
-from imaging_algorithms import side_scan_ground_plane_image
 from signal_visualization import signal_gif, signal_column_image
 from display_compression import asinh_compress, to_asinh, compute_dataset_reference
 
@@ -34,10 +33,10 @@ def side_scan_sonar_image(
     num_ray_height, # elevation direction
     region_radius,
 
-    image_width = 64,
-    image_height = 64,
-    image_plane_width = 1,
-    image_plane_height = 1,
+    image_width = 128,
+    image_height = 128,
+    image_plane_width = 2,
+    image_plane_height = 2,
 
     wavelength = None,
     num_bounce = 1,
@@ -69,12 +68,6 @@ def side_scan_sonar_image(
     world_up        = torch.tensor([0.0, 0.0, 1.0], device=device)                  # +z
     track_direction = torch.nn.functional.normalize(
         torch.linalg.cross(line_of_sight, world_up), dim=-1)                        # (3,) sensor's right
-
-
-    ground_forward = torch.nn.functional.normalize(
-        -torch.linalg.cross(track_direction, world_up), dim=-1)                     # (3,)
-
-
 
     # calculate trajectory of the sensor
     ping_offsets = centered_linspace(track_length, num_pings, device)               # (P,)
@@ -152,6 +145,7 @@ def side_scan_sonar_image(
         sample_z.append(torch.stack(sample_z_t))       # (P,Z)
     signals  = torch.stack(signals)   # (T,P,Z)
     sample_z = torch.stack(sample_z)  # (T,P,Z)
+    T = signals.shape[0]
 
     # time varying gain: a receiver ramp of R^n against the seafloor's fall with range. Absolute
     # rather than referenced to a range, so it rescales the image as well as tilting it. n=0 turns it off.
@@ -162,13 +156,12 @@ def side_scan_sonar_image(
     # debug outputs, independently switched: debug_columns is one still (fast), debug_gif is a
     # per-ping movie (slow) -- split so the still can be checked without waiting on the movie.
     if debug_gif or debug_columns:
-        T = signals.shape[0]
         base_suffix = 'side_scan' if debug_gif_suffix is None else 'side_scan_%s' % debug_gif_suffix
 
     if debug_columns:
-        # the same signals as one still, pings as columns, before the ground plane projection.
-        # the depression angle is what lets it put its range axis on the ground, to the same
-        # scale as the along-track axis
+        # the same signals as one still, pings as columns, at full range/ping resolution before
+        # resampling onto the returned pixel grid. the depression angle is what lets it put its
+        # range axis on the ground, to the same scale as the along-track axis
         # how far the boresight sits above horizontal, which is what scales the still's range axis
         elevation_angle_deg = float(torch.asin(-line_of_sight[2].clamp(-1.0, 1.0))) * 180 / np.pi
         signal_column_image(signals, sample_z, ping_offsets, suffix = base_suffix,
@@ -190,20 +183,39 @@ def side_scan_sonar_image(
     if use_sig_magnitude:
         signals = signals.abs()  # project the envelope; a complex image is not displayable
 
-    # project the pings onto the ground plane, since range and along-track are not ground coordinates
-    images, row_coords, col_coords = side_scan_ground_plane_image(
-        signals,
-        sample_z[:, 0, :],   # (T,Z) every ping shares the one range window
-        ping_offsets,
-        mean_pose,
-        image_width        = image_width,
-        image_height       = image_height,
-        image_plane_width  = image_plane_width,
-        image_plane_height = image_plane_height,
-    )  # (T,H,W), (H,), (W,)
+    # stack the interpolated signals as columns -- one per ping -- and resample onto a fixed
+    # pixel grid centered on the target range, rows in slant range and columns in cross range
+    # (ping/along-track position). Unlike a ground plane projection this never resamples range
+    # onto the seafloor, so the image shows slant range rather than ground range
+    shared_sample_z = sample_z[:, 0, :]  # (T,Z) every ping shares the one range window
+    z_center = shared_sample_z[:, shared_sample_z.shape[1] // 2]  # (T,) ~ target range
+
+    row_frac = torch.linspace(0.5, -0.5, image_height, device=signals.device, dtype=shared_sample_z.dtype)  # (H,) far to near
+    col_frac = torch.linspace(-0.5, 0.5, image_width, device=signals.device, dtype=ping_offsets.dtype)      # (W,) low to high
+    row_coords = z_center.reshape(T, 1) + row_frac.reshape(1, image_height) * image_plane_height  # (T,H) far range first
+    col_coords = col_frac * image_plane_width  # (W,) low ping offset first
+
+    # normalize the target coordinates into grid_sample's [-1,1] convention over the sampled
+    # (P,Z) grid, so a target outside the sampled range/track window comes back zero
+    z_lo, z_hi = shared_sample_z[:, :1], shared_sample_z[:, -1:]  # (T,1)
+    p_lo, p_hi = ping_offsets[0], ping_offsets[-1]  # ()
+    y_norm = (2 * (row_coords - z_lo) / (z_hi - z_lo) - 1).reshape(T, image_height, 1).expand(T, image_height, image_width)  # (T,H,W)
+    x_norm = (2 * (col_coords - p_lo) / (p_hi - p_lo) - 1).reshape(1, 1, image_width).expand(T, image_height, image_width)   # (T,H,W)
+    sample_grid = torch.stack((x_norm, y_norm), dim=-1)  # (T,H,W,2)
+
+    grid = signals.transpose(1, 2).unsqueeze(1)  # (T,1,Z,P)
+    if torch.is_complex(grid):
+        images = torch.complex(
+            torch.nn.functional.grid_sample(grid.real, sample_grid, align_corners=True, padding_mode='zeros'),
+            torch.nn.functional.grid_sample(grid.imag, sample_grid, align_corners=True, padding_mode='zeros'),
+        ).squeeze(1)  # (T,H,W)
+    else:
+        images = torch.nn.functional.grid_sample(
+            grid, sample_grid, align_corners=True, padding_mode='zeros'
+        ).squeeze(1)  # (T,H,W)
 
     return images, row_coords, col_coords
-    #      (T,H,W), (H,) ground forward offset of each row, (W,) ground right offset of each column
+    #      (T,H,W), (T,H) slant range of each row (far to near), (W,) cross range of each column (low to high)
 
 
 def render_side_scan_image(
@@ -222,13 +234,13 @@ def render_side_scan_image(
         azimuth_beam_width_deg = 1.0,
         num_ray_width = 64,
         num_ray_height = 512,
-        region_radius = 0.75,
+        region_radius = 1.0,
 
-        # ground plane image geometry
-        image_width = 64,
-        image_height = 64,
-        image_plane_width = 1.5,
-        image_plane_height = 1.5,
+        # image plane geometry
+        image_width = 128,
+        image_height = 128,
+        image_plane_width = 2.0,
+        image_plane_height = 2.0,
 
         # signal / physics
         wavelength = None,
@@ -268,9 +280,9 @@ def render_side_scan_image(
 
     The pose file only supplies the sensor *position*: side_scan_sonar_image flies a straight
     track through it and stares off to one side, so the RGB camera and the sonar platform share
-    a vantage point but not a look direction. The pings are projected onto a patch of seafloor
-    centered on the origin: columns run along the track, rows run out in ground range with near
-    range at the bottom.
+    a vantage point but not a look direction. The pings are stacked as columns and resampled onto
+    a fixed pixel grid centered on the target range: columns run along the track (cross range),
+    rows run out in slant range with near range at the bottom.
 
     inputs:
         obj_id (str): srn_cars object id; a random one is drawn when None
@@ -281,20 +293,21 @@ def render_side_scan_image(
             azimuth and elevation. The sensor position is normalized then scaled to this distance;
             None keeps the pose file's own distance
         track_length (float): along-track extent the platform flies, centered on the pose
-            position. Keep it at least image_plane_width: a track shorter than the patch is wide
+            position. Keep it at least image_plane_width: a track shorter than the image is wide
             leaves the outer image columns with no ping abeam of them, and they come out zero
         num_pings (int): pings along the track, i.e. columns of the image
         elevation_fov_deg (float): vertical extent of the ray fan, about the boresight
         azimuth_beam_width_deg (float): FWHM of the along-track beam, which sets the along-track
             resolution; the ray fan spans 3x this
         region_radius (float): half the range extent imaged, centered on the sensor->origin
-            distance so the target sits mid-window. Too small and the patch's near and far
-            edges fall outside the window and come out zero
+            distance so the target sits mid-window. Keep 2*region_radius at least
+            image_plane_height, or the image's near and far edges fall outside the window and
+            come out zero
         num_ray_width/num_ray_height (int): rays per ping across the fan
-        image_width/image_height (int): pixels across and down the ground patch
-        image_plane_width/image_plane_height (float): extent of the ground patch in world units,
-            along the track and out in ground range. The patch stays centered on the origin, so
-            it needs room for the object's own span plus the shadow it throws down range
+        image_width/image_height (int): pixels across and down the image
+        image_plane_width/image_plane_height (float): extent of the image in world units, along
+            the track (cross range) and out in slant range. Centered on the target range, so it
+            needs room for the object's own span plus the shadow it throws down range
         spherical_spread (bool): True applies energy /= 4*pi * range**2 over the round trip;
             False turns the spreading loss off, which is useful for telling how much of the
             near-range dominance is spreading and how much is geometry
@@ -320,8 +333,8 @@ def render_side_scan_image(
 
     outputs:
         images (T,H,W): the side scan image(s), near range at the bottom row
-        row_coords (H,): ground forward offset of each row, far range first
-        col_coords (W,): ground right offset of each column
+        row_coords (T,H): slant range of each row, far range first
+        col_coords (W,): cross range (along-track offset) of each column, low to high
     '''
 
     # cluster dirs, same as render_images.render_random_image

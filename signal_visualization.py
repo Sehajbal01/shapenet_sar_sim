@@ -135,11 +135,9 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
     '''
     Save the interpolated signals as an image, one ping per column, left to right.
 
-    This is the raw (range, along-track) picture that side_scan_ground_plane_image resamples
-    onto the seafloor. It is not a picture of the ground -- range compresses towards nadir and
-    stretches at the far edge of the swath -- but it shows what the pings actually contain, so
-    a feature in the ground plane image can be traced back to a ping or blamed on the
-    projection.
+    This is the raw (range, along-track) picture at full range/ping resolution, before
+    side_scan_sonar_image resamples it onto its own (slant range, cross range) pixel grid. So a
+    feature in that final image can be traced back to a ping or blamed on the resampling.
 
     inputs:
         signals (T,P,Z): interpolated signal of each ping, real or complex
@@ -214,7 +212,7 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
         dy = (y[1] - y[0]) / 2 if Z > 1 else 0.5
 
         fig, ax = plt.subplots(figsize=(10, 8))
-        # origin='lower' puts near range at the bottom, matching side_scan_ground_plane_image.
+        # origin='lower' puts near range at the bottom, matching side_scan_sonar_image's output.
         # aspect='equal' is what makes the two axes share a scale once y is a ground distance
         im = ax.imshow(columns, cmap='gray', origin='lower', aspect=aspect,
                        vmin=vmin, vmax=vmax,
