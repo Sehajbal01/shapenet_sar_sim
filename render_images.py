@@ -17,6 +17,8 @@ from imaging_algorithms import projected_CBP, strip_map_imaging
 
 from signal_visualization import signal_gif
 
+from paper_figure_layout import stitch_panels
+
 
 
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
@@ -363,7 +365,14 @@ def render_random_image(
 
 
 def _prepare_stitched_plot_arrays(sar_arrays, plot_db_scale=False, db_floor=-60.0):
-    """Convert raw SAR amplitudes into the plotting data for stitched figures."""
+    """
+    Convert raw SAR amplitudes into the plotting data for stitched figures.
+
+    The dB path still references every panel to the brightest panel's peak, so the numbers on the
+    panels' colorbars stay comparable across the figure even though each panel is now stretched
+    over its own range. Only the 'vmin' of the returned range is used by the stitched figure -- its
+    'vmax' is the shared peak, which multi_param_experiment replaces with each panel's own.
+    """
     if not plot_db_scale:
         return sar_arrays, dict(vmin=0.0, vmax=float(max(a.max() for a in sar_arrays)))
 
@@ -401,9 +410,11 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     # Create parameter names string for labeling
     param_names = "_".join(param_dict.keys())
 
-    # remove all files in figures with the experiment name
+    # remove this experiment's files from a previous run. Matching on the sar_ prefix as well as
+    # the name keeps a name this suite shares with another suite (wavelength, sphere_size) from
+    # deleting that suite's figures out of the same directory.
     for f in os.listdir('figures'):
-        if experiment_name in f and (f.endswith('.png') or f.endswith('.npy')):
+        if f.startswith('sar_') and experiment_name in f and (f.endswith('.png') or f.endswith('.npy')):
             os.remove(os.path.join('figures', f))
 
     # create strings to title each experiment
@@ -457,51 +468,29 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     # Sort files by the figure ID
     sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
 
-    # Load raw SAR amplitude arrays; use a shared color scale so brightness is comparable
+    # Load raw SAR amplitude arrays
     sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
     plot_arrays, plot_range = _prepare_stitched_plot_arrays(
         sar_arrays,
         plot_db_scale=plot_db_scale,
         db_floor=db_floor,
     )
-    vmin = plot_range['vmin']
-    vmax = plot_range['vmax']
 
-    # Layout: if even and > 4, use 2 rows; else 1 row
-    n_image = len(sar_arrays)
-    if n_image % 2 == 0 and n_image > 4:
-        n_rows, n_cols = 2, n_image // 2
-    else:
-        n_rows, n_cols = 1, n_image
-
-    fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(2.2 * n_cols, 2.2 * n_rows + 0.5),
-        squeeze=False,
-    )
-    for i, (ax, arr, title) in enumerate(zip(axes.flat, plot_arrays, experiment_strings)):
-        im = ax.imshow(arr, cmap='gray', vmin=vmin, vmax=vmax)
-        ax.set_title(title, fontsize=8)
-        ax.axis('off')
-    # hide any unused axes (defensive; shouldn't happen given layout math)
-    for ax in axes.flat[n_image:]:
-        ax.axis('off')
-
-    fig.subplots_adjust(right=0.9, wspace=0.05, hspace=0.15)
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    if plot_db_scale:
-        db_ticks = [0, -3, -6, -10, -20, -30]
-        if db_floor < -30:
-            db_ticks = [db_floor] + [t for t in db_ticks if t > db_floor]
-        cbar.set_ticks(db_ticks)
-        cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
-    else:
-        # Image data is linear amplitude, so show a simple linear colorbar.
-        pass
-
+    # Each panel gets its own colorbar, so each is stretched over its own range rather than over a
+    # scale shared with the rest of the figure: a sweep like Fs or sphere size moves the level by
+    # orders of magnitude, which used to leave most panels black. The level is not lost -- the
+    # colorbars read out in absolute amplitude, or in dB against the brightest panel, so panels are
+    # still compared by their numbers.
     path = f'figures/sar_stitched_{experiment_name}.png'
-    fig.savefig(path, dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('Saved stitched image to: %s' % path)
+    stitch_panels(
+        plot_arrays,
+        experiment_strings,
+        path,
+        cmap='gray',
+        vmin=plot_range['vmin'],
+        vmax=None,
+        min_span=6.0 if plot_db_scale else None,
+        cbar_label='dB re brightest panel' if plot_db_scale else 'amplitude',
+        cbar_tick_fmt='%.0f dB' if plot_db_scale else '%.2g',
+    )
 

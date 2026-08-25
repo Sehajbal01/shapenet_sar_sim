@@ -33,9 +33,9 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
 
 from range_angle_images import sar_render_range_angle_image, plot_range_angle_image
+from paper_figure_layout import stitch_panels
 from utils import extract_pose_info
 
 
@@ -71,17 +71,17 @@ def _range_angle_experiments():
     # The beam pattern peaks at 1 instead of integrating to 1, so a wider beam deposits a
     # scatter's energy into more pixels without dividing it up; each panel gets its own dB
     # reference so the sweep shows the smearing rather than that level shift.
-    beam_vals = [0.1, 0.5, 2.0, 8.0]
+    beam_vals = np.logspace(-1, 1, 5).tolist()
     beam_width = dict(
         name='beam_width',
         vary={'beam_width_deg': beam_vals},
-        custom_title_strings=['Beam width: %.1f deg' % b for b in beam_vals],
+        custom_title_strings=['Beam width: %.2f deg' % b for b in beam_vals],
         shared_db_reference=False,
     )
 
     # Field of view sweep -- how much of the scene the fan covers. angle_span_deg follows
     # fov_width_deg, so the image gets wider in angle along with the fan.
-    fov_vals = [10.0, 25.0, 50.0, 90.0]
+    fov_vals = [10.0, 25.0, 50.0, 75.0, 90.0]
     fov = dict(
         name='fov',
         vary={'fov_width_deg': fov_vals, 'fov_height_deg': fov_vals},
@@ -93,7 +93,7 @@ def _range_angle_experiments():
     # Scatter energies are normalized by the ray count, so the level drops as the rays go up
     # whenever the beam is too narrow for neighboring rays to overlap in a pixel; each panel
     # gets its own dB reference so the sweep shows the sampling rather than that level shift.
-    ray_vals = [16, 32, 128, 512]
+    ray_vals = [16, 32, 64, 128, 512]
     n_ray = dict(
         name='n_ray',
         vary={'n_ray_width': ray_vals, 'n_ray_height': ray_vals},
@@ -102,7 +102,7 @@ def _range_angle_experiments():
     )
 
     # Range bin sweep -- range resolution of the image, the counterpart of the Fs/BW sweep.
-    range_bin_vals = [16, 32, 64, 128]
+    range_bin_vals = [8, 16, 32, 64, 128]
     n_range_bins = dict(
         name='n_range_bins',
         vary={'n_range_bins': range_bin_vals},
@@ -110,19 +110,21 @@ def _range_angle_experiments():
     )
 
     # Wavelength sweep -- how carrier wavelength shapes the coherent sum within a pixel.
-    wavelength_vals = [0.01, 0.05, 0.5, 2]
+    wavelength_vals = [0.01, 0.05, 0.2, 0.5, 2]
     wavelength = dict(
         name='wavelength',
         vary={'wavelength': wavelength_vals},
-        custom_title_strings=['wavelength: %.2f' % w for w in wavelength_vals],
+        custom_title_strings=['Wavelength: %.2f' % w for w in wavelength_vals],
     )
 
-    # Bounce count sweep -- what multipath off the ground adds beyond the direct return.
-    bounce_vals = [1, 2]
+    # Bounce count sweep -- what multipath off the ground adds beyond the direct return. Each
+    # extra bounce only re-traces the rays that hit, so the added returns get fainter and sparser
+    # rather than more numerous.
+    bounce_vals = [1, 2, 3, 4, 5]
     num_bounce = dict(
         name='num_bounce',
         vary={'num_bounce': bounce_vals},
-        custom_title_strings=['%d bounce' % b for b in bounce_vals],
+        custom_title_strings=['%d bounce' % b if b == 1 else '%d bounces' % b for b in bounce_vals],
     )
 
     # sphere
@@ -402,50 +404,35 @@ def multi_param_range_angle_experiment(param_dict, default_kwargs, experiment_na
     plot_arrays = _prepare_range_angle_plot_arrays(
         images, db_floor=db_floor, shared_db_reference=shared_db_reference)
 
-    # Layout: if even and > 4, use 2 rows; else 1 row
-    n_image = len(images)
-    if n_image % 2 == 0 and n_image > 4:
-        n_rows, n_cols = 2, n_image // 2
-    else:
-        n_rows, n_cols = 1, n_image
+    # extent puts near range at the bottom, matching the row order of the image, and every panel
+    # keeps its own axes because a field of view or range bin sweep changes what those axes cover
+    extents = [[d['angle_bins_deg'][0], d['angle_bins_deg'][-1], d['range_bins'][-1], d['range_bins'][0]]
+               for d in loaded]
 
-    fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(2.6 * n_cols, 2.6 * n_rows + 0.5),
-        squeeze=False,
-    )
-    for i, (ax, arr, d, title) in enumerate(zip(axes.flat, plot_arrays, loaded, experiment_strings)):
-        range_bins = d['range_bins']
-        angle_bins_deg = d['angle_bins_deg']
-        # extent puts near range at the bottom, matching the row order of the image
-        extent = [angle_bins_deg[0], angle_bins_deg[-1], range_bins[-1], range_bins[0]]
-        im = ax.imshow(arr, cmap='inferno', vmin=db_floor, vmax=0.0,
-                       extent=extent, aspect='auto', origin='upper')
-        ax.set_title(title, fontsize=8)
-        ax.tick_params(labelsize=6)
-        if i // n_cols == n_rows - 1:
-            ax.set_xlabel('Azimuth angle (deg)', fontsize=7)
-        if i % n_cols == 0:
-            ax.set_ylabel('Range', fontsize=7)
-        else:
-            ax.set_yticklabels([])
-    # hide any unused axes (defensive; shouldn't happen given layout math)
-    for ax in axes.flat[n_image:]:
-        ax.axis('off')
-
-    fig.subplots_adjust(right=0.9, wspace=0.1, hspace=0.25)
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    db_ticks = [0, -3, -6, -10, -20, -30]
-    if db_floor < -30:
-        db_ticks = [db_floor] + [t for t in db_ticks if t > db_floor]
-    cbar.set_ticks(db_ticks)
-    cbar.set_ticklabels([f'{db} dB' for db in db_ticks])
+    # Each panel gets its own colorbar and its own top end, so a sweep whose panels differ by tens
+    # of dB shows all five rather than one bright panel beside four black ones. The floor is shared
+    # and the dB reference is whatever _prepare_range_angle_plot_arrays used, so the numbers on the
+    # colorbars still say how the panels compare.
+    reference_label = 'dB re brightest panel' if shared_db_reference else 'dB re panel peak'
 
     path = f'figures/range_angle_stitched_{experiment_name}.png'
-    fig.savefig(path, dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('Saved stitched image to: %s' % path)
+    stitch_panels(
+        plot_arrays,
+        experiment_strings,
+        path,
+        cmap='inferno',
+        vmin=db_floor,
+        vmax=None,
+        min_span=6.0,
+        cbar_label=reference_label,
+        cbar_tick_fmt='%.0f dB',
+        extents=extents,
+        xlabel='Azimuth angle (deg)',
+        ylabel='Range',
+        show_axes=True,
+        panel_width=2.4,
+        panel_height=2.4,
+    )
 
 
 def run_range_angle_experiments(experiments=RANGE_ANGLE_EXPERIMENTS, baseline=RANGE_ANGLE_BASELINE,

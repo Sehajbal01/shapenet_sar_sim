@@ -49,51 +49,61 @@ PAPER_BASELINE = dict(
 def _paper_experiments():
 
     # Synthetic aperture arc length sweep — how azimuth coverage shapes the image.
+    az_vals = np.linspace(0, 360, 5).tolist()
     az_spread = dict(
         name='az_spread',
-        vary={'azimuth_spread': np.linspace(0, 360, 4).tolist()},
+        vary={'azimuth_spread': az_vals},
+        custom_title_strings=['Azimuth spread: %.0f deg' % a for a in az_vals],
     )
 
     # Pulse count sweep — how along-track sampling density affects the image.
+    pulse_vals = [2, 4, 8, 16, 32]
     num_pulse = dict(
         name='num_pulse',
-        vary={'num_pulse': np.linspace(2, 32, 4).astype(np.int32).tolist()},
+        vary={'num_pulse': pulse_vals},
+        custom_title_strings=['Pulses: %d' % p for p in pulse_vals],
     )
 
     # Spatial bandwidth / sample rate sweep — how BW=Fs affects range resolution.
-    bwfs_vals = [4, 16, 128, 512]
+    bwfs_vals = [4, 16, 64, 128, 512]
     fsbw = dict(
         name='fsbw',
         vary={'spatial_bw': bwfs_vals, 'spatial_fs': bwfs_vals},
-        custom_title_strings=['Fs: %d' % v for v in bwfs_vals],
+        custom_title_strings=['BW = Fs: %d' % v for v in bwfs_vals],
         plot_db_scale=True,
     )
 
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
-    snr_db_vals = np.linspace(0, 22, 4).tolist()
+    snr_db_vals = np.linspace(0, 22, 5).tolist()
     snrdb = dict(
         name='snrdb',
         vary={'snr_db': snr_db_vals},
-        custom_title_strings=['SNR dB: %.1f' % s for s in snr_db_vals],
+        custom_title_strings=['SNR: %.1f dB' % s for s in snr_db_vals],
     )
 
     # Wavelength sweep with magnitude-only CBP — how carrier wavelength shapes the image.
-    wavelength_vals = [0.01, 0.05, 0.5, 2]
+    wavelength_vals = [0.01, 0.05, 0.2, 0.5, 2]
     wavelength = dict(
         name='wavelength',
         vary={'wavelength': wavelength_vals},
-        custom_title_strings=['wavelength: %.2f' % w for w in wavelength_vals],
+        custom_title_strings=['Wavelength: %.2f' % w for w in wavelength_vals],
     )
 
-    # Trajectory geometry comparison — linear (stripmap-like) vs circular (spotlight).
+    # Trajectory geometry comparison — linear (stripmap-like) vs circular (spotlight). Only two
+    # trajectory types exist, so the panels pair them at matched angular spreads and close with
+    # the full circle, which is the aperture a linear track cannot fly: generate_trajectory
+    # asserts a linear spread below 180 deg, since the track runs off to infinity at 180.
+    trajectory_types = ['linear', 'circular', 'linear', 'circular', 'circular']
+    trajectory_spreads = [45, 45, 135, 135, 360]
     trajectory_type = dict(
         name='trajectory_type',
-        vary={'trajectory_type': ['linear', 'circular']},
-        custom_title_strings=['Linear Trajectory', 'Circular Trajectory'],
+        vary={'trajectory_type': trajectory_types, 'azimuth_spread': trajectory_spreads},
+        custom_title_strings=['%s, %d deg' % (t.capitalize(), a)
+                              for t, a in zip(trajectory_types, trajectory_spreads)],
     )
 
     # Trajectory noise sweep — how sensor position error along the path degrades the image.
-    noise_vals = [0] + (10 ** np.linspace(-4, -2, 3, endpoint=True)).tolist()
+    noise_vals = [0] + (10 ** np.linspace(-4, -2, 4, endpoint=True)).tolist()
     trajectory_noise_var = dict(
         name='trajectory_noise_var',
         vary={'trajectory_noise_var': noise_vals},
@@ -103,12 +113,21 @@ def _paper_experiments():
     # Transmit-waveform comparison — how the pulse / range-compression window shapes
     # the image. window_func selects the effective range window used inside
     # interpolate_signal: an ideal sinc, a Gaussian pulse, and the matched-filter
-    # responses of an LFM chirp and a Barker-13 phase code.
-    waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13']
+    # responses of an LFM chirp and a Barker-13 phase code. Those four are every window
+    # interpolate_signal implements, so the fifth panel is the chirp again at twice the
+    # bandwidth — the knob that actually sets range resolution once a waveform is chosen. Fs
+    # follows BW, since a wider pulse sampled at the old rate would just alias. Twice and not
+    # more: past that the range resolution outruns what 64 pulses of aperture resolve in cross
+    # range, and the panel turns into grating lobes rather than a sharper car.
+    base_bw = PAPER_BASELINE['spatial_bw']
+    waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13', 'lfm']
+    waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
         name='waveform',
-        vary={'window_func': waveform_vals},
-        custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13'],
+        vary={'window_func': waveform_vals,
+              'spatial_bw': waveform_bw_vals, 'spatial_fs': waveform_bw_vals},
+        custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13',
+                              'LFM Chirp, 2x BW'],
     )
 
     # sphere

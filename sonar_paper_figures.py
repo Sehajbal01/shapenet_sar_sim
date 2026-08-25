@@ -7,27 +7,28 @@ import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
-from matplotlib import pyplot as plt
 
 from sidescansonar import render_side_scan_image
 from display_compression import asinh_compress
+from paper_figure_layout import stitch_panels
 
 
 SONAR_PAPER_BASELINE = dict(
     # pin the object and the pose. render_side_scan_image draws both at random, and a sweep only
     # reads as a sweep when the geometry is the one thing that does not change between panels.
     obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
-    pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    sensor_distance = None,  # None keeps the pose file's own range; set to override it
+    # pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
+    pose_num = '000043',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
+    sensor_distance = 10,  # None keeps the pose file's own range; set to override it
 
     # track geometry
     track_length = 2.0,
-    num_pings = 64,
-    elevation_fov_deg = 45.0,
+    num_pings = 128,
+    elevation_fov_deg = 30.0,
     azimuth_beam_width_deg = 0.1,
     num_ray_width = 3,
     num_ray_height = 256,
-    region_radius = 1.0,
+    region_radius = 2.0,
 
     # image plane geometry
     image_width  = 128,
@@ -38,11 +39,11 @@ SONAR_PAPER_BASELINE = dict(
     # signal / physics
     wavelength = None,
     num_bounce = 1,
-    spherical_spread = False,
-    water_absorption = 0.0,
-    tvg_exponent = 0.0,
-    spatial_bw = 64,
-    spatial_fs = 32,
+    spherical_spread = True,
+    water_absorption = 0.00,
+    tvg_exponent = 10,
+    spatial_bw = 128,
+    spatial_fs = 256,
     window_func = 'sinc',
     use_sig_magnitude = True,
 
@@ -79,7 +80,7 @@ def _sonar_experiments():
 
     # Time varying gain sweep -- how hard the receiver ramp lifts far range against the
     # seafloor's fall with range. 0 is the raw echo, 4 is the two-way spreading loss undone.
-    tvg_vals = np.linspace(0, 8, 5).tolist()
+    tvg_vals = np.linspace(-20, 30, 5).tolist()
     tvg = dict(
         name='tvg',
         vary={'tvg_exponent': tvg_vals},
@@ -102,9 +103,9 @@ def _sonar_experiments():
     )
 
     return [
-        beam_width,
+        # beam_width,
         tvg,
-        asinh_k,
+        # asinh_k,
     ]
 
 
@@ -172,10 +173,6 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     outputs:
         path (str): the stitched figure written
     '''
-    compression = default_kwargs.get('compression', 'linear')
-    db_floor = default_kwargs.get('db_floor', -60.0)
-    asinh_k_ratio = default_kwargs.get('asinh_k_ratio', 0.1)
-
     lengths = [len(vals) for vals in param_dict.values()]
     if not all(l == lengths[0] for l in lengths):
         raise ValueError("All parameter arrays must have the same length")
@@ -183,9 +180,12 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
 
     os.makedirs('figures', exist_ok=True)
 
-    # clear this sweep's earlier output, so a stale panel cannot survive into the new figure
+    # clear this sweep's earlier output, so a stale panel cannot survive into the new figure.
+    # Matching on this suite's own prefixes as well as the name keeps a name it shares with
+    # another suite (beam_width) from deleting that suite's figures out of the same directory.
     for f in os.listdir('figures'):
-        if experiment_name in f and (f.endswith('.png') or f.endswith('.npy')):
+        if (f.startswith('side_scan_') or f.startswith('signal_columns_')) \
+                and experiment_name in f and (f.endswith('.png') or f.endswith('.npy')):
             os.remove(os.path.join('figures', f))
 
     # create strings to title each experiment
@@ -236,40 +236,47 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
     sorted_ids, sorted_npy = zip(*sorted(zip(npy_ids, npy_files)))
 
-    panels = [_panel(np.load(os.path.join('figures', f)), **panel_display_kwargs[idx])
-              for idx, f in zip(sorted_ids, sorted_npy)]
+    raw_amplitudes = [np.load(os.path.join('figures', f)) for f in sorted_npy]
+    panels = [_panel(amplitude, **panel_display_kwargs[idx])
+              for idx, amplitude in zip(sorted_ids, raw_amplitudes)]
 
-    # every panel is already normalized to its own peak, so the scale runs to that peak either way
-    vmin, vmax = (db_floor, 0.0) if compression == 'db' else (0.0, 1.0)
-
-    n_image = len(panels)
-    fig, axes = plt.subplots(1, n_image, figsize=(2.2 * n_image, 2.7), squeeze=False)
-    for ax, panel, title in zip(axes.flat, panels, experiment_strings):
-        im = ax.imshow(panel, cmap='gray', vmin=vmin, vmax=vmax)
-        ax.set_title(title, fontsize=8)
-        ax.axis('off')
-
-    fig.subplots_adjust(right=0.9, wspace=0.05)
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    if compression == 'db':
-        db_ticks = [t for t in [0, -10, -20, -30, -40, -50, -60] if t >= db_floor]
-        cbar.set_ticks(db_ticks)
-        cbar.set_ticklabels(['%d dB' % t for t in db_ticks])
-        cbar.set_label('dB below panel peak', fontsize=8)
-    elif compression == 'asinh':
-        if 'asinh_k_ratio' in param_dict:  # k varies per panel -- see panel titles for each value
-            cbar.set_label('asinh-compressed amplitude (k/ref varies by panel)', fontsize=8)
+    # One colorbar per panel, in that panel's own display units. _panel normalizes every panel to
+    # its own peak, so the bar itself always runs over the same range; what it carries that a
+    # single shared bar could not is the per-panel setting the normalization hides -- the raw peak
+    # the panel was divided by, and, on an asinh sweep, the k that panel was compressed with. The
+    # peaks are there to say what level a panel sits at, not to be compared: see _panel on why the
+    # sweeps move the absolute level by orders of magnitude for reasons that are not the scene.
+    vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], []
+    for idx, amplitude in zip(sorted_ids, raw_amplitudes):
+        panel_kwargs = panel_display_kwargs[idx]
+        peak = float(np.asarray(amplitude, dtype=np.float32).max())
+        if panel_kwargs['compression'] == 'db':
+            vmins.append(panel_kwargs['db_floor'])
+            vmaxs.append(0.0)
+            cbar_labels.append('dB re peak %.2g' % peak)
+            tick_fmts.append('%.0f dB')
+        elif panel_kwargs['compression'] == 'asinh':
+            vmins.append(0.0)
+            vmaxs.append(1.0)
+            cbar_labels.append('asinh, k/ref %.2g, peak %.2g' % (panel_kwargs['asinh_k_ratio'], peak))
+            tick_fmts.append('%.2g')
         else:
-            cbar.set_label('asinh-compressed amplitude (k=%.2g x ref)' % asinh_k_ratio, fontsize=8)
-    else:
-        cbar.set_label('amplitude / panel peak', fontsize=8)
+            vmins.append(0.0)
+            vmaxs.append(1.0)
+            cbar_labels.append('amp / peak %.2g' % peak)
+            tick_fmts.append('%.2g')
 
     path = 'figures/side_scan_stitched_%s.png' % experiment_name
-    fig.savefig(path, dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print('Saved stitched image to: %s' % path)
-    return path
+    return stitch_panels(
+        panels,
+        experiment_strings,
+        path,
+        cmap='gray',
+        vmin=vmins,
+        vmax=vmaxs,
+        cbar_label=cbar_labels,
+        cbar_tick_fmt=tick_fmts,
+    )
 
 
 def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
