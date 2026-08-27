@@ -102,10 +102,32 @@ def _sonar_experiments():
         custom_title_strings=['asinh k/ref: %.2g' % k for k in asinh_k_vals],
     )
 
+    # Elevation FOV sweep -- how much of the seafloor the fan lights up around the target, from a
+    # narrow beam on the object alone to a fan that fills the range window.
+    elevation_fov_vals = np.linspace(5, 50, 5).tolist()
+    elevation_fov = dict(
+        name='elevation_fov',
+        vary={'elevation_fov_deg': elevation_fov_vals},
+        custom_title_strings=['Elevation FOV: %.1f deg' % e for e in elevation_fov_vals],
+    )
+
+    # Spatial bandwidth sweep -- range resolution goes as 1/bw, so this is what turns the target
+    # from one bright range cell into a resolved hull and shadow. Fs = 2*bw keeps the sampling
+    # ahead of the band instead of aliasing it away.
+    spatial_bw_vals = [2 ** p for p in range(2, 10)]  # 4 .. 512
+    spatial_bw = dict(
+        name='spatial_bw',
+        vary={'spatial_bw': spatial_bw_vals,
+              'spatial_fs': [2 * bw for bw in spatial_bw_vals]},
+        custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in spatial_bw_vals],
+    )
+
     return [
         # beam_width,
         tvg,
         # asinh_k,
+        elevation_fov,
+        spatial_bw,
     ]
 
 
