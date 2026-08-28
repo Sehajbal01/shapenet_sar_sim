@@ -1,48 +1,37 @@
-- sonar
-    - asin image scaling
-    - fix the black region at image bottom
-        - play with elevation fov, distance, etc
 
 - make a "range angle profile vs range dataset" for the L3 harris project
     - ask professor for how the data is made again...
 
+- Sehaj todo list
+    - make an updates slide show
+    - find capability to plot signal for RaySAR & CV Domes
+        - find any simulation parameters that might affect the signal
+    - Compare signal under various conditions
+        - compare the frequency domain of the signals
+        - signal power (add parameter to accumulate_scatters_rays to select total transmit energy)
+        - compare signal-to-clutter ratio
+            - can we adjust material properties to match CV Dome's signal-to-clutter ratio?
+    - calculate radar cross section of the object 
+        - remove the ground?
+        - learn how to do this
+    - Write comparative analysis section of the paper
+    - adjust the related works section at the end
+    - decide what to plot in the paper
+        - make the plots
+    - convert paper to MDPI format
+    - submit to MDPI
 
-- simple object imaging
-        - use small sphere
-        - i think i just need to reduce the bw??
-    - mosaic for raids
-    - what if i run CBP with the actual object not in the center
-        - i suspect some imaging effects we observe aredue to the CBP running with the object in the center, which is not the case for the real world
-        - they often run CBP on a large swath of land, then chip into individual targets
+            
+            
+            
 
 
-- Produce images for CV domes object for comparative analysis
-    DONE - play with the model
-    DONE - decide on a new returned energy model
-    - use qualitative analysis
-    - find hyperparameters that best match CVDomes results
-    DONE - Implement a port to convert pose amtrix and azimuth spread that runs on the CVDomes code
 
-- for arete
-    DONE - Implement depth map rendering mode
-    - Implement range-angle imaging that converts to range-range with various beam patterns
-
-- side scan sonar
-    - add a TVG so the waterfall is displayable, gain = (R/R_ref)^n per range row
-        - seafloor falls ~70 dB across the swath, so near range saturates and far range is black
-        - n=2 undoes the spreading the sim models (r^2 over the round trip, not r^4), ~5.3
-          flattens this geometry, 4 is the textbook number. expose n, 0 = off
-    - far swath not converged at num_ray_height=512, ~15x off at one-way range 4.5 vs 2048 rays
-        - uniform-in-angle elevation spacing oversamples near range and starves far
 
 - Adress reviewre concerns
     - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
     - i have some slides about this in my updates presentation
         - https://docs.google.com/presentation/d/128WiwIninhMNFE3ZtLbhJNa_3-_SFAs0fCvjq3ALgXU/edit?slide=id.g2ab64a12bdf_0_22#slide=id.g2ab64a12bdf_0_22
-
-- play with different image resolutions
-    - make a mosaic of the results for the paper
-
 
 - submit to https://www.mdpi.com/journal/sensors/special_issues/G617MH56JV
     - due october
