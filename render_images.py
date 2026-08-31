@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
 from accumulate_scatters import accumulate_scatters
 
-from imaging_algorithms import projected_CBP, strip_map_imaging
+from imaging_algorithms import projected_CBP, strip_map_imaging, db_compress, asinh_compress
 
 from signal_visualization import signal_gif
 
@@ -364,49 +364,78 @@ def render_random_image(
 
 
 
-def _prepare_stitched_plot_arrays(sar_arrays, plot_db_scale=False, db_floor=-60.0):
+def _prepare_stitched_plot_arrays(sar_arrays, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
     """
     Convert raw SAR amplitudes into the plotting data for stitched figures.
 
-    The dB path still references every panel to the brightest panel's peak, so the numbers on the
-    panels' colorbars stay comparable across the figure even though each panel is now stretched
-    over its own range. Only the 'vmin' of the returned range is used by the stitched figure -- its
-    'vmax' is the shared peak, which multi_param_experiment replaces with each panel's own.
+    The 'db' and 'asinh' paths both reference every panel to the sweep's brightest panel, so the
+    numbers on the panels' colorbars stay comparable across the figure even though each panel is
+    then stretched over its own range. Only the 'vmin' of the returned range is used by the
+    stitched figure -- its 'vmax' is the shared peak, which multi_param_experiment replaces with
+    each panel's own.
+
+    inputs:
+        sar_arrays (list of (H,W)): raw SAR amplitude, one per panel
+        compression (str): 'linear' plots raw amplitude. 'db' plots dB below the sweep's brightest
+            panel, clipped to db_floor. 'asinh' arcsinh-compresses (asinh_compress) referenced to
+            the sweep's brightest panel -- logarithmic past asinh_k_ratio * that peak like dB, but
+            stays linear near zero instead of a hard floor clipping the faint end to black
+        db_floor (float): black point of the dB display, ignored unless compression == 'db'
+        asinh_k_ratio (float): asinh softening scale as a fraction of the sweep's peak, ignored
+            unless compression == 'asinh'
+    outputs:
+        plot_arrays (list of (H,W)): panel arrays in display units
+        plot_range (dict): vmin/vmax; only 'vmin' is used by the caller
     """
-    if not plot_db_scale:
+    if compression == 'linear':
         return sar_arrays, dict(vmin=0.0, vmax=float(max(a.max() for a in sar_arrays)))
 
     reference = float(max(a.max() for a in sar_arrays))
-    if reference <= 0.0:
-        plot_arrays = [np.zeros_like(a, dtype=np.float32) for a in sar_arrays]
+
+    if compression == 'db':
+        plot_arrays = [db_compress(arr, reference, db_floor) for arr in sar_arrays]
         return plot_arrays, dict(vmin=db_floor, vmax=0.0)
 
-    plot_arrays = []
-    for arr in sar_arrays:
-        amplitude = np.asarray(arr, dtype=np.float32)
-        db_values = 20.0 * np.log10(np.clip(amplitude / reference, 1e-12, None))
-        plot_arrays.append(db_values)
-    return plot_arrays, dict(vmin=db_floor, vmax=0.0)
+    if compression == 'asinh':
+        if reference <= 0.0:
+            plot_arrays = [np.zeros_like(a, dtype=np.float32) for a in sar_arrays]
+            return plot_arrays, dict(vmin=0.0, vmax=1.0)
+        k = asinh_k_ratio * reference
+        plot_arrays = [asinh_compress(arr, k, reference) for arr in sar_arrays]
+        return plot_arrays, dict(vmin=0.0, vmax=1.0)
+
+    raise ValueError("compression must be 'linear', 'db', or 'asinh', got %r" % (compression,))
 
 
-def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None, plot_db_scale=False, db_floor=-60.0):
+def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134,
+                           custom_title_strings=None):
     """
     A modular function to run experiments by varying multiple parameters together
-    
+
     Args:
         param_dict (dict): Dictionary where each key is a parameter name and value is a list/array of values.
                           All lists/arrays must have the same length.
-        default_kwargs (dict): Default arguments for render_random_image
+        default_kwargs (dict): Default arguments for render_random_image. Its
+            'compression'/'db_floor'/'asinh_k_ratio' entries decide the stitched figure's display
+            instead of being forwarded to render_random_image -- 'linear' plots raw amplitude,
+            'db' plots dB below the sweep's brightest panel (see db_floor), 'asinh'
+            arcsinh-compresses referenced to the sweep's brightest panel (see asinh_k_ratio), like
+            dB but without a hard floor clipping the faint end to black.
         experiment_name (str): Name of the experiment for saving files
         seed (int): Random seed for reproducibility
-        plot_db_scale (bool): If True, render the stitched plots in dB relative to a shared max.
     """
     # Verify all parameter arrays have the same length
     lengths = [len(vals) for vals in param_dict.values()]
     if not all(l == lengths[0] for l in lengths):
         raise ValueError("All parameter arrays must have the same length")
     n_experiments = lengths[0]
-    
+
+    # display settings are decided by default_kwargs, not forwarded to render_random_image
+    default_kwargs = default_kwargs.copy()
+    compression = default_kwargs.pop('compression', 'linear')
+    db_floor = default_kwargs.pop('db_floor', -60.0)
+    asinh_k_ratio = default_kwargs.pop('asinh_k_ratio', 0.1)
+
     # Create parameter names string for labeling
     param_names = "_".join(param_dict.keys())
 
@@ -472,15 +501,27 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
     plot_arrays, plot_range = _prepare_stitched_plot_arrays(
         sar_arrays,
-        plot_db_scale=plot_db_scale,
+        compression=compression,
         db_floor=db_floor,
+        asinh_k_ratio=asinh_k_ratio,
     )
 
     # Each panel gets its own colorbar, so each is stretched over its own range rather than over a
     # scale shared with the rest of the figure: a sweep like Fs or sphere size moves the level by
     # orders of magnitude, which used to leave most panels black. The level is not lost -- the
-    # colorbars read out in absolute amplitude, or in dB against the brightest panel, so panels are
-    # still compared by their numbers.
+    # colorbars read out in absolute amplitude, in dB, or in asinh units against the brightest
+    # panel, so panels are still compared by their numbers. min_span keeps a dim panel's colorbar
+    # from collapsing to a single value -- 10% of each mode's own full range (60 dB, or the [0,1]
+    # asinh scale).
+    if compression == 'db':
+        min_span, cbar_label, cbar_tick_fmt = 6.0, 'dB re brightest panel', '%.0f dB'
+    elif compression == 'asinh':
+        min_span = 0.1
+        cbar_label = 'asinh re brightest panel, k/ref %.2g' % asinh_k_ratio
+        cbar_tick_fmt = '%.2g'
+    else:
+        min_span, cbar_label, cbar_tick_fmt = None, 'amplitude', '%.2g'
+
     path = f'figures/sar_stitched_{experiment_name}.png'
     stitch_panels(
         plot_arrays,
@@ -489,8 +530,8 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         cmap='gray',
         vmin=plot_range['vmin'],
         vmax=None,
-        min_span=6.0 if plot_db_scale else None,
-        cbar_label='dB re brightest panel' if plot_db_scale else 'amplitude',
-        cbar_tick_fmt='%.0f dB' if plot_db_scale else '%.2g',
+        min_span=min_span,
+        cbar_label=cbar_label,
+        cbar_tick_fmt=cbar_tick_fmt,
     )
 

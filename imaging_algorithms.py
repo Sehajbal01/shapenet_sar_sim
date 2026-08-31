@@ -258,3 +258,78 @@ def strip_map_imaging(  signal,
     # reshape and convert to real-valued images
     image = reflectivity_estimate.reshape(N,image_height,image_width) # (N,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
+
+
+# ---------------------------------------------------------------------------
+# Display compression: amplitude -> dB or asinh-compressed values for plotting.
+# Every place that turns a raw amplitude image into something imshow-able (SAR and side scan
+# paper figures, range-angle images, signal-column stills, the side scan composite PNG) shares
+# these two primitives rather than each re-deriving the same formulas.
+# ---------------------------------------------------------------------------
+
+def db_compress(amplitude, reference, db_floor=-60.0):
+    '''
+    Amplitude -> dB below reference, clipped to db_floor.
+
+    inputs:
+        amplitude (ndarray): raw amplitude, any shape
+        reference (float): amplitude that maps to 0 dB -- an image's own peak, or, to keep panels
+            of a sweep comparable, the peak shared across the whole sweep
+        db_floor (float): black point of the dB display; reference <= 0 (an all-dark image) maps
+            to an array of db_floor everywhere
+    outputs:
+        db (ndarray): amplitude in dB, clipped to [db_floor, 0]
+    '''
+    amplitude = np.asarray(amplitude, dtype=np.float32)
+    if reference <= 0.0:
+        return np.full_like(amplitude, db_floor)
+    floor_linear = 10.0 ** (db_floor / 20.0)
+    db = 20.0 * np.log10(np.clip(amplitude / reference, floor_linear, None))
+    return np.clip(db, db_floor, 0.0)
+
+
+def to_db_uint8(amplitude, reference, db_floor=-60.0):
+    '''db_compress, rescaled to uint8 [0,255] for compositing into an 8-bit image.'''
+    db = db_compress(amplitude, reference, db_floor)
+    return ((db - db_floor) / -db_floor * 255.0).astype(np.uint8)
+
+
+def asinh_compress(amplitude, k, ref):
+    '''
+    Core of asinh display compression: linear near zero, ~logarithmic once amplitude passes k,
+    so faint texture stays visible without dB's hard floor clipping it to black.
+
+    inputs:
+        amplitude (ndarray): raw amplitude
+        k (float): softening scale -- arcsinh(x/k) is ~linear for x << k, ~logarithmic for x >> k
+        ref (float): amplitude that maps to output 1.0
+    outputs:
+        compressed (ndarray): compressed amplitude in [0,1]
+    '''
+    amplitude = np.asarray(amplitude, dtype=np.float32)
+    compressed = np.arcsinh(amplitude / k) / np.arcsinh(ref / k)
+    return np.clip(compressed, 0.0, 1.0)
+
+
+def to_asinh(img, k, ref):
+    '''asinh_compress, rescaled to uint8 [0,255] for compositing into an 8-bit image.'''
+    return (asinh_compress(img, k, ref) * 255).astype(np.uint8)
+
+
+def compute_dataset_reference(input_dir):
+    '''
+    Dataset-wide asinh reference: median, over every saved raw-amplitude .npy in input_dir, of
+    that image's 99.9th percentile pixel. Not wired in yet -- every asinh call site in this
+    codebase computes ref from just the one image being displayed; this is here for when a real
+    cross-dataset reference is wanted instead.
+
+    inputs:
+        input_dir (Path): directory of saved raw-amplitude .npy arrays
+    outputs:
+        ref (float): dataset reference level, feeds to_asinh/asinh_compress's ref argument
+    '''
+    refs = []
+    for f in input_dir.glob('*.npy'):
+        img = np.load(f)
+        refs.append(np.percentile(img, 99.9))
+    return np.median(refs)

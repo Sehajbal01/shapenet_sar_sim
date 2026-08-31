@@ -10,7 +10,7 @@ import matplotlib.gridspec as gridspec
 
 from utils import get_next_path, savefig
 from signal_simulation import interpolate_signal
-from display_compression import asinh_compress
+from imaging_algorithms import db_compress, asinh_compress
 
 
 def plot_energy_scatter(ax, fig, ranges_p, energies_p):
@@ -182,7 +182,7 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
 
         peak = columns.max()
         if compression == 'db' and peak > 0:
-            columns = 20 * np.log10(np.clip(columns / peak, 10 ** (db_floor / 20), None))
+            columns = db_compress(columns, peak, db_floor)
             color_label, vmin, vmax = 'Amplitude (dB re peak)', db_floor, 0.0
         elif compression == 'asinh' and peak > 0:
             ref = float(np.percentile(columns, 99.9))
@@ -286,8 +286,7 @@ def analyze_window_functions(
     sensor_distance = torch.zeros(1, device=device)
 
     def to_db(mag):  # normalized magnitude -> dB, floored for plotting
-        mag = mag / (mag.max() + 1e-30)
-        return 20.0 * np.log10(np.clip(mag, 10.0 ** (db_floor / 20.0), None))
+        return db_compress(mag, float(mag.max()), db_floor)
 
     for bw in bw_list:
         for fs in fs_list:

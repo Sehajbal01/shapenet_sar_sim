@@ -17,7 +17,7 @@ from range_angle_images import beam_spread_weights
 from signal_simulation import interpolate_signal, load_mesh
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
 from signal_visualization import signal_gif, signal_column_image
-from display_compression import asinh_compress, to_asinh, compute_dataset_reference
+from imaging_algorithms import to_db_uint8, to_asinh, compute_dataset_reference
 
 
 def side_scan_sonar_image(
@@ -436,8 +436,7 @@ def render_side_scan_image(
         peak = sonar_amp.max()
         ref = float(np.percentile(sonar_amp, 99.9)) if peak > 0 else 0.0
         if compression == 'db' and peak > 0:
-            sonar = 20 * np.log10(np.clip(sonar_amp / peak, 10 ** (db_floor / 20), None))
-            sonar = ((sonar - db_floor) / -db_floor * 255.0).astype(np.uint8)
+            sonar = to_db_uint8(sonar_amp, peak, db_floor)
         elif compression == 'asinh' and ref > 0:
             # ref is this one image's own 99.9th percentile; compute_dataset_reference exists for
             # a real cross-dataset reference once there's a dataset of saved amplitudes to use

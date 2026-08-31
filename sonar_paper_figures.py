@@ -9,7 +9,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import numpy as np
 
 from sidescansonar import render_side_scan_image
-from display_compression import asinh_compress
+from imaging_algorithms import db_compress, asinh_compress
 from paper_figure_layout import stitch_panels
 
 
@@ -164,7 +164,7 @@ def _panel(amplitude, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
     if peak <= 0.0:  # an all-dark panel has no peak to normalize against
         return np.full_like(amplitude, db_floor if compression == 'db' else 0.0)
     if compression == 'db':
-        return np.clip(20.0 * np.log10(np.clip(amplitude / peak, 1e-12, None)), db_floor, 0.0)
+        return db_compress(amplitude, peak, db_floor)
     if compression == 'asinh':
         ref = float(np.percentile(amplitude, 99.9))
         if ref <= 0.0:  # nearly all-dark panel: 99.9th percentile can round to 0 even with peak > 0

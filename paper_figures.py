@@ -34,8 +34,13 @@ PAPER_BASELINE = dict(
     n_ray_width=128,
     n_ray_height=128,
     region_radius=1.7,
-    obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
-    ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
+
+    # obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
+    # ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
+    # material properties
+    obj_raids    = (1.0, 1.0, 100.0, 0.1, 0.9),
+    ground_raids = (1.0, 1.0,   1.0,   5, 0.1),
+
     imaging_algorithm='cbp',
     cbp_batch_size=4096,
     trajectory_type='circular',
@@ -43,6 +48,13 @@ PAPER_BASELINE = dict(
     num_bounce=2,
     object_x_flip=False,
     object_rotate_xyz=(90.0, 0.0, 0.0),
+
+    # display -- the one place compression/db_floor/asinh_k_ratio are decided; multi_param_experiment
+    # reads these off the baseline (popping them before the rest is forwarded to
+    # render_random_image) unless an experiment's overrides set one instead
+    compression='asinh',  # 'linear' | 'db' | 'asinh'
+    db_floor=-60.0,
+    asinh_k_ratio=0.1,
 )
 
 
@@ -70,7 +82,6 @@ def _paper_experiments():
         name='fsbw',
         vary={'spatial_bw': bwfs_vals, 'spatial_fs': bwfs_vals},
         custom_title_strings=['BW = Fs: %d' % v for v in bwfs_vals],
-        plot_db_scale=True,
     )
 
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
@@ -141,7 +152,6 @@ def _paper_experiments():
                      'make_ground': False,
                     },
         custom_title_strings=['Scale: 1','Scale: 1/2','Scale: 1/4','Scale: 1/8','Scale: 1/16'],
-        plot_db_scale=True,
     )
 
     return [
@@ -294,7 +304,7 @@ def generate_linear_sar_comparison_figure(
     return output_path
 
 
-def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE, plot_db_scale=False):
+def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE):
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
         multi_param_experiment(
@@ -302,10 +312,9 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
-            plot_db_scale=exp.get('plot_db_scale', plot_db_scale),
         )
 
 
 if __name__ == '__main__':
-    run_paper_experiments(plot_db_scale=False)
+    run_paper_experiments()
     # generate_linear_sar_comparison_figure()

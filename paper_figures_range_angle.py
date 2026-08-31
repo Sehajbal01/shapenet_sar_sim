@@ -37,6 +37,7 @@ import torch
 from range_angle_images import sar_render_range_angle_image, plot_range_angle_image
 from paper_figure_layout import stitch_panels
 from utils import extract_pose_info
+from imaging_algorithms import db_compress
 
 
 RANGE_ANGLE_BASELINE = dict(
@@ -299,19 +300,13 @@ def _prepare_range_angle_plot_arrays(images, db_floor=-40.0, shared_db_reference
     moves the absolute level by construction rather than by scene physics, in which case each
     panel is referenced to its own peak, as plot_range_angle_image does.
     """
-    floor = 10 ** (db_floor / 20)
     if shared_db_reference:
         references = [float(max(im.max() for im in images))] * len(images)
     else:
         references = [float(im.max()) for im in images]
 
-    plot_arrays = []
-    for image, reference in zip(images, references):
-        if reference <= 0.0:
-            plot_arrays.append(np.full_like(image, db_floor, dtype=np.float32))
-            continue
-        amplitude = np.asarray(image, dtype=np.float32) / reference
-        plot_arrays.append(20.0 * np.log10(np.clip(amplitude, floor, None)))
+    plot_arrays = [db_compress(image, reference, db_floor)
+                   for image, reference in zip(images, references)]
     return plot_arrays
 
 

@@ -27,6 +27,7 @@ from matplotlib import pyplot as plt
 from utils import extract_pose_info, get_next_path, savefig
 from signal_simulation import load_mesh
 from accumulate_scatters import accumulate_scatters_perspective, centered_linspace
+from imaging_algorithms import db_compress
 
 
 # a Gaussian's full width at half maximum is 2*sqrt(2*ln2) standard deviations
@@ -261,8 +262,7 @@ def plot_range_angle_image(image, range_bins, angle_bins_deg, path, title=None, 
     angle_bins_deg = angle_bins_deg.detach().cpu().numpy()
 
     if db:
-        peak = image.max()
-        image = 20 * np.log10(np.clip(image / peak, 10 ** (db_floor / 20), None)) if peak > 0 else np.zeros_like(image)
+        image = db_compress(image, float(image.max()), db_floor)
         vmin, vmax = db_floor, 0.0
         label = 'dB'
     else:
