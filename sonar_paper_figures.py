@@ -19,7 +19,7 @@ SONAR_PAPER_BASELINE = dict(
     obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
     # pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
     pose_num = '000043',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    sensor_distance = 10,  # None keeps the pose file's own range; set to override it
+    sensor_distance = None,  # None keeps the pose file's own range; set to override it
 
     # track geometry
     track_length = 2.0,

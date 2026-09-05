@@ -18,22 +18,35 @@ from utils import extract_pose_info, generate_pose_mat
 
 PAPER_BASELINE = dict(
     azimuth_spread=90,
+
     debug_gif=False,
+
     num_pulse=64,
+
     spatial_bw=3650 / 50, # the denominator is in mm
     spatial_fs=3650 / 50, # the denominator is in mm
+
     wavelength=0.5,
+
     use_sig_magnitude=False,
+
     snr_db=50,
+
     image_width=128,
     image_height=128,
+
     image_plane_width=1,
     image_plane_height=1,
+
     grid_width=1.2,
     grid_height=1.2,
+
     n_ray_width=128,
     n_ray_height=128,
+
     region_radius=1.7,
+
+
 
     # obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
     # ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
@@ -113,6 +126,18 @@ def _paper_experiments():
                               for t, a in zip(trajectory_types, trajectory_spreads)],
     )
 
+    # Azimuth spread sweep for strip-map imaging on a linear trajectory. Capped at 135 deg
+    # (not 180) since generate_trajectory asserts a linear spread strictly below 180 deg, where
+    # the track runs off to infinity.
+    az_spread_linear_vals = np.linspace(0, 135, 5).tolist()
+    az_spread_linear_stripmap = dict(
+        name='az_spread_linear_stripmap',
+        vary={'azimuth_spread': az_spread_linear_vals},
+        overrides={'trajectory_type': 'linear', 'imaging_algorithm': 'stripmap'},
+        custom_title_strings=['Linear strip-map, azimuth spread: %.1f deg' % a
+                              for a in az_spread_linear_vals],
+    )
+
     # Trajectory noise sweep — how sensor position error along the path degrades the image.
     noise_vals = [0] + (10 ** np.linspace(-4, -2, 4, endpoint=True)).tolist()
     trajectory_noise_var = dict(
@@ -156,14 +181,15 @@ def _paper_experiments():
 
     return [
         az_spread,
-        num_pulse,
-        fsbw,
-        snrdb,
-        wavelength,
-        trajectory_type,
-        trajectory_noise_var,
-        waveform,
-        sphere,
+        # num_pulse,
+        # fsbw,
+        # snrdb,
+        # wavelength,
+        # trajectory_type,
+        az_spread_linear_stripmap,
+        # trajectory_noise_var,
+        # waveform,
+        # sphere,
     ]
 
 
