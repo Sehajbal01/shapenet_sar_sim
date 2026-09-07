@@ -22,19 +22,19 @@ SONAR_PAPER_BASELINE = dict(
     sensor_distance = 10,  # None keeps the pose file's own range; set to override it
 
     # track geometry
-    track_length = 2.0,
+    track_length = 1.1,
     num_pings = 128,
     elevation_fov_deg = 30.0,
     azimuth_beam_width_deg = 0.1,
     num_ray_width = 3,
-    num_ray_height = 256,
+    num_ray_height = 400,
     region_radius = 2.0,
 
     # image plane geometry
     image_width  = 128,
     image_height = 128,
-    image_plane_width  = 2,
-    image_plane_height = 2,
+    image_plane_width  = 1.1,
+    image_plane_height = 1.1,
 
     # signal / physics
     wavelength = None,
@@ -42,8 +42,8 @@ SONAR_PAPER_BASELINE = dict(
     spherical_spread = True,
     water_absorption = 0.00,
     tvg_exponent = 10,
-    spatial_bw = 64,
-    spatial_fs = 128,
+    spatial_bw = 50,
+    spatial_fs = 100,
     waveform = 'gaussian', # sinc pulse shows heavy side lobes. it may be a bug
     use_sig_magnitude = True,
 
@@ -138,9 +138,9 @@ def _sonar_experiments():
         # beam_width,
         tvg,
         # asinh_k,
-        elevation_fov,
-        spatial_bw,
-        waveform,
+        # elevation_fov,
+        # spatial_bw,
+        # waveform,
     ]
 
 
