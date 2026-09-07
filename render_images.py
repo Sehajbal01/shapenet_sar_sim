@@ -13,11 +13,11 @@ from matplotlib import pyplot as plt
 from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
 from accumulate_scatters import accumulate_scatters
 
-from imaging_algorithms import projected_CBP, strip_map_imaging, db_compress, asinh_compress
+from imaging_algorithms import projected_CBP, strip_map_imaging
 
 from signal_visualization import signal_gif
 
-from paper_figure_layout import stitch_panels
+from paper_figure_layout import panel_display, stitch_panels
 
 
 
@@ -200,6 +200,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
 
 def render_random_image(
+        obj_id = None,
+        pose_num = None,
         debug_gif = False, 
         num_pulse = 120,
         azimuth_spread = 180,
@@ -241,7 +243,12 @@ def render_random_image(
         log_scale = False,
     ):
     """
-    Renders a random image from the ShapeNet dataset using SAR simulation.
+    Renders an image from the ShapeNet dataset using SAR simulation.
+
+    inputs:
+        obj_id (str): srn_cars object id; a random one is drawn when None
+        pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
+        remaining arguments: as in sar_render_image
     """
 
     # cluster dirs
@@ -252,13 +259,17 @@ def render_random_image(
     # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
     # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
 
-    all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
-    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+    # left None, both are drawn at random in this order, so a caller that seeds np.random still
+    # gets the pick it used to
+    if obj_id is None:
+        all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
+        obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
 
-    all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
-    all_pose_nums  = os.listdir(all_pose_paths)
-    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+    if pose_num is None:
+        all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
+        all_pose_nums  = os.listdir(all_pose_paths)
+        pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
     print('Selected pose number: ', pose_num)
 
     if suffix is None:
@@ -364,49 +375,6 @@ def render_random_image(
 
 
 
-def _prepare_stitched_plot_arrays(sar_arrays, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
-    """
-    Convert raw SAR amplitudes into the plotting data for stitched figures.
-
-    The 'db' and 'asinh' paths both reference every panel to the sweep's brightest panel, so the
-    numbers on the panels' colorbars stay comparable across the figure even though each panel is
-    then stretched over its own range. Only the 'vmin' of the returned range is used by the
-    stitched figure -- its 'vmax' is the shared peak, which multi_param_experiment replaces with
-    each panel's own.
-
-    inputs:
-        sar_arrays (list of (H,W)): raw SAR amplitude, one per panel
-        compression (str): 'linear' plots raw amplitude. 'db' plots dB below the sweep's brightest
-            panel, clipped to db_floor. 'asinh' arcsinh-compresses (asinh_compress) referenced to
-            the sweep's brightest panel -- logarithmic past asinh_k_ratio * that peak like dB, but
-            stays linear near zero instead of a hard floor clipping the faint end to black
-        db_floor (float): black point of the dB display, ignored unless compression == 'db'
-        asinh_k_ratio (float): asinh softening scale as a fraction of the sweep's peak, ignored
-            unless compression == 'asinh'
-    outputs:
-        plot_arrays (list of (H,W)): panel arrays in display units
-        plot_range (dict): vmin/vmax; only 'vmin' is used by the caller
-    """
-    if compression == 'linear':
-        return sar_arrays, dict(vmin=0.0, vmax=float(max(a.max() for a in sar_arrays)))
-
-    reference = float(max(a.max() for a in sar_arrays))
-
-    if compression == 'db':
-        plot_arrays = [db_compress(arr, reference, db_floor) for arr in sar_arrays]
-        return plot_arrays, dict(vmin=db_floor, vmax=0.0)
-
-    if compression == 'asinh':
-        if reference <= 0.0:
-            plot_arrays = [np.zeros_like(a, dtype=np.float32) for a in sar_arrays]
-            return plot_arrays, dict(vmin=0.0, vmax=1.0)
-        k = asinh_k_ratio * reference
-        plot_arrays = [asinh_compress(arr, k, reference) for arr in sar_arrays]
-        return plot_arrays, dict(vmin=0.0, vmax=1.0)
-
-    raise ValueError("compression must be 'linear', 'db', or 'asinh', got %r" % (compression,))
-
-
 def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134,
                            custom_title_strings=None):
     """
@@ -417,10 +385,9 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
                           All lists/arrays must have the same length.
         default_kwargs (dict): Default arguments for render_random_image. Its
             'compression'/'db_floor'/'asinh_k_ratio' entries decide the stitched figure's display
-            instead of being forwarded to render_random_image -- 'linear' plots raw amplitude,
-            'db' plots dB below the sweep's brightest panel (see db_floor), 'asinh'
-            arcsinh-compresses referenced to the sweep's brightest panel (see asinh_k_ratio), like
-            dB but without a hard floor clipping the faint end to black.
+            instead of being forwarded to render_random_image, and every panel is referenced to
+            its own peak rather than to the sweep's brightest panel -- see
+            paper_figure_layout.panel_display, which the side scan suite shares.
         experiment_name (str): Name of the experiment for saving files
         seed (int): Random seed for reproducibility
     """
@@ -497,30 +464,20 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     # Sort files by the figure ID
     sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
 
-    # Load raw SAR amplitude arrays
+    # Each panel gets its own colorbar in its own display units, referenced to its own peak as
+    # the side scan figures are: a sweep like Fs or sphere size moves the level by orders of
+    # magnitude, and referencing the dim panels to the brightest one left them nearly black. The
+    # level is not lost, since each colorbar's label names that panel's own raw peak.
     sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
-    plot_arrays, plot_range = _prepare_stitched_plot_arrays(
-        sar_arrays,
-        compression=compression,
-        db_floor=db_floor,
-        asinh_k_ratio=asinh_k_ratio,
-    )
-
-    # Each panel gets its own colorbar, so each is stretched over its own range rather than over a
-    # scale shared with the rest of the figure: a sweep like Fs or sphere size moves the level by
-    # orders of magnitude, which used to leave most panels black. The level is not lost -- the
-    # colorbars read out in absolute amplitude, in dB, or in asinh units against the brightest
-    # panel, so panels are still compared by their numbers. min_span keeps a dim panel's colorbar
-    # from collapsing to a single value -- 10% of each mode's own full range (60 dB, or the [0,1]
-    # asinh scale).
-    if compression == 'db':
-        min_span, cbar_label, cbar_tick_fmt = 6.0, 'dB re brightest panel', '%.0f dB'
-    elif compression == 'asinh':
-        min_span = 0.1
-        cbar_label = 'asinh re brightest panel, k/ref %.2g' % asinh_k_ratio
-        cbar_tick_fmt = '%.2g'
-    else:
-        min_span, cbar_label, cbar_tick_fmt = None, 'amplitude', '%.2g'
+    plot_arrays, vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], [], []
+    for arr in sar_arrays:
+        panel, vmin, vmax, cbar_label, tick_fmt = panel_display(
+            arr, compression=compression, db_floor=db_floor, asinh_k_ratio=asinh_k_ratio)
+        plot_arrays.append(panel)
+        vmins.append(vmin)
+        vmaxs.append(vmax)
+        cbar_labels.append(cbar_label)
+        tick_fmts.append(tick_fmt)
 
     path = f'figures/sar_stitched_{experiment_name}.png'
     stitch_panels(
@@ -528,10 +485,9 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
         experiment_strings,
         path,
         cmap='gray',
-        vmin=plot_range['vmin'],
-        vmax=None,
-        min_span=min_span,
-        cbar_label=cbar_label,
-        cbar_tick_fmt=cbar_tick_fmt,
+        vmin=vmins,
+        vmax=vmaxs,
+        cbar_label=cbar_labels,
+        cbar_tick_fmt=tick_fmts,
     )
 

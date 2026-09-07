@@ -9,8 +9,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import numpy as np
 
 from sidescansonar import render_side_scan_image
-from imaging_algorithms import db_compress, asinh_compress
-from paper_figure_layout import stitch_panels
+from paper_figure_layout import panel_display, stitch_panels
 
 
 SONAR_PAPER_BASELINE = dict(
@@ -161,45 +160,6 @@ def _sonar_experiments():
 SONAR_PAPER_EXPERIMENTS = _sonar_experiments()
 
 
-def _panel(amplitude, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
-    '''
-    One panel normalized to its own peak, as linear amplitude, in dB, or asinh-compressed.
-
-    Each panel is normalized to itself rather than to a scale shared across the figure, because
-    both sweeps move the absolute level by orders of magnitude and neither one means anything.
-    The beam width sweep narrows the ray fan with the beam while the energy divisor stays at the
-    transmitted ray count, and the gain sweep multiplies the whole image by R^n. Against a shared
-    scale most panels would come out black, so the figures compare shape and not level.
-
-    inputs:
-        amplitude (H,W): raw side scan amplitude, as saved by render_side_scan_image
-        compression (str): 'linear' peak-normalizes. 'db' shows dB below the panel's own peak --
-            the returns span ~100 dB, so linear is all specular glint and near range, and dB is
-            what shows the seafloor and the shadow. 'asinh' arcsinh-compresses (asinh_compress)
-            referenced to the panel's own 99.9th percentile amplitude -- stays linear near zero
-            and logarithmic past asinh_k_ratio * that reference, so it shows seafloor texture
-            like dB does but without a hard floor clipping the faint end to black
-        db_floor (float): black point of the dB display, ignored unless compression == 'db'
-        asinh_k_ratio (float): asinh softening scale as a fraction of the panel's own reference
-            level, ignored unless compression == 'asinh'
-    outputs:
-        panel (H,W): amplitude in [0,1] for 'linear'/'asinh', or dB below the panel's own peak
-            clipped to [db_floor,0] for 'db'
-    '''
-    amplitude = np.asarray(amplitude, dtype=np.float32)
-    peak = float(amplitude.max())
-    if peak <= 0.0:  # an all-dark panel has no peak to normalize against
-        return np.full_like(amplitude, db_floor if compression == 'db' else 0.0)
-    if compression == 'db':
-        return db_compress(amplitude, peak, db_floor)
-    if compression == 'asinh':
-        ref = float(np.percentile(amplitude, 99.9))
-        if ref <= 0.0:  # nearly all-dark panel: 99.9th percentile can round to 0 even with peak > 0
-            return np.zeros_like(amplitude)
-        return asinh_compress(amplitude, asinh_k_ratio * ref, ref)
-    return amplitude / peak
-
-
 def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
                                  custom_title_strings=None):
     '''
@@ -285,35 +245,18 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
     sorted_ids, sorted_npy = zip(*sorted(zip(npy_ids, npy_files)))
 
+    # One colorbar per panel, in that panel's own display units. panel_display normalizes every
+    # panel to its own peak, so what the bar carries that a shared one could not is the per-panel
+    # setting the normalization hides -- that panel's raw peak, and its asinh k.
     raw_amplitudes = [np.load(os.path.join('figures', f)) for f in sorted_npy]
-    panels = [_panel(amplitude, **panel_display_kwargs[idx])
-              for idx, amplitude in zip(sorted_ids, raw_amplitudes)]
-
-    # One colorbar per panel, in that panel's own display units. _panel normalizes every panel to
-    # its own peak, so the bar itself always runs over the same range; what it carries that a
-    # single shared bar could not is the per-panel setting the normalization hides -- the raw peak
-    # the panel was divided by, and, on an asinh sweep, the k that panel was compressed with. The
-    # peaks are there to say what level a panel sits at, not to be compared: see _panel on why the
-    # sweeps move the absolute level by orders of magnitude for reasons that are not the scene.
-    vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], []
+    panels, vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], [], []
     for idx, amplitude in zip(sorted_ids, raw_amplitudes):
-        panel_kwargs = panel_display_kwargs[idx]
-        peak = float(np.asarray(amplitude, dtype=np.float32).max())
-        if panel_kwargs['compression'] == 'db':
-            vmins.append(panel_kwargs['db_floor'])
-            vmaxs.append(0.0)
-            cbar_labels.append('dB re peak %.2g' % peak)
-            tick_fmts.append('%.0f dB')
-        elif panel_kwargs['compression'] == 'asinh':
-            vmins.append(0.0)
-            vmaxs.append(1.0)
-            cbar_labels.append('asinh, k/ref %.2g, peak %.2g' % (panel_kwargs['asinh_k_ratio'], peak))
-            tick_fmts.append('%.2g')
-        else:
-            vmins.append(0.0)
-            vmaxs.append(1.0)
-            cbar_labels.append('amp / peak %.2g' % peak)
-            tick_fmts.append('%.2g')
+        panel, vmin, vmax, cbar_label, tick_fmt = panel_display(amplitude, **panel_display_kwargs[idx])
+        panels.append(panel)
+        vmins.append(vmin)
+        vmaxs.append(vmax)
+        cbar_labels.append(cbar_label)
+        tick_fmts.append(tick_fmt)
 
     path = 'figures/side_scan_stitched_%s.png' % experiment_name
     return stitch_panels(

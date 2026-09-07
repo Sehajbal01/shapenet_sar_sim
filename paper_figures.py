@@ -17,16 +17,24 @@ from utils import extract_pose_info, generate_pose_mat
 
 
 PAPER_BASELINE = dict(
+    # pin the object and the pose, to the same car and pose SONAR_PAPER_BASELINE pins, so both
+    # figure suites show the same target. render_random_image draws them at random when None
+    obj_id='100715345ee54d7ae38b52b4ee9d36a3',
+    pose_num='000043',  # 59.3 deg elevation
+
     azimuth_spread=90,
 
     debug_gif=False,
 
     num_pulse=64,
 
+    # Fs = 2*BW as in the side scan baseline; Fs = BW sampled the pulse right at Nyquist
     spatial_bw=3650 / 50, # the denominator is in mm
-    spatial_fs=3650 / 50, # the denominator is in mm
+    spatial_fs=2 * 3650 / 50,
 
     wavelength=0.5,
+
+    waveform='gaussian',  # the default sinc rings; its side lobes streak off the car
 
     use_sig_magnitude=False,
 
@@ -35,8 +43,9 @@ PAPER_BASELINE = dict(
     image_width=128,
     image_height=128,
 
-    image_plane_width=1,
-    image_plane_height=1,
+    # 1.1 frames an srn car the way the side scan images do
+    image_plane_width=1.1,
+    image_plane_height=1.1,
 
     grid_width=1.2,
     grid_height=1.2,
@@ -67,7 +76,9 @@ PAPER_BASELINE = dict(
     # render_random_image) unless an experiment's overrides set one instead
     compression='asinh',  # 'linear' | 'db' | 'asinh'
     db_floor=-60.0,
-    asinh_k_ratio=0.1,
+    # k = asinh_k_ratio * ref; ref is each panel's own 99.9th-percentile amplitude. Larger than
+    # the side scan baseline's 0.005, which pulls coherent CBP's speckle floor up to mid gray
+    asinh_k_ratio=0.05,
 )
 
 
@@ -89,12 +100,13 @@ def _paper_experiments():
         custom_title_strings=['Pulses: %d' % p for p in pulse_vals],
     )
 
-    # Spatial bandwidth / sample rate sweep — how BW=Fs affects range resolution.
+    # Spatial bandwidth sweep — range resolution goes as 1/BW. Fs = 2*BW throughout, as in the
+    # baseline, so the panels differ by bandwidth alone and not by how finely each pulse is sampled.
     bwfs_vals = [4, 16, 64, 128, 512]
     fsbw = dict(
         name='fsbw',
-        vary={'spatial_bw': bwfs_vals, 'spatial_fs': bwfs_vals},
-        custom_title_strings=['BW = Fs: %d' % v for v in bwfs_vals],
+        vary={'spatial_bw': bwfs_vals, 'spatial_fs': [2 * bw for bw in bwfs_vals]},
+        custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
     )
 
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
@@ -149,19 +161,21 @@ def _paper_experiments():
     # Transmit-waveform comparison — how the pulse / range-compression window shapes
     # the image. waveform selects the effective range window used inside
     # interpolate_signal: an ideal sinc, a Gaussian pulse, and the matched-filter
-    # responses of an LFM chirp and a Barker-13 phase code. Those four are every waveform
-    # interpolate_signal implements, so the fifth panel is the chirp again at twice the
-    # bandwidth — the knob that actually sets range resolution once a waveform is chosen. Fs
-    # follows BW, since a wider pulse sampled at the old rate would just alias. Twice and not
-    # more: past that the range resolution outruns what 64 pulses of aperture resolve in cross
-    # range, and the panel turns into grating lobes rather than a sharper car.
+    # responses of an LFM chirp and a Barker-13 phase code. Those are four of the five waveforms
+    # interpolate_signal implements — the sonar suite's waveform figure covers the fifth, a Hamming
+    # window — so the last panel here is the chirp again at twice the bandwidth, the knob that
+    # actually sets range resolution once a waveform is chosen. Fs stays at 2*BW as in the
+    # baseline, so it follows the wider pulse instead of aliasing it. Twice and not more: past that
+    # the range resolution outruns what 64 pulses of aperture resolve in cross range, and the panel
+    # turns into grating lobes rather than a sharper car.
     base_bw = PAPER_BASELINE['spatial_bw']
     waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13', 'lfm']
     waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
         name='waveform',
         vary={'waveform': waveform_vals,
-              'spatial_bw': waveform_bw_vals, 'spatial_fs': waveform_bw_vals},
+              'spatial_bw': waveform_bw_vals,
+              'spatial_fs': [2 * bw for bw in waveform_bw_vals]},
         custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13',
                               'LFM Chirp, 2x BW'],
     )
@@ -271,6 +285,7 @@ def generate_linear_sar_comparison_figure(
         render_kwargs = {
             'spatial_bw': comparison_kwargs['spatial_bw'],
             'spatial_fs': comparison_kwargs['spatial_fs'],
+            'waveform': comparison_kwargs['waveform'],
             'snr_db': comparison_kwargs['snr_db'],
             'wavelength': comparison_kwargs['wavelength'],
             'use_sig_magnitude': comparison_kwargs['use_sig_magnitude'],

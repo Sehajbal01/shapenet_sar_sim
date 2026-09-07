@@ -2,7 +2,8 @@
 One stitched-sweep layout, shared by all three paper figure suites: render_images'
 multi_param_experiment (SAR), paper_figures_range_angle's multi_param_range_angle_experiment, and
 sonar_paper_figures' multi_param_sonar_experiment. Each of the three grew its own copy of the same
-matplotlib code, so the layout now lives here and they all call stitch_panels.
+matplotlib code, so the layout now lives here and they all call stitch_panels. The display
+compression the panels are stitched with lives here too, as panel_display, for the same reason.
 
 Every panel carries its own horizontal colorbar directly underneath it and its own short
 description directly above it, with white space between panels. Per-panel colorbars are the point:
@@ -16,6 +17,8 @@ panel_width x panel_height and its colorbar is exactly as wide as the image abov
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import ticker
+
+from imaging_algorithms import db_compress, asinh_compress
 
 
 # every other measurement is quoted against the panel box, in inches
@@ -36,6 +39,60 @@ def _per_panel(value, n, name):
     if len(value) != n:
         raise ValueError('%s has %d entries but there are %d panels' % (name, len(value), n))
     return value
+
+
+def panel_display(amplitude, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
+    '''
+    One panel's display array, plus the colorbar limits and label that report it.
+
+    Every panel is referenced to its own peak rather than to a level shared across the figure,
+    because a sweep moves the absolute level by orders of magnitude for reasons that are not the
+    scene: the sonar beam width sweep narrows the ray fan while the energy divisor stays at the
+    transmitted ray count, its gain sweep multiplies the whole image by R^n, and the SAR bandwidth
+    sweep spreads the same energy over a different number of range samples. Against a shared scale
+    most panels come out black, so the panels are compared by shape and the colorbar label carries
+    the level -- each panel's own raw peak, and the k it was compressed with.
+
+    inputs:
+        amplitude (H,W): raw amplitude, as the render functions save it
+        compression (str): 'linear' peak-normalizes. 'db' shows dB below the panel's own peak --
+            the returns span ~100 dB, so a linear stretch is all specular glint and dB is what
+            shows the faint structure. 'asinh' arcsinh-compresses (asinh_compress) referenced to
+            the panel's own 99.9th percentile amplitude -- linear near zero and logarithmic past
+            asinh_k_ratio * that reference, so it shows the faint end like dB does but without a
+            hard floor clipping it to black
+        db_floor (float): black point of the dB display, ignored unless compression == 'db'
+        asinh_k_ratio (float): asinh softening scale as a fraction of the panel's own reference
+            level, ignored unless compression == 'asinh'
+    outputs:
+        panel (H,W): the array to plot, in display units
+        vmin, vmax (float): color limits for that array
+        cbar_label (str): what the colorbar reports, including this panel's own raw peak
+        cbar_tick_fmt (str): tick format for that colorbar
+    '''
+    amplitude = np.asarray(amplitude, dtype=np.float32)
+    peak = float(amplitude.max())
+
+    if compression == 'db':
+        # db_compress maps a non-positive reference to db_floor everywhere, so an all-dark panel
+        # needs no special case here
+        return (db_compress(amplitude, peak, db_floor), db_floor, 0.0,
+                'dB re peak %.2g' % peak, '%.0f dB')
+
+    if compression == 'asinh':
+        ref = float(np.percentile(amplitude, 99.9))
+        if ref <= 0.0:  # nearly all-dark panel: the percentile can round to 0 even with peak > 0
+            panel = np.zeros_like(amplitude)
+        else:
+            panel = asinh_compress(amplitude, asinh_k_ratio * ref, ref)
+        return (panel, 0.0, 1.0,
+                'asinh, k/ref %.2g, peak %.2g' % (asinh_k_ratio, peak), '%.2g')
+
+    if compression == 'linear':
+        panel = amplitude / peak if peak > 0.0 else np.zeros_like(amplitude)
+        return panel, 0.0, 1.0, 'amp / peak %.2g' % peak, '%.2g'
+
+    raise ValueError("compression must be 'linear', 'db', or 'asinh', got %r" % (compression,))
 
 
 def _tick_formatter(fmt):
