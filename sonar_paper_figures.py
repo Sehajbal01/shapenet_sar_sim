@@ -102,6 +102,19 @@ def _sonar_experiments():
         custom_title_strings=['asinh k/ref: %.2g' % k for k in asinh_k_vals],
     )
 
+    # Display compression comparison -- one amplitude four ways: linear, dB, the baseline's asinh,
+    # and a larger asinh k at the near-linear end of the family.
+    compression_k = SONAR_PAPER_BASELINE['asinh_k_ratio']
+    compression = dict(
+        name='compression',
+        vary={'compression': ['linear', 'db', 'asinh', 'asinh'],
+              'asinh_k_ratio': [compression_k, compression_k, compression_k, 0.1]},
+        custom_title_strings=['Linear Amplitude',
+                              'dB, %.0f dB Floor' % SONAR_PAPER_BASELINE['db_floor'],
+                              'asinh, k/ref %.3g' % compression_k,
+                              'asinh, k/ref 0.1'],
+    )
+
     # Elevation FOV sweep -- how much of the seafloor the fan lights up around the target, from a
     # narrow beam on the object alone to a fan that fills the range window.
     elevation_fov_vals = np.linspace(5, 50, 5).tolist()
@@ -137,6 +150,7 @@ def _sonar_experiments():
     return [
         # beam_width,
         tvg,
+        compression,
         # asinh_k,
         # elevation_fov,
         # spatial_bw,
