@@ -19,7 +19,7 @@ SONAR_PAPER_BASELINE = dict(
     obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
     # pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
     pose_num = '000043',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    sensor_distance = None,  # None keeps the pose file's own range; set to override it
+    sensor_distance = 10,  # None keeps the pose file's own range; set to override it
 
     # track geometry
     track_length = 2.0,
@@ -42,9 +42,9 @@ SONAR_PAPER_BASELINE = dict(
     spherical_spread = True,
     water_absorption = 0.00,
     tvg_exponent = 10,
-    spatial_bw = 128,
-    spatial_fs = 256,
-    window_func = 'sinc',
+    spatial_bw = 64,
+    spatial_fs = 128,
+    waveform = 'gaussian', # sinc pulse shows heavy side lobes. it may be a bug
     use_sig_magnitude = True,
 
     # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
@@ -122,12 +122,25 @@ def _sonar_experiments():
         custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in spatial_bw_vals],
     )
 
+    # Transmit waveform comparison -- every waveform interpolate_signal implements, at the
+    # baseline bandwidth so only the pulse changes. All five have a ~1/bw mainlobe, so what
+    # separates the panels is range side lobe level, which is what the baseline's waveform
+    # was chosen on.
+    waveform_vals = ['sinc', 'hamming', 'gaussian', 'lfm', 'barker13']
+    waveform = dict(
+        name='waveform',
+        vary={'waveform': waveform_vals},
+        custom_title_strings=['Sinc Interpolation', 'Hamming Window', 'Gaussian Pulse',
+                              'LFM Chirp', 'Barker 13'],
+    )
+
     return [
         # beam_width,
         tvg,
         # asinh_k,
         elevation_fov,
         spatial_bw,
+        waveform,
     ]
 
 

@@ -46,7 +46,7 @@ BASELINE = dict(
     spatial_bw=3650 / 50,
     spatial_fs=3650 / 50,
     region_radius=1.7,
-    window_func='sinc',
+    waveform='sinc',
     amplitude=1.0,
     snr_db=None,
     trajectory_type='circular',
@@ -71,7 +71,7 @@ def simulate_point_target(
     spatial_bw=73.0,
     spatial_fs=73.0,
     region_radius=1.7,
-    window_func='sinc',
+    waveform='sinc',
     amplitude=1.0,
     snr_db=None,
     trajectory_type='circular',
@@ -141,7 +141,7 @@ def simulate_point_target(
         sensor_dist,                                             # (P,)
         spatial_bw=spatial_bw,
         spatial_fs=spatial_fs,
-        window_func=window_func,
+        waveform=waveform,
         batch_size=None,
     )  # (P,Z), (P,Z)
 
@@ -867,9 +867,9 @@ def _report(results):
     print('target %s   %d pulses over %g deg   el %g deg   dist %g'
           % (cfg['target_xyz'], cfg['num_pulses'], cfg['azimuth_spread'],
              cfg['elevation_deg'], cfg['sensor_distance']))
-    print('lambda %.4g   B_s %.4g   F_s %.4g   window %s'
+    print('lambda %.4g   B_s %.4g   F_s %.4g   waveform %s'
           % (cfg['wavelength'], cfg['spatial_bw'], cfg['spatial_fs'],
-             cfg['window_func']))
+             cfg['waveform']))
     print('slant range resolution 1/B_s          = %.5g' % (1 / cfg['spatial_bw']))
     print('ground range resolution 1/(B_s cos el) = %.5g'
           % (1 / (cfg['spatial_bw'] * np.cos(el))))

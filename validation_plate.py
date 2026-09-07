@@ -477,7 +477,7 @@ def run_radiometric_scaling(fractions=(0.05, 0.1, 0.2, 0.4, 0.7, 1.0),
     sig, sample_z = interpolate_signal(
         (ranges[0] / 2).reshape(1, -1), energies[0].reshape(1, -1),
         region_radius, torch.linalg.norm(traj[0, 0]).reshape(1),
-        spatial_bw=bw, spatial_fs=fs, window_func='sinc',
+        spatial_bw=bw, spatial_fs=fs, waveform='sinc',
     )
     mag = sig[0].abs().detach().cpu().numpy()
     z = sample_z[0].detach().cpu().numpy() - float(torch.linalg.norm(traj[0, 0]))
@@ -688,7 +688,7 @@ def run_farfield_consistency(radii=(0.0, 0.15, 0.30, 0.45), device='cuda'):
             s_p, z_p = interpolate_signal(
                 (ranges[0][p] / 2).reshape(1, -1), energies[0][p].reshape(1, -1),
                 region_radius, torch.linalg.norm(true_traj[0, p]).reshape(1),
-                spatial_bw=spatial_bw, spatial_fs=spatial_fs, window_func='sinc',
+                spatial_bw=spatial_bw, spatial_fs=spatial_fs, waveform='sinc',
             )
             sig.append(s_p[0]); sz.append(z_p[0])
         signals = torch.stack(sig).unsqueeze(0).abs()      # (1,P,Z) magnitude imaging

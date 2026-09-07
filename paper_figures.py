@@ -147,9 +147,9 @@ def _paper_experiments():
     )
 
     # Transmit-waveform comparison — how the pulse / range-compression window shapes
-    # the image. window_func selects the effective range window used inside
+    # the image. waveform selects the effective range window used inside
     # interpolate_signal: an ideal sinc, a Gaussian pulse, and the matched-filter
-    # responses of an LFM chirp and a Barker-13 phase code. Those four are every window
+    # responses of an LFM chirp and a Barker-13 phase code. Those four are every waveform
     # interpolate_signal implements, so the fifth panel is the chirp again at twice the
     # bandwidth — the knob that actually sets range resolution once a waveform is chosen. Fs
     # follows BW, since a wider pulse sampled at the old rate would just alias. Twice and not
@@ -160,7 +160,7 @@ def _paper_experiments():
     waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
         name='waveform',
-        vary={'window_func': waveform_vals,
+        vary={'waveform': waveform_vals,
               'spatial_bw': waveform_bw_vals, 'spatial_fs': waveform_bw_vals},
         custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13',
                               'LFM Chirp, 2x BW'],

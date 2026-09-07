@@ -6,7 +6,7 @@ image comes from a single pulse fanned over a field of view rather than from an 
 
     aperture parameters (azimuth_spread, num_pulse, trajectory_*, imaging_algorithm)
         no analogue, a range angle image is one pulse from one place
-    spatial_bw / spatial_fs / window_func
+    spatial_bw / spatial_fs / waveform
         no analogue, range comes straight from the scatter delay with no pulse compression
     snr_db
         no analogue, sar_render_range_angle_image has no receiver noise model

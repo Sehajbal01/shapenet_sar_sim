@@ -241,8 +241,8 @@ def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,
     return paths
 
 
-def analyze_window_functions(
-        window_funcs=('sinc', 'gaussian', 'lfm', 'barker13'),
+def analyze_waveforms(
+        waveforms=('sinc', 'hamming', 'gaussian', 'lfm', 'barker13'),
         bw_list=(20.0,),
         fs_list=(40.0, 80.0),
         region_radius=1.0,
@@ -252,7 +252,7 @@ def analyze_window_functions(
 ):
     """
     Characterize the range impulse response (point-spread function) of each
-    interpolate_signal window.  A single unit scatter at z=0 is fed to
+    interpolate_signal waveform.  A single unit scatter at z=0 is fed to
     interpolate_signal with sensor_distance=0, so the recovered signal is exactly
     the effective window w(z) sampled at the radar sampling frequency:
         s(z_o) = sum_r E_r w(-z_o - z_r/2) = w(-z_o)   (E=1, z=0).
@@ -262,7 +262,7 @@ def analyze_window_functions(
     when fs < bw).  Figures are written to save_dir for use in the paper.
 
     Inputs:
-        window_funcs (iterable of str): window functions to compare
+        waveforms (iterable of str): transmit waveforms to compare
         bw_list (iterable of float): spatial bandwidths to sweep
         fs_list (iterable of float): spatial sampling frequencies to sweep
         region_radius (float): radius of the sampled range region
@@ -272,9 +272,10 @@ def analyze_window_functions(
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    # human-readable legend labels for each window function
-    window_labels = {
+    # human-readable legend labels for each waveform
+    waveform_labels = {
         'sinc': 'Sinc Interpolation',
+        'hamming': 'Hamming-Tapered Band',
         'gaussian': 'Gaussian Pulse',
         'lfm': 'LFM Chirp',
         'barker13': 'Barker 13',
@@ -292,15 +293,15 @@ def analyze_window_functions(
         for fs in fs_list:
             fig, (ax_lin, ax_freq) = plt.subplots(1, 2, figsize=(12, 5))
 
-            for wf in window_funcs:
+            for wf in waveforms:
                 signal, sample_z = interpolate_signal(
                     scatter_z, scatter_e, region_radius, sensor_distance,
-                    spatial_bw=bw, spatial_fs=fs, window_func=wf,
+                    spatial_bw=bw, spatial_fs=fs, waveform=wf,
                 )
                 s = signal[0].cpu().numpy()           # (Z,) complex impulse response
                 z = sample_z[0].cpu().numpy()         # (Z,) range axis (sensor_distance=0)
                 mag = np.abs(s)
-                label = window_labels.get(wf, wf)
+                label = waveform_labels.get(wf, wf)
 
                 # time/range domain
                 ax_lin.plot(z, mag / (mag.max() + 1e-30), label=label, ms=3)
@@ -329,5 +330,5 @@ def analyze_window_functions(
 
 
 if __name__ == '__main__':
-    # characterize the interpolate_signal window functions for the paper
-    analyze_window_functions(bw_list=(10.0,), fs_list=(2000.0,))
+    # characterize the interpolate_signal waveforms for the paper
+    analyze_waveforms(bw_list=(10.0,), fs_list=(2000.0,))

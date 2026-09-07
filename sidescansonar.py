@@ -46,7 +46,7 @@ def side_scan_sonar_image(
     tvg_exponent = 4.0,
     spatial_bw = 32,
     spatial_fs = 64,
-    window_func = 'sinc',
+    waveform = 'sinc',
     use_sig_magnitude = True,
     debug_gif = False,
     debug_columns = False,
@@ -137,7 +137,7 @@ def side_scan_sonar_image(
                 region_radius,
                 window_center,
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-                window_func = window_func,
+                waveform = waveform,
             )
             signals_t.append(signal_p.squeeze(0))      # (Z,)
             sample_z_t.append(sample_z_p.squeeze(0))   # (Z,)
@@ -251,7 +251,7 @@ def render_side_scan_image(
         tvg_exponent = 4.0,
         spatial_bw = 64,
         spatial_fs = 64,
-        window_func = 'sinc',
+        waveform = 'sinc',
         use_sig_magnitude = True,
 
         # debug
@@ -413,7 +413,7 @@ def render_side_scan_image(
         tvg_exponent = tvg_exponent,
         spatial_bw = spatial_bw,
         spatial_fs = spatial_fs,
-        window_func = window_func,
+        waveform = waveform,
         use_sig_magnitude = use_sig_magnitude,
         debug_gif = debug_gif,
         debug_columns = debug_columns,
