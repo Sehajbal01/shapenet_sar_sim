@@ -440,6 +440,92 @@ In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc win
 
 
 
+\subsection{Stripmap-mode imaging}
+\label{sec:stripmap}
+
+Any imaging algorithm may be applied to the simulated signals. We describe the stripmap-mode
+reconstruction used in this work, and in particular the filtering step it requires. When a carrier
+wavelength $\lambda$ is specified, each return carries the round-trip phase of its own path, and
+the energy-range scatter of (\ref{eq:returned-scatters}) becomes complex,
+\begin{equation}
+    g(z) = \sum_{k=1}^{N}E_ke^{j 2 \pi z_k / \lambda}\delta(z-z_k)
+    .
+    \label{eq:coherent-scatters}
+\end{equation}
+Interposummation is unchanged by this, so the digital signal of the $i^{th}$ pulse, sampled on the
+one-way range axis, is
+\begin{equation}
+    s_i(z_o) = \sum_{k=1}^{N}E_ke^{j 4 \pi \zeta_k / \lambda}w\big(z_o-\zeta_k\big)
+    ,
+    \label{eq:coherent-signal}
+\end{equation}
+where $\zeta_k = z_k/2$ is the one-way range of the $k^{th}$ return.
+
+Let $\vec{v}_i$ be the sensor position on pulse $i$, and let $\rho_i(\vec{x}) =
+\lVert\vec{v}_i-\vec{x}\rVert$ be the one-way range from that position to a ground point
+$\vec{x}$. A direct estimate of the ground reflectivity $\gamma$ evaluates every pulse at the
+range of $\vec{x}$, counter-rotates the carrier phase of that range, and averages,
+\begin{equation}
+    \hat{\gamma}(\vec{x}) = \frac{1}{P}\sum_{i=1}^{P}s_i\big(\rho_i(\vec{x})\big)e^{-j 4 \pi \rho_i(\vec{x}) / \lambda}
+    ,
+    \label{eq:naive-bp}
+\end{equation}
+where $s_i$ is evaluated between its samples by band-limited interpolation,
+\begin{equation}
+    s_i(\rho) = \sum_{n}s_i[n]\sinc\big(F_s(\rho-z_{i,n})\big)
+    ,
+    \label{eq:bp-interp}
+\end{equation}
+and $z_{i,n}$ is the range of the $n^{th}$ sample of pulse $i$.
+
+Equation (\ref{eq:naive-bp}) is unfiltered backprojection, and it does not recover $\gamma$. Each
+pulse spreads its range profile uniformly along its iso-range contours, which are straight lines
+across the scene. A line is constant in the cross-range direction, so it deposits all of its
+energy at the origin of the image's two-dimensional spatial-frequency plane, and averaging $P$
+pulses stacks $P$ such contributions there. The reconstruction is then the laminogram familiar
+from tomography: the true reflectivity convolved with $1/\lVert\vec{x}\rVert$, whose transfer
+function is the reciprocal of the radial spatial frequency. Low spatial frequencies are amplified
+without bound, and the scene is buried under a smooth pedestal.
+
+Filtered backprojection suppresses the pedestal by weighting each pulse's spectrum with the
+Jacobian of the polar-to-Cartesian change of variables, $dZ_xdZ_y = |Z|dZda$, which is the same
+ramp filter used by the spotlight-mode convolution backprojection of \cite{spotlightmodesar}. What
+is specific to the coherent stripmap case is where the null of that ramp belongs. The phasor in
+(\ref{eq:coherent-signal}) shifts the reflectivity spectrum up by $2/\lambda$, so the origin of
+the image's spectrum lies at the carrier $Z = 2/\lambda$ rather than at $Z=0$, and nulling
+baseband instead leaves most of the pile-up in place. We therefore demodulate each pulse before
+filtering, which slides the carrier onto $Z=0$,
+\begin{equation}
+    \tilde{s}_i(z) = s_i(z)e^{-j 4 \pi z / \lambda}
+    ,
+    \label{eq:demod}
+\end{equation}
+weight the spectrum $\tilde{S}_i(Z)$ of $\tilde{s}_i(z)$ by $|Z|$,
+\begin{equation}
+    \check{s}_i(z) = \int_{-\infty}^{\infty}|Z|\tilde{S}_i(Z)e^{j 2 \pi z Z}dZ
+    ,
+    \label{eq:ramp}
+\end{equation}
+and backproject the filtered pulses,
+\begin{equation}
+    \hat{\gamma}(\vec{x}) = \frac{1}{P}\sum_{i=1}^{P}\check{s}_i\big(\rho_i(\vec{x})\big)
+    .
+    \label{eq:filtered-bp}
+\end{equation}
+The counter-rotation of (\ref{eq:naive-bp}) does not reappear in (\ref{eq:filtered-bp}), because
+(\ref{eq:demod}) has already removed the carrier. Weighting the undemodulated spectrum by
+$|Z-2/\lambda|$ is equivalent. The displayed image is $|\hat{\gamma}(\vec{x})|$.
+
+Over a linear trajectory with the azimuth spread swept from $0^\circ$ to $135^\circ$, replacing
+(\ref{eq:naive-bp}) with (\ref{eq:filtered-bp}) raises the dynamic range of the reconstruction
+from 18--29~dB to 59--93~dB and lowers its median-to-peak amplitude ratio from $0.12$--$0.29$ to
+$0.02$--$0.04$. The filtered stripmap reconstruction and the spotlight-mode reconstruction of the
+same signals agree to within $1$~dB of dynamic range. The far-field approximation $\rho_i(\vec{x})
+\approx \lVert\vec{v}_i\rVert - \vec{x}\cdot\vec{v}_i/\lVert\vec{v}_i\rVert$ may be substituted
+for the exact range in (\ref{eq:naive-bp}) and (\ref{eq:filtered-bp}), and affects neither the
+pedestal nor the analysis above.
+
+
 \section{Experiments}
 \label{sec:experiments}
 We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params}. All results in this section are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.

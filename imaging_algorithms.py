@@ -186,9 +186,12 @@ def strip_map_imaging(  signal,
     Strip map imaging algorithm, we only render the ground 
     plane and assume the image plane is about the origin.
 
-    reflectivity at point x is given by 
-    avg_over_pulses{ signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) * exp(-j*4*pi/wavelength*distance_to_x) }
-    we need to interpolate the signal at distance_to_x for each pulse's signal
+    reflectivity at point x is given by
+    avg_over_pulses{ filtered_signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) }
+    where filtered_signal is the pulse's samples demodulated by exp(-j*4*pi/wavelength*sample_dist)
+    and then multiplied by |k| in the frequency domain -- the same ramp CBP_2D applies. We interpolate
+    that at distance_to_x for each pulse's signal. Backprojecting unfiltered gives the laminogram
+    instead, which divides the image spectrum by |k| and washes the scene out.
 
     inputs:
         signal: (N,P,D) - the signal to be back projected
@@ -240,19 +243,24 @@ def strip_map_imaging(  signal,
     else:
         distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
 
+    # demodulate the carrier off the samples, so the ramp below nulls at the k-space origin
+    signal = signal * torch.exp( -1j * 4 * np.pi * sample_dist / wavelength )  # (N,P,D)
+
+    # filter with |k| as CBP_2D does; sample_dist is linear in index so it stands in for frequency
+    radial_k = sample_dist - torch.norm(trajectory, dim=-1, keepdim=True)  # (N,P,D)
+    signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (N,P,D)
+    signal = torch.fft.ifft(torch.fft.ifftshift(signal_freq * torch.abs(radial_k), dim=-1), dim=-1)  # (N,P,D)
+
     # interpolate signal at distance_to_pixel
     signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
                                     torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(N,P,1,D)) )), # (N,P,T,D)
                                     dim=-1
                                 ) # (N,P,T)
     
-    # compute estimate of reflectivity
+    # compute estimate of reflectivity; the carrier came off the samples above
     reflectivity_estimate = torch.mean( signal_at_distance_to_pixel * \
                                         # distance_to_pixel**2 * \
-                                        torch.exp(
-                                            2*attenuation_coeff *distance_to_pixel - \
-                                            1j*4*3.14159265358979323846264338427950288*distance_to_pixel/wavelength
-                                        )
+                                        torch.exp( 2*attenuation_coeff * distance_to_pixel )
                                     , dim=1)  # (N,T)
 
     # reshape and convert to real-valued images

@@ -528,10 +528,11 @@ def reference_backprojection(
     Order matters for (2). Demodulating the *samples* shifts their spectrum by 2/lambda
     before reconstruction; with spatial_fs == spatial_bw there is no headroom for that
     shift, so the sinc interpolation can no longer represent the carrier. Demodulating
-    after interpolation, as strip_map_imaging does (imaging_algorithms.py:244-256),
-    avoids the problem.
+    after interpolation avoids the problem.
 
-    No ramp filter: coherent summation over the aperture needs no Radon inversion.
+    No ramp filter, which is what makes this a reference and not an imager: without the |k|
+    Jacobian the reconstruction is the laminogram, so expect a washed-out pedestal. Both
+    projected_CBP and strip_map_imaging do filter.
 
     `demod_first=True` reverts (2) to projected_CBP's ordering while keeping everything
     else identical, which isolates the ordering as a cause.
