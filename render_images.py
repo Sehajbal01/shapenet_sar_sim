@@ -59,7 +59,30 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         # material properties
                         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
                         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
+
+                        # already-built scene, for a caller rendering many poses of one object
+                        preloaded_mesh = None,
+                        octree = None,
     ):
+    '''
+    Render the SAR image(s) of one mesh from a batch of poses.
+
+    inputs:
+        imaging_algorithm (str or sequence[str]): 'cbp' or 'stripmap'. Given a sequence, every
+            named algorithm is run on the *same* ray trace and signal -- which is everything up
+            to the imaging step, and the bulk of the cost -- and a dict keyed by algorithm name
+            is returned instead of a single image
+        preloaded_mesh (tuple): (mesh, normals, material_properties) as load_mesh returns them,
+            used instead of loading file_name. A caller rendering many poses of one object loads
+            it once; mesh_scale/make_ground/object_x_flip/object_rotate_xyz/*_raids are then that
+            caller's business, since the mesh is already built
+        octree (Octree): a previously built octree for the mesh, built in the accumulator when
+            None. Depends only on the mesh, so it is built once alongside preloaded_mesh
+        remaining arguments: as documented on render_random_image
+
+    outputs:
+        sar_image (T,H,W), or {algorithm: (T,H,W)} when imaging_algorithm is a sequence
+    '''
 
     # set device
     device = poses.device
@@ -70,15 +93,18 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         file_name = override_obj_path
 
     # load the mesh and hardcode the material properties
-    mesh, normals, material_properties = load_mesh( file_name,
-                                                    device=device,
-                                                    make_ground=make_ground,
-                                                    scale=mesh_scale,
-                                                    obj_raids = obj_raids,
-                                                    ground_raids = ground_raids,
-                                                    x_flip = object_x_flip,
-                                                    rotate_xyz = object_rotate_xyz,
-                                                )
+    if preloaded_mesh is None:
+        mesh, normals, material_properties = load_mesh( file_name,
+                                                        device=device,
+                                                        make_ground=make_ground,
+                                                        scale=mesh_scale,
+                                                        obj_raids = obj_raids,
+                                                        ground_raids = ground_raids,
+                                                        x_flip = object_x_flip,
+                                                        rotate_xyz = object_rotate_xyz,
+                                                    )
+    else:
+        mesh, normals, material_properties = preloaded_mesh
 
     # generate the sensor trajectory for each pose
     # (T,P,3)        (T,P,3)              (T,P)
@@ -108,6 +134,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
         num_bounce = num_bounce,
         second_bounce_batch_size = 2**9,
+        octree = octree,
     )
     if verbose:
         print('done.')
@@ -149,42 +176,47 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if use_sig_magnitude:
         signals = signals.abs()
 
-    # Compute sar image
-    if verbose:
-        print('Computing SAR image...')
-    if imaging_algorithm == 'cbp':
-        sar_image = projected_CBP(
-            signals,
-            sample_z,
-            perceived_trajectory,
-            spatial_fs,
-            image_plane_rotation_deg = cam_azimuth_deg+90,
-            image_width = image_width,
-            image_height = image_height,
-            image_plane_width = image_plane_width,
-            image_plane_height = image_plane_height,
-            batch_size = cbp_batch_size,
-            coherent_integration = not use_sig_magnitude,
-            wavelength = wavelength,
-        )
-    elif imaging_algorithm == 'stripmap':
-        sar_image = strip_map_imaging(
-            complex_signals,
-            wavelength,
-            perceived_trajectory,
-            sample_z,
-            spatial_fs,
-            planar_wave = True,
-            image_plane_rotation_deg = cam_azimuth_deg+90,
-            image_width = image_width,
-            image_height = image_height,
-            image_plane_width = image_plane_width,
-            image_plane_height = image_plane_height,
-        )
-    else:
-        raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%imaging_algorithm)
-    if verbose:
-        print('done.')
+    # Compute sar image. Every algorithm images the one signal built above, so asking for
+    # several costs only the imaging steps and not another ray trace
+    one_algorithm = isinstance(imaging_algorithm, str)
+    algorithms = (imaging_algorithm,) if one_algorithm else tuple(imaging_algorithm)
+    sar_images = {}
+    for algorithm in algorithms:
+        if verbose:
+            print('Computing SAR image (%s)...'%algorithm)
+        if algorithm == 'cbp':
+            sar_images[algorithm] = projected_CBP(
+                signals,
+                sample_z,
+                perceived_trajectory,
+                spatial_fs,
+                image_plane_rotation_deg = cam_azimuth_deg+90,
+                image_width = image_width,
+                image_height = image_height,
+                image_plane_width = image_plane_width,
+                image_plane_height = image_plane_height,
+                batch_size = cbp_batch_size,
+                coherent_integration = not use_sig_magnitude,
+                wavelength = wavelength,
+            )
+        elif algorithm == 'stripmap':
+            sar_images[algorithm] = strip_map_imaging(
+                complex_signals,
+                wavelength,
+                perceived_trajectory,
+                sample_z,
+                spatial_fs,
+                planar_wave = True,
+                image_plane_rotation_deg = cam_azimuth_deg+90,
+                image_width = image_width,
+                image_height = image_height,
+                image_plane_width = image_plane_width,
+                image_plane_height = image_plane_height,
+            )
+        else:
+            raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%algorithm)
+        if verbose:
+            print('done.')
 
     # # save the sar image with colorbar for qualitative analysis
     # plot_image(sar_image, title="SAR", cmap='inferno', db=True)
@@ -194,7 +226,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if debug_gif:
         signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=debug_gif_suffix)
 
-    return sar_image
+    # a caller that named one algorithm as a string gets that one image back, as before
+    return sar_images[imaging_algorithm] if one_algorithm else sar_images
 
 
 

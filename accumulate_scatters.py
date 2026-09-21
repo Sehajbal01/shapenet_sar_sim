@@ -512,6 +512,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                         second_bounce_batch_size = 2**100,
                         surface_bias = 1e-3,
                         debug_gif = False,
+                        octree = None,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -531,6 +532,9 @@ def accumulate_scatters(mesh, face_normals, material_properties,
         surface_bias (float): distance to push each bounce's outgoing ray origin off the surface
             along the normal, to prevent self-intersection (spurious leg~=0 re-hits). Should be
             small relative to scene features but large relative to float error at the scene scale.
+        octree (Octree): a previously built octree for this mesh, built here when None. The
+            octree depends only on the mesh, so a caller rendering many poses of one object
+            builds it once and passes it back in instead of paying the rebuild every call
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
@@ -551,7 +555,8 @@ def accumulate_scatters(mesh, face_normals, material_properties,
     stats           = {}
 
     t_octree_start = sync_time()
-    octree = build_octree(mesh)
+    if octree is None:
+        octree = build_octree(mesh)
     t_octree_build = sync_time() - t_octree_start
 
     debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True
@@ -629,6 +634,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
                                     second_bounce_batch_size = 2**100,
                                     surface_bias = 1e-3,
                                     debug_gif = False,
+                                    octree = None,
                                 ):
     '''
     Perspective wrapper around accumulate_scatters_from_rays: the sensor is a *point* rather
@@ -650,6 +656,9 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
         surface_bias (float): distance to push each bounce's outgoing ray origin off the surface
             along the normal, to prevent self-intersection (spurious leg~=0 re-hits). Should be
             small relative to scene features but large relative to float error at the scene scale.
+        octree (Octree): a previously built octree for this mesh, built here when None. The
+            octree depends only on the mesh, so a caller rendering many poses of one object
+            builds it once and passes it back in instead of paying the rebuild every call
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only).
@@ -677,7 +686,8 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
     stats           = {}
 
     t_octree_start = sync_time()
-    octree = build_octree(mesh)
+    if octree is None:
+        octree = build_octree(mesh)
     t_octree_build = sync_time() - t_octree_start
 
     debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True
@@ -757,6 +767,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
                                   spherical_spread = True,
                                   water_absorption = 0.0,
                                   debug_gif = False,
+                                  octree = None,
                               ):
     '''
     Broadside wrapper around accumulate_scatters_from_rays: like the perspective wrapper, but
@@ -788,6 +799,9 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
         water_absorption (float): absorption coefficient of the water, in nepers per unit length
             (0 disables it). Applied over the round trip, so it is already the two-way loss.
             From the dB/m absorption is usually tabulated in: nepers = dB / 8.686.
+        octree (Octree): a previously built octree for this mesh, built here when None. The
+            octree depends only on the mesh, so a caller rendering many poses of one object
+            builds it once and passes it back in instead of paying the rebuild every call
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per ping (hit rays only).
@@ -816,7 +830,8 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     stats           = {}
 
     t_octree_start = sync_time()
-    octree = build_octree(mesh)
+    if octree is None:
+        octree = build_octree(mesh)
     t_octree_build = sync_time() - t_octree_start
 
     debugging_maps = {}  # (t, p) -> {'depth': (H,W), 'energy': (H,W)}; only populated when debug_gif=True

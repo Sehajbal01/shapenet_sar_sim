@@ -28,15 +28,16 @@ PAPER_BASELINE = dict(
 
     num_pulse=64,
 
-    # Fs = 2*BW as in the side scan baseline; Fs = BW sampled the pulse right at Nyquist
-    spatial_bw=3650 / 50, # the denominator is in mm
-    spatial_fs=2 * 3650 / 50,
+    # matches SONAR_PAPER_BASELINE's spatial_bw/spatial_fs
+    spatial_bw=50,
+    spatial_fs=100,
 
-    wavelength=0.5,
+    wavelength=0.5,  # strip_map_imaging always demodulates by wavelength, so unlike the side scan
+                     # baseline this can't be None -- az_spread_linear_stripmap below needs it
 
     waveform='gaussian',  # the default sinc rings; its side lobes streak off the car
 
-    use_sig_magnitude=False,
+    use_sig_magnitude=True,
 
     snr_db=50,
 
@@ -53,7 +54,7 @@ PAPER_BASELINE = dict(
     n_ray_width=128,
     n_ray_height=128,
 
-    region_radius=1.7,
+    region_radius=2.0,  # matches SONAR_PAPER_BASELINE
 
 
 
@@ -67,18 +68,16 @@ PAPER_BASELINE = dict(
     cbp_batch_size=4096,
     trajectory_type='circular',
     trajectory_noise_var=0,
-    num_bounce=2,
+    num_bounce=1,  # matches SONAR_PAPER_BASELINE
     object_x_flip=False,
     object_rotate_xyz=(90.0, 0.0, 0.0),
 
     # display -- the one place compression/db_floor/asinh_k_ratio are decided; multi_param_experiment
     # reads these off the baseline (popping them before the rest is forwarded to
     # render_random_image) unless an experiment's overrides set one instead
-    compression='asinh',  # 'linear' | 'db' | 'asinh'
+    compression='linear',  # 'linear' | 'db' | 'asinh'
     db_floor=-60.0,
-    # k = asinh_k_ratio * ref; ref is each panel's own 99.9th-percentile amplitude. Larger than
-    # the side scan baseline's 0.005, which pulls coherent CBP's speckle floor up to mid gray
-    asinh_k_ratio=0.05,
+    asinh_k_ratio=0.005,  # matches SONAR_PAPER_BASELINE
 )
 
 

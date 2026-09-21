@@ -49,7 +49,7 @@ SONAR_PAPER_BASELINE = dict(
     # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
     # sweeps' stitched figures and debug_side_scan.py's render_side_scan_image call read these
     # off the baseline
-    compression = 'asinh',  # 'linear' | 'db' | 'asinh'
+    compression = 'linear',  # 'linear' | 'db' | 'asinh'
     db_floor = -60.0,
     asinh_k_ratio = 0.005,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
 

@@ -57,6 +57,10 @@ def side_scan_sonar_image(
     db_floor = -60.0,
     asinh_k_ratio = 0.1,
 
+    # a previously built octree for this mesh, built inside the accumulator when None. Only
+    # the mesh decides it, so a caller rendering many poses of one object builds it once
+    octree = None,
+
         ):
 
     # figure out each sensor position. The track is a straight line through
@@ -111,6 +115,7 @@ def side_scan_sonar_image(
         spherical_spread = spherical_spread,
         water_absorption = water_absorption,
         debug_gif      = debug_gif,
+        octree         = octree,
     )  # list[T][P] of (R',) each
 
     # weigh received scatters according to azimuth beam width with gaussian
@@ -150,7 +155,6 @@ def side_scan_sonar_image(
     # time varying gain: a receiver ramp of R^n against the seafloor's fall with range. Absolute
     # rather than referenced to a range, so it rescales the image as well as tilting it. n=0 turns it off.
     if tvg_exponent:
-        print('tvg_exponent: tvg_exponent')
         signals = signals * sample_z ** tvg_exponent  # (T,P,Z)
 
     # debug outputs, independently switched: debug_columns is one still (fast), debug_gif is a
