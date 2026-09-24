@@ -16,8 +16,8 @@ from render_images import multi_param_experiment, sar_render_image
 from utils import extract_pose_info, generate_pose_mat
 
 
-PAPER_BASELINE = dict(
-    # pin the object and the pose, to the same car and pose SONAR_PAPER_BASELINE pins, so both
+SAR_BASELINE = dict(
+    # pin the object and the pose, to the same car and pose SONAR_BASELINE pins, so both
     # figure suites show the same target. render_random_image draws them at random when None
     obj_id='100715345ee54d7ae38b52b4ee9d36a3',
     pose_num='000043',  # 59.3 deg elevation
@@ -28,9 +28,9 @@ PAPER_BASELINE = dict(
 
     num_pulse=64,
 
-    # matches SONAR_PAPER_BASELINE's spatial_bw/spatial_fs
-    spatial_bw=50,
-    spatial_fs=100,
+    # Fs = 2*BW so the sampling still leads the band rather than aliasing it
+    spatial_bw=30,
+    spatial_fs=60,
 
     wavelength=0.5,  # strip_map_imaging always demodulates by wavelength, so unlike the side scan
                      # baseline this can't be None -- az_spread_linear_stripmap below needs it
@@ -54,7 +54,7 @@ PAPER_BASELINE = dict(
     n_ray_width=128,
     n_ray_height=128,
 
-    region_radius=2.0,  # matches SONAR_PAPER_BASELINE
+    region_radius=2.0,  # matches SONAR_BASELINE
 
 
 
@@ -68,7 +68,7 @@ PAPER_BASELINE = dict(
     cbp_batch_size=4096,
     trajectory_type='circular',
     trajectory_noise_var=0,
-    num_bounce=1,  # matches SONAR_PAPER_BASELINE
+    num_bounce=1,  # matches SONAR_BASELINE
     object_x_flip=False,
     object_rotate_xyz=(90.0, 0.0, 0.0),
 
@@ -77,7 +77,7 @@ PAPER_BASELINE = dict(
     # render_random_image) unless an experiment's overrides set one instead
     compression='linear',  # 'linear' | 'db' | 'asinh'
     db_floor=-60.0,
-    asinh_k_ratio=0.005,  # matches SONAR_PAPER_BASELINE
+    asinh_k_ratio=0.005,  # matches SONAR_BASELINE
 )
 
 
@@ -167,7 +167,7 @@ def _paper_experiments():
     # baseline, so it follows the wider pulse instead of aliasing it. Twice and not more: past that
     # the range resolution outruns what 64 pulses of aperture resolve in cross range, and the panel
     # turns into grating lobes rather than a sharper car.
-    base_bw = PAPER_BASELINE['spatial_bw']
+    base_bw = SAR_BASELINE['spatial_bw']
     waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13', 'lfm']
     waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
@@ -241,7 +241,7 @@ def _normalize_sar_for_display(sar_image, rgb_shape):
 def generate_linear_sar_comparison_figure(
     num_examples=4,
     output_path='figures/linear_sar_comparison.png',
-    baseline=PAPER_BASELINE,
+    baseline=SAR_BASELINE,
     seed=8134,
     min_elevation_deg=20,
 ):
@@ -344,7 +344,7 @@ def generate_linear_sar_comparison_figure(
     return output_path
 
 
-def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE):
+def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=SAR_BASELINE):
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
         multi_param_experiment(

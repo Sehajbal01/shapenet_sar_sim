@@ -33,7 +33,7 @@ from signal_simulation import apply_snr, generate_trajectory, interpolate_signal
 from utils import extract_pose_info, generate_pose_mat, get_next_path, savefig
 
 
-# Baseline mirrors PAPER_BASELINE in paper_figures.py so the numbers reported here
+# Baseline mirrors SAR_BASELINE in paper_figures.py so the numbers reported here
 # describe the configuration the paper's figures were generated with.
 BASELINE = dict(
     target_xyz=(0.20, -0.15, 0.0),

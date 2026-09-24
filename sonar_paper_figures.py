@@ -12,7 +12,7 @@ from sidescansonar import render_side_scan_image
 from paper_figure_layout import panel_display, stitch_panels
 
 
-SONAR_PAPER_BASELINE = dict(
+SONAR_BASELINE = dict(
     # pin the object and the pose. render_side_scan_image draws both at random, and a sweep only
     # reads as a sweep when the geometry is the one thing that does not change between panels.
     obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
@@ -41,8 +41,8 @@ SONAR_PAPER_BASELINE = dict(
     spherical_spread = True,
     water_absorption = 0.00,
     tvg_exponent = 10,
-    spatial_bw = 50,
-    spatial_fs = 100,
+    spatial_bw = 30,  # 50 less 15%
+    spatial_fs = 60,    # 100 less 15%, still 2*bw
     waveform = 'gaussian', # sinc pulse shows heavy side lobes. it may be a bug
     use_sig_magnitude = True,
 
@@ -103,13 +103,13 @@ def _sonar_experiments():
 
     # Display compression comparison -- one amplitude four ways: linear, dB, the baseline's asinh,
     # and a larger asinh k at the near-linear end of the family.
-    compression_k = SONAR_PAPER_BASELINE['asinh_k_ratio']
+    compression_k = SONAR_BASELINE['asinh_k_ratio']
     compression = dict(
         name='compression',
         vary={'compression': ['linear', 'db', 'asinh', 'asinh'],
               'asinh_k_ratio': [compression_k, compression_k, compression_k, 0.1]},
         custom_title_strings=['Linear Amplitude',
-                              'dB, %.0f dB Floor' % SONAR_PAPER_BASELINE['db_floor'],
+                              'dB, %.0f dB Floor' % SONAR_BASELINE['db_floor'],
                               'asinh, k/ref %.3g' % compression_k,
                               'asinh, k/ref 0.1'],
     )
@@ -174,7 +174,7 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
             be the same length
         default_kwargs (dict): the baseline passed to render_side_scan_image. Its
             'compression'/'db_floor'/'asinh_k_ratio' entries also set the stitched figure's
-            display, so SONAR_PAPER_BASELINE is the one place that decides all three -- unless
+            display, so SONAR_BASELINE is the one place that decides all three -- unless
             param_dict itself varies one of those three (e.g. an asinh_k_ratio sweep), in which
             case each panel is displayed with its own swept value instead of the baseline's
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
@@ -272,7 +272,7 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
 
 
 def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
-                                baseline=SONAR_PAPER_BASELINE):
+                                baseline=SONAR_BASELINE):
     paths = []
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}

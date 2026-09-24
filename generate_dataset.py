@@ -12,7 +12,7 @@ and check_raysar_exists.py assert of the existing modalities.
 
 Every render setting is stated in this file. Nothing is imported from the paper figure scripts,
 so this one file says what the dataset is and retuning a figure cannot move it. The numbers are
-what paper_figures.PAPER_BASELINE and sonar_paper_figures.SONAR_PAPER_BASELINE held when the
+what paper_figures.SAR_BASELINE and sonar_paper_figures.SONAR_BASELINE held when the
 dataset was rendered, with the trajectory forced linear at AZIMUTH_SPREAD_DEG -- which is what
 the directory suffix records.
 
