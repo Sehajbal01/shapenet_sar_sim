@@ -10,10 +10,11 @@ beside the rgb/, pose/, sonar/ and raysar/ directories already there. 128x128 8-
 named after the pose, so every rgb frame has one image per modality, as check_sonar_exists.py
 and check_raysar_exists.py assert of the existing modalities.
 
-The physics comes from the paper figure baselines rather than being restated here, so the
-dataset tracks whatever those figures show: sonar_paper_figures.SONAR_PAPER_BASELINE for the
-side scan and paper_figures.PAPER_BASELINE for both SAR images, with the trajectory forced
-linear at AZIMUTH_SPREAD_DEG -- which is what the directory suffix records.
+Every render setting is stated in this file. Nothing is imported from the paper figure scripts,
+so this one file says what the dataset is and retuning a figure cannot move it. The numbers are
+what paper_figures.PAPER_BASELINE and sonar_paper_figures.SONAR_PAPER_BASELINE held when the
+dataset was rendered, with the trajectory forced linear at AZIMUTH_SPREAD_DEG -- which is what
+the directory suffix records.
 
 Each object is loaded and octree-built once and then imaged from all of its poses, and each
 pose is ray traced twice, not three times: the CBP and strip map images are two imaging
@@ -49,13 +50,11 @@ import numpy as np
 import PIL.Image
 import torch
 
-from paper_figures import PAPER_BASELINE
 from ray_tracer_v2 import build_octree
 from render_images import sar_render_image
 from imaging_algorithms import to_asinh, to_db_uint8
 from sidescansonar import side_scan_sonar_image
 from signal_simulation import load_mesh
-from sonar_paper_figures import SONAR_PAPER_BASELINE
 from utils import extract_pose_info, generate_pose_mat
 
 
@@ -77,13 +76,15 @@ DIR_SUFFIX = '_%dazspread' % AZIMUTH_SPREAD_DEG
 FIGURES_DIR = 'figures'
 
 
-# how a raw amplitude becomes an 8-bit pixel. The amplitudes span orders of magnitude, so a
-# linear stretch is a few specular returns over a near-black field (measured: mean 20/255 for
-# the SAR modalities, 7/255 for the side scan). 'asinh' stays linear near zero and goes
-# logarithmic past ASINH_K_RATIO * the image's own 99.9th percentile, which is what the paper
-# figures display with. 'linear' is the plain min-max stretch, 'db' is dB below the peak.
-# Referenced per image, as every asinh call site in this codebase is
-COMPRESSION   = 'asinh'   # 'linear' | 'db' | 'asinh'
+# how a raw amplitude becomes an 8-bit pixel. Decided here and nowhere else: SAR_PARAMS and
+# SIDE_SCAN_PARAMS below carry no display key, so both renderers hand back raw amplitude for
+# save_gray_png to compress. 'linear' is the plain min-max stretch, matching
+# what srn_cars' own images are stored with; the amplitudes span orders of magnitude, so it is a
+# few specular returns over a near-black field (measured: mean 20/255 for the SAR modalities,
+# 7/255 for the side scan). 'asinh' stays linear near zero and goes logarithmic past
+# ASINH_K_RATIO * the image's own 99.9th percentile, which is what the paper figures display
+# with, and 'db' is dB below the peak. Referenced per image, as every asinh call site here is
+COMPRESSION   = 'linear'  # 'linear' | 'db' | 'asinh'
 ASINH_K_RATIO = 0.1
 DB_FLOOR      = -60.0
 
@@ -97,28 +98,93 @@ DB_FLOOR      = -60.0
 MIN_ELEVATION_DEG = 1.0
 MAX_ELEVATION_DEG = 85.0
 
-# the mesh settings both baselines carry and must agree on, since one loaded mesh serves all
-# three modalities. Asserted rather than assumed, so a future edit that moves one baseline's
-# geometry without the other's is caught here instead of silently rendering the SAR on the
-# sonar's car. make_ground and level_with_ground are not on this list because only
-# SONAR_PAPER_BASELINE states them -- the SAR path leaves both at load_mesh's default, which is
-# the True that the sonar baseline asks for, so the two still agree
-SHARED_MESH_KEYS = ('object_x_flip', 'object_rotate_xyz', 'obj_raids', 'ground_raids')
+# ---------------------------------------------------------------------------------------------
+# The render settings, in full. Every dict below is passed straight to a renderer as **kwargs, so
+# what is written here is exactly what is rendered: no key list to keep in step with a baseline,
+# and a key the renderer does not take raises a TypeError at the call instead of being dropped.
+# Importing the two paper baselines is what this replaces -- it also dragged cv2, matplotlib and
+# the whole figure suite in behind them, for a script that never draws a figure
+# ---------------------------------------------------------------------------------------------
 
-# baseline keys forwarded to each renderer. Spelled out rather than filtered by signature so a
-# renamed baseline key raises a KeyError here instead of quietly falling back to a default.
-# obj_raids/ground_raids are inert while preloaded_mesh is set, since they only ever reach
-# load_mesh -- they are forwarded anyway so that dropping preloaded_mesh keeps the same mesh
-# rather than silently falling back to sar_render_image's own defaults, which differ from the
-# baseline's (ground d of 0.9 against the baseline's 5, which moves the image substantially)
-SAR_KEYS = ('spatial_bw', 'spatial_fs', 'waveform', 'snr_db', 'wavelength', 'use_sig_magnitude',
-            'cbp_batch_size', 'trajectory_noise_var', 'num_bounce',
-            'image_width', 'image_height', 'image_plane_width', 'image_plane_height',
-            'grid_width', 'grid_height', 'n_ray_width', 'n_ray_height', 'region_radius',
-            'obj_raids', 'ground_raids', 'object_x_flip', 'object_rotate_xyz')
-SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_plane_width', 'image_plane_height',
-                  'wavelength', 'num_bounce', 'spherical_spread', 'water_absorption',
-                  'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
+# what all three modalities must agree on, so stated once and merged into both renderers' params
+# below. A pose's three images are one dataset sample, so they share a pixel grid and a field of
+# view: 128x128 over 1.1 world units, which is the framing srn_cars' own rgb images have
+IMAGE_PARAMS = dict(
+    image_width        = 128,
+    image_height       = 128,
+    image_plane_width  = 1.1,
+    image_plane_height = 1.1,
+)
+
+# the pulse and the scattering, shared for the same reason -- one scene imaged three ways
+SIGNAL_PARAMS = dict(
+    spatial_bw        = 30,
+    spatial_fs        = 60,          # 2*bw, so the sampling leads the band rather than aliasing it
+    waveform          = 'gaussian',  # the default sinc rings; its side lobes streak off the car
+    use_sig_magnitude = True,
+    num_bounce        = 1,
+)
+
+# the one mesh all three modalities are rendered off, in load_mesh's own argument names. One dict
+# rather than two that have to agree, so the SAR and the side scan cannot drift onto differently
+# built cars -- the drift two imported baselines needed an assert to rule out
+MESH_PARAMS = dict(
+    obj_raids         = (1.0, 1.0, 100.0, 0.1, 0.9),  # material properties
+    ground_raids      = (1.0, 1.0,   1.0,   5, 0.1),
+    x_flip            = False,
+    rotate_xyz        = (90.0, 0.0, 0.0),
+    make_ground       = True,
+    level_with_ground = True,
+)
+
+# everything sar_render_image is given beyond the mesh, the poses and the trajectory
+SAR_PARAMS = dict(
+    num_pulses           = 64,
+    snr_db               = 50,
+    wavelength           = 0.5,  # strip_map_imaging always demodulates by wavelength, so unlike
+                                 # the side scan's this cannot be None
+    cbp_batch_size       = 4096,
+    trajectory_noise_var = 0,
+    grid_width           = 1.2,  # the ray fan's extent, a little wider than the image plane
+    grid_height          = 1.2,
+    n_ray_width          = 128,
+    n_ray_height         = 128,
+    region_radius        = 2.0,  # radius of the region the output signal is sampled over
+
+    # the mesh again, under sar_render_image's names for it. Inert while preloaded_mesh is set,
+    # since these only ever reach load_mesh -- forwarded from MESH_PARAMS anyway so that dropping
+    # preloaded_mesh keeps this mesh rather than falling back to sar_render_image's own defaults,
+    # which differ (ground d of 0.9 against this 5, which moves the image substantially)
+    obj_raids         = MESH_PARAMS['obj_raids'],
+    ground_raids      = MESH_PARAMS['ground_raids'],
+    object_x_flip     = MESH_PARAMS['x_flip'],
+    object_rotate_xyz = MESH_PARAMS['rotate_xyz'],
+
+    **IMAGE_PARAMS,
+    **SIGNAL_PARAMS,
+)
+
+# everything side_scan_sonar_image is given beyond the mesh and the sensor position
+SIDE_SCAN_PARAMS = dict(
+    track_length           = 1.1,
+    num_pings              = 128,
+    elevation_fov_deg      = 30.0,
+    azimuth_beam_width_deg = 0.1,
+    num_ray_width          = 3,    # rays across the azimuth beam
+    num_ray_height         = 400,  # rays down the elevation fan
+    region_radius          = SAR_PARAMS['region_radius'],  # the same scene extent as the SAR
+    wavelength             = None,
+    spherical_spread       = True,
+    water_absorption       = 0.00,
+    tvg_exponent           = 10,   # receiver ramp against the fall of the seafloor with range
+
+    **IMAGE_PARAMS,
+    **SIGNAL_PARAMS,
+)
+
+# the range the side scan flies its track at. It takes only the *direction* off the pose, so this
+# replaces the pose file's own range rather than being read from it
+SENSOR_DISTANCE = 10
 
 
 def _quiet(fn, *args, **kwargs):
@@ -251,26 +317,10 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         return 0, 0
 
     # the one mesh load and the one octree build this object pays for, shared by every pose and
-    # every modality. Both baselines' mesh settings must match for that to be legitimate
-    for key in SHARED_MESH_KEYS:
-        assert PAPER_BASELINE[key] == SONAR_PAPER_BASELINE[key], \
-            'PAPER_BASELINE[%r] != SONAR_PAPER_BASELINE[%r]; the two modalities no longer ' \
-            'share one mesh, so they can no longer share one load' % (key, key)
-
+    # every modality -- legitimate because MESH_PARAMS is the only mesh either modality knows
     run = (lambda fn, *a, **k: fn(*a, **k)) if verbose else _quiet
-    mesh_bundle = run(load_mesh, mesh_path,
-                      device            = device,
-                      make_ground       = SONAR_PAPER_BASELINE['make_ground'],
-                      level_with_ground = SONAR_PAPER_BASELINE['level_with_ground'],
-                      obj_raids         = PAPER_BASELINE['obj_raids'],
-                      ground_raids      = PAPER_BASELINE['ground_raids'],
-                      x_flip            = PAPER_BASELINE['object_x_flip'],
-                      rotate_xyz        = PAPER_BASELINE['object_rotate_xyz'],
-                      )
+    mesh_bundle = run(load_mesh, mesh_path, device = device, **MESH_PARAMS)
     octree = build_octree(mesh_bundle[0])
-
-    sar_kwargs        = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
-    side_scan_kwargs  = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
 
     n_clamped = 0
     for pose_num in todo:
@@ -289,32 +339,27 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         # both SAR images off one ray trace: the trace and the signal interpolation are the same
         # for either algorithm, and only the imaging step differs
         sar_images = run(sar_render_image, mesh_path,
-                         PAPER_BASELINE['num_pulse'],
-                         poses,
-                         AZIMUTH_SPREAD_DEG,
+                         poses             = poses,
+                         az_spread         = AZIMUTH_SPREAD_DEG,
                          imaging_algorithm = ('cbp', 'stripmap'),
                          trajectory_type   = TRAJECTORY_TYPE,
                          preloaded_mesh    = mesh_bundle,
                          octree            = octree,
-                         **sar_kwargs)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
+                         **SAR_PARAMS)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
 
         # the side scan reads only the sensor *direction* off the pose: it flies its own straight
-        # track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
+        # track at SENSOR_DISTANCE, not the pose file's own 1.3
         sensor_position = extract_pose_info(poses)[0].reshape(3)  # (3,)
-        sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
-                          * SONAR_PAPER_BASELINE['sensor_distance']
+        sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) * SENSOR_DISTANCE
+        # the mesh by keyword, since it sits in the middle of side_scan_sonar_image's argument
+        # list and everything after it is in SIDE_SCAN_PARAMS
         side_scan_image = run(side_scan_sonar_image,
                               sensor_position,
-                              SONAR_PAPER_BASELINE['track_length'],
-                              SONAR_PAPER_BASELINE['num_pings'],
-                              SONAR_PAPER_BASELINE['elevation_fov_deg'],
-                              SONAR_PAPER_BASELINE['azimuth_beam_width_deg'],
-                              *mesh_bundle,
-                              SONAR_PAPER_BASELINE['num_ray_width'],
-                              SONAR_PAPER_BASELINE['num_ray_height'],
-                              SONAR_PAPER_BASELINE['region_radius'],
-                              octree = octree,
-                              **side_scan_kwargs)[0]  # (T,H,W), one track
+                              object_mesh         = mesh_bundle[0],
+                              face_normals        = mesh_bundle[1],
+                              material_properties = mesh_bundle[2],
+                              octree              = octree,
+                              **SIDE_SCAN_PARAMS)[0]  # (T,H,W), one track
 
         rendered = {'side_scan_sonar': side_scan_image[0],
                     'cbp_sar':         sar_images['cbp'][0],
