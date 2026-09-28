@@ -3,16 +3,14 @@
 mkdir -p figures
 
 
-# # clear the whole folder, so nothing from an earlier run is mistaken for this one's output.
-# # This does take the stitched paper figures with it -- rerun sonar_paper_figures.py to remake them.
-# Left off while paper_figures.py is compared against the dataset test run's images
-# rm -f figures/*
+# clear the whole folder, so nothing from an earlier run is mistaken for this one's output.
+rm -f figures/*
 
-# # dataset generation test run, strip map sar only
+# # dataset generation test run, range angle only
 # NUM_MODELS=$(ls "$(jq -r .srn_cars_dir config.json)/cars_test" | wc -l)
 # NUM_CHUNKS=$((NUM_MODELS))
 # CUDA_VISIBLE_DEVICES=6 /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif -only_stripmap
+#     generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif -modalities range_angle
 
 # the sar paper figures, on config.json's sar_baseline obj_id/azimuth_deg/elevation_deg -- set to
 # the test run's chunk 5 object at az 0 el 33, to look into its striations. Only the n_ray sweep is

@@ -139,6 +139,10 @@ def sar_render_range_angle_image(
         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
 
+        # already-built scene, for a caller rendering many poses of one object
+        preloaded_mesh = None,
+        octree = None,
+
         verbose = False,
     ):
     '''
@@ -167,6 +171,12 @@ def sar_render_range_angle_image(
             complex image to be displayable; leave True unless you want the raw complex values
         num_bounce (int): ray bounces to simulate
         region/material/mesh arguments: as in render_images.sar_render_image
+        preloaded_mesh (tuple): (mesh, normals, material_properties) as load_mesh returns them,
+            used instead of loading file_name. A caller rendering many poses of one object loads
+            it once; mesh_scale/make_ground/level_with_ground/object_x_flip/object_rotate_xyz/
+            *_raids are then that caller's business, since the mesh is already built
+        octree (Octree): a previously built octree for the mesh, built in the accumulator when
+            None. Depends only on the mesh geometry, so it is built once alongside preloaded_mesh
 
     outputs:
         images (T, n_range_bins, n_angle_bins): near range at the bottom row, left of boresight
@@ -180,16 +190,19 @@ def sar_render_range_angle_image(
         angle_span_deg = fov_width_deg
 
     # load the mesh and hardcode the material properties
-    mesh, normals, material_properties = load_mesh( file_name,
-                                                    device=device,
-                                                    make_ground=make_ground,
-                                                    scale=mesh_scale,
-                                                    obj_raids = obj_raids,
-                                                    ground_raids = ground_raids,
-                                                    level_with_ground = level_with_ground,
-                                                    x_flip = object_x_flip,
-                                                    rotate_xyz = object_rotate_xyz,
-                                                )
+    if preloaded_mesh is None:
+        mesh, normals, material_properties = load_mesh( file_name,
+                                                        device=device,
+                                                        make_ground=make_ground,
+                                                        scale=mesh_scale,
+                                                        obj_raids = obj_raids,
+                                                        ground_raids = ground_raids,
+                                                        level_with_ground = level_with_ground,
+                                                        x_flip = object_x_flip,
+                                                        rotate_xyz = object_rotate_xyz,
+                                                    )
+    else:
+        mesh, normals, material_properties = preloaded_mesh
 
     # one pulse per pose: (T,1,3) sensor positions
     cam_center = extract_pose_info(poses)[0]      # (T,3)
@@ -215,6 +228,7 @@ def sar_render_range_angle_image(
         n_ray_height   = n_ray_height,
         num_bounce     = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
+        octree         = octree,
     )
     if verbose:
         print('done.')
