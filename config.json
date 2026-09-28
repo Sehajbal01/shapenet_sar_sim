@@ -36,9 +36,10 @@
         "ground_raids": [1.0, 1.0, 1.0, 5, 0.1]
     },
     "sar_baseline": {
-        "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
-        "pose_num": "000043",
-        "azimuth_spread": 90,
+        "obj_id": "12410830e8a5067c69576518bd9bfe48",
+        "azimuth_deg": 0.0,
+        "elevation_deg": 33.0,
+        "azimuth_spread": 135,
         "debug_gif": false,
         "num_pulse": 64,
         "spatial_bw": 50,

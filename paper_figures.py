@@ -18,9 +18,9 @@ from utils import extract_pose_info, generate_pose_mat
 
 
 # config.json's sar_baseline. Notes on its keys:
-#   obj_id/pose_num pin the object and the pose, to the same car and pose SONAR_PAPER_BASELINE pins,
-#     so both figure suites show the same target (000043 is 59.3 deg elevation).
-#     render_random_image draws them at random when None
+#   obj_id/azimuth_deg/elevation_deg pin the object and the look: render_random_image renders the
+#     object's pose nearest that azimuth and elevation, e.g. one read off a generate_dataset.py
+#     test-run gif, and draws both at random when None. The object may be from any split
 #   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SONAR_PAPER_BASELINE
 #   wavelength can't be None, unlike the side scan baseline's: strip_map_imaging always demodulates
 #     by wavelength, and az_spread_linear_stripmap below needs it
@@ -43,7 +43,7 @@ def _paper_experiments():
     )
 
     # Pulse count sweep — how along-track sampling density affects the image.
-    pulse_vals = [2, 4, 8, 16, 32]
+    pulse_vals = [2 ** k for k in range(3, 11)]  # 8, 16, ..., 1024
     num_pulse = dict(
         name='num_pulse',
         vary={'num_pulse': pulse_vals},
@@ -154,9 +154,9 @@ def _paper_experiments():
 
     return [
         # az_spread,
-        # num_pulse,
+        num_pulse,
         fsbw,
-        fsbw_stripmap,
+        # fsbw_stripmap,
         # snrdb,
         # wavelength,
         # trajectory_type,

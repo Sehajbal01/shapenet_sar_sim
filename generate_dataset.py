@@ -14,7 +14,8 @@ and check_raysar_exists.py assert of the existing modalities.
 The physics comes from the paper figure baselines rather than being restated here, so the
 dataset tracks whatever those figures show: sonar_paper_figures.SONAR_PAPER_BASELINE for the
 side scan and paper_figures.PAPER_BASELINE for both SAR images, with the trajectory forced
-linear at AZIMUTH_SPREAD_DEG -- which is what the directory suffix records.
+linear at AZIMUTH_SPREAD_DEG, the sar_baseline azimuth_spread in config.json (135 deg below) --
+which is what the directory suffix records.
 
 Each object is loaded and octree-built once and then imaged from all of its poses, and each
 pose is ray traced twice, not three times: the CBP and strip map images are two imaging
@@ -76,10 +77,13 @@ from utils import extract_pose_info
 MODELS_DIR = SHAPENET_CARS_DIR
 SPLITS_DIR = SRN_CARS_DIR
 
-# the one trajectory this dataset is rendered on. Linear and strictly below 180 deg, which is
-# where generate_trajectory's linear track runs off to infinity
-AZIMUTH_SPREAD_DEG = 135.0
+# the one trajectory this dataset is rendered on: linear, at config.json's sar_baseline
+# azimuth_spread, so the dataset and the paper figures fly the same aperture. Strictly below
+# 180 deg, which is where generate_trajectory's linear track runs off to infinity
+AZIMUTH_SPREAD_DEG = float(PAPER_BASELINE['azimuth_spread'])
 TRAJECTORY_TYPE    = 'linear'
+assert 0.0 <= AZIMUTH_SPREAD_DEG < 180.0, \
+    'sar_baseline azimuth_spread must be in 0..180 deg for a linear track, got %g' % AZIMUTH_SPREAD_DEG
 
 # the three modalities, in the order they are rendered and saved. Each names a directory under
 # the object, carrying the suffix so a rerun at another spread lands beside this one rather than

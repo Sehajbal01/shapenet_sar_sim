@@ -237,9 +237,45 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
 
 
+def _find_split_dir(obj_id):
+    '''The srn_cars split directory holding obj_id, so an object from any split can be named.'''
+    for split in ('cars_train', 'cars_val', 'cars_test'):
+        if os.path.isdir(os.path.join(srn_split_dir(split), obj_id)):
+            return srn_split_dir(split)
+    raise FileNotFoundError('object %s is in none of the srn_cars splits' % obj_id)
+
+
+def _nearest_pose_num(dataset_dir, obj_id, azimuth_deg, elevation_deg):
+    '''
+    The pose of obj_id whose look direction is closest to (azimuth_deg, elevation_deg), so an image
+    can be pinned by the az/el that generate_dataset.py's gifs stamp on their frames, and still be
+    rendered from the pose file itself -- the same pose, and the same rgb, the dataset used.
+
+    outputs:
+        pose_num (str), and that pose's azimuth and elevation in deg
+    '''
+    def look(az, el):
+        az, el = np.deg2rad(az), np.deg2rad(el)
+        return np.array([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)])
+
+    target = look(azimuth_deg, elevation_deg)
+    pose_dir = os.path.join(dataset_dir, obj_id, 'pose')
+    best = None
+    for f in sorted(os.listdir(pose_dir)):
+        pose = np.loadtxt(os.path.join(pose_dir, f)).reshape(1, 4, 4).astype(np.float32)
+        pose_info = extract_pose_info(torch.from_numpy(pose))
+        az, el = pose_info[6].item(), pose_info[5].item()
+        cos_angle = float(np.dot(look(az, el), target))
+        if best is None or cos_angle > best[0]:
+            best = (cos_angle, os.path.splitext(f)[0], az, el)
+    return best[1:]
+
+
 def render_random_image(
         obj_id = None,
         pose_num = None,
+        azimuth_deg = None,
+        elevation_deg = None,
         debug_gif = False, 
         num_pulse = 120,
         azimuth_spread = 180,
@@ -285,14 +321,22 @@ def render_random_image(
     Renders an image from the ShapeNet dataset using SAR simulation.
 
     inputs:
-        obj_id (str): srn_cars object id; a random one is drawn when None
+        obj_id (str): srn_cars object id, from any split; a random cars_train one is drawn when None
         pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
+        azimuth_deg, elevation_deg (float): instead of pose_num, pick the object's pose nearest
+            this look direction. Both or neither, and not together with pose_num
         remaining arguments: as in sar_render_image
     """
 
-    # dataset locations come from config.json
-    dataset_dir = srn_split_dir('cars_train')
+    # dataset locations come from config.json. A named object is looked up in whichever split has
+    # it, since generate_dataset.py's test run renders cars_test
+    dataset_dir = srn_split_dir('cars_train') if obj_id is None else _find_split_dir(obj_id)
     models_dir = SHAPENET_CARS_DIR
+
+    if (azimuth_deg is None) != (elevation_deg is None):
+        raise ValueError('give both azimuth_deg and elevation_deg, or neither')
+    if azimuth_deg is not None and pose_num is not None:
+        raise ValueError('give pose_num or azimuth_deg/elevation_deg, not both')
 
     # left None, both are drawn at random in this order, so a caller that seeds np.random still
     # gets the pick it used to
@@ -300,6 +344,11 @@ def render_random_image(
         all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
         obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
+
+    if azimuth_deg is not None:
+        pose_num, az, el = _nearest_pose_num(dataset_dir, obj_id, azimuth_deg, elevation_deg)
+        print('Nearest pose to az %.1f el %.1f: %s (az %.1f el %.1f)'
+              % (azimuth_deg, elevation_deg, pose_num, az, el))
 
     if pose_num is None:
         all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
