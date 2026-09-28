@@ -8,61 +8,22 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 
+from config import CONFIG
 from sidescansonar import render_side_scan_image
 from paper_figure_layout import panel_display, stitch_panels
 
 
-SONAR_PAPER_BASELINE = dict(
-    # pin the object and the pose. render_side_scan_image draws both at random, and a sweep only
-    # reads as a sweep when the geometry is the one thing that does not change between panels.
-    obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
-    # pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    pose_num = '000043',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    sensor_distance = 10,  # None keeps the pose file's own range; set to override it
-
-    # track geometry
-    track_length = 1.1,
-    num_pings = 128,
-    elevation_fov_deg = 30.0,
-    azimuth_beam_width_deg = 0.1,
-    num_ray_width = 3,
-    num_ray_height = 400,
-    region_radius = 2.0,
-
-    # image plane geometry
-    image_width  = 128,
-    image_height = 128,
-    image_plane_width  = 1.1,
-    image_plane_height = 1.1,
-
-    # signal / physics
-    wavelength = None,
-    num_bounce = 1,
-    spherical_spread = True,
-    water_absorption = 0.00,
-    tvg_exponent = 10,
-    spatial_bw = 50,
-    spatial_fs = 100,
-    waveform = 'gaussian', # sinc pulse shows heavy side lobes. it may be a bug
-    use_sig_magnitude = True,
-
-    # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
-    # sweeps' stitched figures and debug_side_scan.py's render_side_scan_image call read these
-    # off the baseline
-    compression = 'linear',  # 'linear' | 'db' | 'asinh'
-    db_floor = -60.0,
-    asinh_k_ratio = 0.005,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
-
-    # mesh
-    make_ground = True,
-    level_with_ground = True,
-    object_x_flip = False,
-    object_rotate_xyz = (90.0, 0.0, 0.0),
-
-    # material properties
-    obj_raids    = (1.0, 1.0, 100.0, 0.1, 0.9),
-    ground_raids = (1.0, 1.0,   1.0,   5, 0.1),
-)
+# config.json's side_scan_sonar_baseline. Notes on its keys:
+#   obj_id/pose_num pin the object and the pose. render_side_scan_image draws both at random, and a
+#     sweep only reads as a sweep when the geometry is the one thing that does not change between
+#     panels. 000000 is 40.6 deg elevation, a grazing angle that throws a visible shadow
+#   sensor_distance None keeps the pose file's own range; set to override it
+#   waveform 'gaussian', since the sinc pulse shows heavy side lobes. it may be a bug
+#   compression/db_floor/asinh_k_ratio -- the one place these are decided; both the paper sweeps'
+#     stitched figures and debug_side_scan.py's render_side_scan_image call read these off the
+#     baseline. compression is 'linear' | 'db' | 'asinh'; k = asinh_k_ratio * ref, where ref is
+#     each image's own 99.9th-percentile amplitude
+SONAR_PAPER_BASELINE = dict(CONFIG['side_scan_sonar_baseline'])
 
 
 def _sonar_experiments():

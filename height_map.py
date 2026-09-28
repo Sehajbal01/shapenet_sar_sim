@@ -13,6 +13,7 @@ from pytorch3d.renderer import (
     FoVOrthographicCameras,
     RasterizationSettings,
     MeshRasterizer,)
+from config import SHAPENET_CARS_DIR, srn_split_dir
 from signal_simulation import load_mesh
 from utils import extract_pose_info
 from tqdm import tqdm as tqdm
@@ -132,8 +133,8 @@ def ideal_height_map_render(
 
 
 def make_height_map_dataset(
-    dataset_dir = '/home/berian/Documents/shapenet/cars_train/',
-    models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/',
+    dataset_dir = srn_split_dir('cars_train'),
+    models_dir  = SHAPENET_CARS_DIR,
     device = 'cuda',
 ):
     # normalise device string
@@ -196,11 +197,11 @@ def make_height_map_dataset(
 
 if __name__ == '__main__':
     print('Making height map for train dataset...')
-    make_height_map_dataset('/home/berian/Documents/shapenet/cars_train/')
+    make_height_map_dataset(srn_split_dir('cars_train'))
     print('Making height map for test dataset...')
-    make_height_map_dataset('/home/berian/Documents/shapenet/cars_test/')
+    make_height_map_dataset(srn_split_dir('cars_test'))
     print('Making height map for val dataset...')
-    make_height_map_dataset('/home/berian/Documents/shapenet/cars_val/')
+    make_height_map_dataset(srn_split_dir('cars_val'))
 
     # i can copy all the data over to the cluster with:
 # rsync -avR \

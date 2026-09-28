@@ -5,6 +5,7 @@ from PIL import ImageDraw
 import imageio
 import cv2
 import os
+from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info, plot_image
 import torch
 import numpy as np
@@ -284,13 +285,9 @@ def render_random_image(
         remaining arguments: as in sar_render_image
     """
 
-    # cluster dirs
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
-
-    # # lab pc dirs
-    # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
-    # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    # dataset locations come from config.json
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     # left None, both are drawn at random in this order, so a caller that seeds np.random still
     # gets the pick it used to
@@ -309,9 +306,6 @@ def render_random_image(
         suffix = '%s_%s'%(pose_num, obj_id)
 
     # load image, pose, and mesh
-    # rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    # pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    # mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
     rgb_path  = os.path.join(dataset_dir, obj_id, 'rgb', '%s.png'%pose_num)
     pose_path = os.path.join(dataset_dir, obj_id, 'pose', '%s.txt'%pose_num)
     mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')

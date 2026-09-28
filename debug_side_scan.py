@@ -16,6 +16,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import matplotlib
 matplotlib.use('Agg')
 
+from config import srn_split_dir
 from sidescansonar import render_side_scan_image
 from sonar_paper_figures import SONAR_PAPER_BASELINE
 
@@ -31,7 +32,7 @@ def debug_side_scan(
     kwargs.update(overrides)
 
     if kwargs.get('pose_num') is None:  # lowest numbered pose, so reruns keep the same geometry
-        dataset_dir = '/workspace/data/srncars/cars_train/'
+        dataset_dir = srn_split_dir('cars_train')
         pose_dir = os.path.join(dataset_dir, kwargs['obj_id'], 'pose')
         kwargs['pose_num'] = sorted(os.listdir(pose_dir))[0].split('.')[0]
 

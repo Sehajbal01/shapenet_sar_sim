@@ -1,6 +1,8 @@
 import os
 import math
 
+from config import srn_split_dir
+
 # Number of GPUs to use — adjust this if you have more or fewer
 K = 8
 
@@ -8,7 +10,7 @@ K = 8
 subdataset = 'cars_train'
 
 # Path to where the original object folders are stored
-source_base = os.path.join('/workspace/data/srncars', subdataset)
+source_base = srn_split_dir(subdataset)
 
 # Grab all the object folder names (each one is a 3D car model)
 obj_ids = sorted(os.listdir(source_base))

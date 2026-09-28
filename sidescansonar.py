@@ -12,6 +12,7 @@ import PIL
 from PIL import ImageDraw
 import torch
 
+from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import extract_pose_info
 from range_angle_images import beam_spread_weights
 from signal_simulation import interpolate_signal, load_mesh
@@ -341,9 +342,9 @@ def render_side_scan_image(
         col_coords (W,): cross range (along-track offset) of each column, low to high
     '''
 
-    # cluster dirs, same as render_images.render_random_image
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    # dataset locations from config.json, same as render_images.render_random_image
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     if obj_id is None:
         obj_id = np.random.choice(os.listdir(dataset_dir), 1)[0]

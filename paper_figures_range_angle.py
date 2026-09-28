@@ -34,36 +34,16 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import numpy as np
 import torch
 
+from config import CONFIG, SHAPENET_CARS_DIR, srn_split_dir
 from range_angle_images import sar_render_range_angle_image, plot_range_angle_image
 from paper_figure_layout import stitch_panels
 from utils import extract_pose_info
 from imaging_algorithms import db_compress
 
 
-RANGE_ANGLE_BASELINE = dict(
-    # beam / field of view
-    fov_width_deg=50.0,   # angular equivalent of the paper's 1.2 wide ray grid at range 1.3
-    fov_height_deg=50.0,
-    beam_width_deg=0.1,
-    n_ray_width=128,
-    n_ray_height=128,
-
-    # image size stuff
-    n_range_bins=128,
-    n_angle_bins=128,
-    region_radius=1.7,
-
-    # scene / physics
-    wavelength=0.5,
-    use_sig_magnitude=True,
-    num_bounce=1,
-    object_x_flip=False,
-    object_rotate_xyz=(90.0, 0.0, 0.0),
-
-    # material properties
-    obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
-    ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
-)
+# config.json's range_angle_baseline. fov_width_deg/fov_height_deg of 50 are the angular
+# equivalent of the paper's 1.2 wide ray grid at range 1.3
+RANGE_ANGLE_BASELINE = dict(CONFIG['range_angle_baseline'])
 
 
 def _range_angle_experiments():
@@ -204,9 +184,8 @@ def render_random_range_angle_image(
         npz_path (str): where the image, its range bins, and its angle bins were saved
     """
 
-    # cluster dirs
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
     obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset

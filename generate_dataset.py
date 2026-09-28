@@ -2,11 +2,12 @@
 Render the side scan sonar, CBP SAR and strip map SAR views of every srn_cars object, one image
 per rgb pose, into the split's own object directories:
 
-    /workspace/data/srncars/cars_test/<obj_id>/side_scan_sonar_135azspread/<pose_num>.png
-    /workspace/data/srncars/cars_test/<obj_id>/cbp_sar_135azspread/<pose_num>.png
-    /workspace/data/srncars/cars_test/<obj_id>/strip_map_sar_135azspread/<pose_num>.png
+    <srn_cars_dir>/cars_test/<obj_id>/side_scan_sonar_135azspread/<pose_num>.png
+    <srn_cars_dir>/cars_test/<obj_id>/cbp_sar_135azspread/<pose_num>.png
+    <srn_cars_dir>/cars_test/<obj_id>/strip_map_sar_135azspread/<pose_num>.png
 
-beside the rgb/, pose/, sonar/ and raysar/ directories already there. 128x128 8-bit gray PNGs
+beside the rgb/, pose/, sonar/ and raysar/ directories already there, where <srn_cars_dir> and the
+meshes' shapenet_cars_dir are read from config.json. 128x128 8-bit gray PNGs
 named after the pose, so every rgb frame has one image per modality, as check_sonar_exists.py
 and check_raysar_exists.py assert of the existing modalities.
 
@@ -52,6 +53,7 @@ import torch
 from paper_figures import PAPER_BASELINE
 from ray_tracer_v2 import build_octree
 from render_images import sar_render_image
+from config import SHAPENET_CARS_DIR, SRN_CARS_DIR
 from imaging_algorithms import to_asinh, to_db_uint8
 from sidescansonar import side_scan_sonar_image
 from signal_simulation import load_mesh
@@ -59,8 +61,9 @@ from sonar_paper_figures import SONAR_PAPER_BASELINE
 from utils import extract_pose_info, generate_pose_mat
 
 
-MODELS_DIR = '/workspace/data/srncars/02958343'
-SPLITS_DIR = '/workspace/data/srncars'
+# dataset locations, from config.json
+MODELS_DIR = SHAPENET_CARS_DIR
+SPLITS_DIR = SRN_CARS_DIR
 
 # the one trajectory this dataset is rendered on. Linear and strictly below 180 deg, which is
 # where generate_trajectory's linear track runs off to infinity

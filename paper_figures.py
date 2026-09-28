@@ -12,73 +12,24 @@ import PIL
 import torch
 from matplotlib import pyplot as plt
 
+from config import CONFIG, SHAPENET_CARS_DIR, srn_split_dir
 from render_images import multi_param_experiment, sar_render_image
 from utils import extract_pose_info, generate_pose_mat
 
 
-PAPER_BASELINE = dict(
-    # pin the object and the pose, to the same car and pose SONAR_PAPER_BASELINE pins, so both
-    # figure suites show the same target. render_random_image draws them at random when None
-    obj_id='100715345ee54d7ae38b52b4ee9d36a3',
-    pose_num='000043',  # 59.3 deg elevation
-
-    azimuth_spread=90,
-
-    debug_gif=False,
-
-    num_pulse=64,
-
-    # matches SONAR_PAPER_BASELINE's spatial_bw/spatial_fs
-    spatial_bw=50,
-    spatial_fs=100,
-
-    wavelength=0.5,  # strip_map_imaging always demodulates by wavelength, so unlike the side scan
-                     # baseline this can't be None -- az_spread_linear_stripmap below needs it
-
-    waveform='gaussian',  # the default sinc rings; its side lobes streak off the car
-
-    use_sig_magnitude=True,
-
-    snr_db=50,
-
-    image_width=128,
-    image_height=128,
-
-    # 1.1 frames an srn car the way the side scan images do
-    image_plane_width=1.1,
-    image_plane_height=1.1,
-
-    grid_width=1.2,
-    grid_height=1.2,
-
-    n_ray_width=128,
-    n_ray_height=128,
-
-    region_radius=2.0,  # matches SONAR_PAPER_BASELINE
-
-
-
-    # obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
-    # ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
-    # material properties
-    obj_raids    = (1.0, 1.0, 100.0, 0.1, 0.9),
-    ground_raids = (1.0, 1.0,   1.0,   5, 0.1),
-
-    imaging_algorithm='cbp',
-    cbp_batch_size=4096,
-    trajectory_type='circular',
-    trajectory_noise_var=0,
-    num_bounce=1,  # matches SONAR_PAPER_BASELINE
-    object_x_flip=False,
-    object_rotate_xyz=(90.0, 0.0, 0.0),
-
-    # display -- the one place compression/db_floor/asinh_k_ratio are decided; multi_param_experiment
-    # reads these off the baseline (popping them before the rest is forwarded to
-    # render_random_image) unless an experiment's overrides set one instead
-    compression='linear',  # 'linear' | 'db' | 'asinh'
-    db_floor=-60.0,
-    asinh_k_ratio=0.005,  # matches SONAR_PAPER_BASELINE
-)
+# config.json's sar_baseline. Notes on its keys:
+#   obj_id/pose_num pin the object and the pose, to the same car and pose SONAR_PAPER_BASELINE pins,
+#     so both figure suites show the same target (000043 is 59.3 deg elevation).
+#     render_random_image draws them at random when None
+#   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SONAR_PAPER_BASELINE
+#   wavelength can't be None, unlike the side scan baseline's: strip_map_imaging always demodulates
+#     by wavelength, and az_spread_linear_stripmap below needs it
+#   waveform 'gaussian', since the default sinc rings; its side lobes streak off the car
+#   image_plane_width/height 1.1 frames an srn car the way the side scan images do
+#   compression/db_floor/asinh_k_ratio -- the one place these are decided; multi_param_experiment
+#     reads these off the baseline (popping them before the rest is forwarded to
+#     render_random_image) unless an experiment's overrides set one instead
+PAPER_BASELINE = dict(CONFIG['sar_baseline'])
 
 
 def _paper_experiments():
@@ -246,8 +197,8 @@ def generate_linear_sar_comparison_figure(
     min_elevation_deg=20,
 ):
     """Create a 4-row figure with RGB, spotlight, and strip-map SAR panels."""
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
