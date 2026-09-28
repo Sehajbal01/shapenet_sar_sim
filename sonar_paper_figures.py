@@ -109,11 +109,11 @@ def _sonar_experiments():
 
     return [
         # beam_width,
-        tvg,
-        compression,
+        # tvg,
+        # compression,
         # asinh_k,
         # elevation_fov,
-        # spatial_bw,
+        spatial_bw,
         # waveform,
     ]
 

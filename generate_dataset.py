@@ -116,7 +116,7 @@ SHARED_MESH_KEYS = ('object_x_flip', 'object_rotate_xyz', 'obj_raids', 'ground_r
 # rather than silently falling back to sar_render_image's own defaults, which differ from the
 # baseline's (ground d of 0.9 against the baseline's 5, which moves the image substantially)
 SAR_KEYS = ('spatial_bw', 'spatial_fs', 'waveform', 'snr_db', 'wavelength', 'use_sig_magnitude',
-            'cbp_batch_size', 'trajectory_noise_var', 'num_bounce',
+            'cbp_batch_size', 'signal_interpolation', 'trajectory_noise_var', 'num_bounce',
             'image_width', 'image_height', 'image_plane_width', 'image_plane_height',
             'grid_width', 'grid_height', 'n_ray_width', 'n_ray_height', 'region_radius',
             'obj_raids', 'ground_raids', 'object_x_flip', 'object_rotate_xyz')

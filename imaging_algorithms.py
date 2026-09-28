@@ -4,6 +4,70 @@ import sys
 import warnings
 from utils import dot_product
 
+
+SIGNAL_INTERPOLATIONS = ('bilinear', 'sinc')
+
+
+def interpolate_samples(samples, sample_pos, query_pos, method = 'bilinear', interpolation_fs = None,
+                        batch_size = None):
+    '''
+    Interpolate each pulse's samples at arbitrary positions along that pulse.
+
+    'sinc' is the band-limited reconstruction sum_d samples_d * sinc(fs*(q - pos_d)), which builds an
+    (N,P,T,D) tensor and so is the expensive one. 'bilinear' blends the two samples on either side
+    of each query -- along a 1D signal that is plain linear interpolation -- and only needs
+    (N,P,T). It assumes sample_pos is uniformly spaced along the last dim, which every caller's
+    range samples are (signal_simulation lays them out with linspace). Queries outside the sampled
+    span read 0, which is what the sinc sum tends to far off the ends.
+
+    inputs:
+        samples: (N,P,D) - the signal samples, real or complex
+        sample_pos: (N,P,D) - the position of each sample, uniformly spaced along D
+        query_pos: (N,P,T) - where to read the signal
+        method: str - 'bilinear' or 'sinc'
+        interpolation_fs: float or tensor broadcastable to (N,P,1,1) - the sample rate; sinc only
+        batch_size: int or None - queries per pass, bounding sinc's (N,P,T,D) tensor; None does all
+            T at once. bilinear ignores it
+    outputs:
+        interpolated: (N,P,T) - the signal at query_pos
+    '''
+    N,P,D = samples.shape
+    T = query_pos.shape[-1]
+
+    if method == 'bilinear':
+        # fractional sample index of each query
+        start = sample_pos[..., :1]  # (N,P,1)
+        step = (sample_pos[..., -1:] - start) / (D - 1)  # (N,P,1)
+        idx = (query_pos - start) / step  # (N,P,T)
+        in_span = (idx >= 0) & (idx <= D - 1)  # (N,P,T)
+
+        # clamp the left neighbor to D-2 so the last sample is reached with frac = 1
+        i0 = torch.floor(idx).clamp(0, D - 2)  # (N,P,T)
+        frac = (idx - i0).to(samples.real.dtype)  # (N,P,T)
+        i0 = i0.long()
+        v0 = torch.gather(samples, -1, i0)  # (N,P,T)
+        v1 = torch.gather(samples, -1, i0 + 1)  # (N,P,T)
+        return (v0 * (1 - frac) + v1 * frac) * in_span  # (N,P,T)
+
+    if method != 'sinc':
+        raise ValueError('Invalid signal interpolation \'%s\', expected one of %s'
+                         % (method, SIGNAL_INTERPOLATIONS))
+
+    if batch_size is None:
+        batch_size = T
+    interpolated = torch.zeros(N, P, T, dtype=samples.dtype, device=samples.device)
+    for t_start in range(0, T, batch_size):
+        t_end = min(t_start + batch_size, T)
+        bT = t_end - t_start
+        query_batch = query_pos[:, :, t_start:t_end]  # (N,P,bT)
+        interpolated[:, :, t_start:t_end] = torch.sum(
+            samples.reshape(N,P,1,D) *
+            torch.sinc( interpolation_fs * (query_batch.reshape(N,P,bT,1) - sample_pos.reshape(N,P,1,D)) ), # (N,P,bT,D)
+            dim=-1
+        ) # (N,P,bT)
+    return interpolated
+
+
 def projected_CBP(
     signal,
     sample_z,
@@ -17,6 +81,7 @@ def projected_CBP(
     batch_size = None,
     coherent_integration = True,
     wavelength = None,
+    signal_interpolation = 'bilinear',
 ):
     '''
     does some projection then runs the 2D convolutional back projection algorithm
@@ -30,6 +95,7 @@ def projected_CBP(
         coherent_integration: bool - determines if phase correction is used on the samples.
             requires that the signal be complex values and wavelength is provided.
         wavelength: float or None - wavelength for coherent integration.
+        signal_interpolation: str - 'bilinear' or 'sinc', how each pulse is read at a pixel's range
     outputs:
         image: (T,H,W) - the computed image
     '''
@@ -77,6 +143,7 @@ def projected_CBP(
         image_plane_width        = image_plane_width,
         image_plane_height       = image_plane_height,
         batch_size               = batch_size,
+        signal_interpolation     = signal_interpolation,
     ) # (T,H,W)
     
     return sar_image
@@ -92,6 +159,7 @@ def CBP_2D( pf,
             image_plane_width = 1,
             image_plane_height = 1,
             batch_size = None,
+            signal_interpolation = 'bilinear',
     ):
     '''
     Convolutional back projection algorithm in 2D
@@ -102,6 +170,8 @@ def CBP_2D( pf,
         line_vector: (N,P,2) - the vector of the origin crossing line that each projection function corresponds to
         interpolation_fs: (N,P) - the spatial frequency sampling rate of the projection functions
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+        batch_size: int or None - pixels interpolated per pass under sinc interpolation
+        signal_interpolation: str - 'bilinear' or 'sinc', see interpolate_samples
 
     outputs:
         image: (N,H,W) - the computed image
@@ -143,23 +213,14 @@ def CBP_2D( pf,
     line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
     r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T)
 
-    if batch_size is None:
-        interpolated_r_points = torch.sum(
-            filtered_pf.reshape(N,P,1,R) *
-            torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
-            dim=-1
-        ) # (N,P,T)
-    else:
-        interpolated_r_points = torch.zeros(N, P, T, dtype=filtered_pf.dtype, device=device)
-        for t_start in range(0, T, batch_size):
-            t_end = min(t_start + batch_size, T)
-            bT = t_end - t_start
-            r_coord_batch = r_coord[:, :, t_start:t_end]  # (N,P,bT)
-            interpolated_r_points[:, :, t_start:t_end] = torch.sum(
-                filtered_pf.reshape(N,P,1,R) *
-                torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord_batch.reshape(N,P,bT,1) - r.reshape(N,P,1,R)) ), # (N,P,bT,R)
-                dim=-1
-            ) # (N,P,bT)
+    interpolated_r_points = interpolate_samples(
+        filtered_pf,
+        r,
+        r_coord,
+        method = signal_interpolation,
+        interpolation_fs = interpolation_fs.reshape(N,P,1,1),
+        batch_size = batch_size,
+    ) # (N,P,T)
     
     # integrate over theta (eqation 2.31)
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
@@ -181,6 +242,8 @@ def strip_map_imaging(  signal,
                         image_height = 64,
                         image_plane_width = 1,
                         image_plane_height = 1,
+                        batch_size = None,
+                        signal_interpolation = 'bilinear',
     ):
     '''
     Strip map imaging algorithm, we only render the ground 
@@ -201,6 +264,8 @@ def strip_map_imaging(  signal,
         sample_dist: (N,P,D) - the distance samples
         interpolation_fs: float - the spatial frequency sampling rate
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+        batch_size: int or None - pixels interpolated per pass, bounding the (N,P,T,D) sinc tensor; None does all T at once
+        signal_interpolation: str - 'bilinear' or 'sinc', see interpolate_samples
 
     outputs:
         image: (N,H,W) - the computed image
@@ -252,10 +317,14 @@ def strip_map_imaging(  signal,
     signal = torch.fft.ifft(torch.fft.ifftshift(signal_freq * torch.abs(radial_k), dim=-1), dim=-1)  # (N,P,D)
 
     # interpolate signal at distance_to_pixel
-    signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(N,P,1,D)) )), # (N,P,T,D)
-                                    dim=-1
-                                ) # (N,P,T)
+    signal_at_distance_to_pixel = interpolate_samples(
+        signal,
+        sample_dist,
+        distance_to_pixel,
+        method = signal_interpolation,
+        interpolation_fs = interpolation_fs,
+        batch_size = batch_size,
+    ) # (N,P,T)
     
     # compute estimate of reflectivity; the carrier came off the samples above
     reflectivity_estimate = torch.mean( signal_at_distance_to_pixel * \

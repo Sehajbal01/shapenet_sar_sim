@@ -59,6 +59,15 @@ def _paper_experiments():
         custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
     )
 
+    # The same bandwidth sweep imaged with strip-map instead of the baseline's CBP. strip-map
+    # imaging needs a linear track, so the trajectory is pinned to linear here too.
+    fsbw_stripmap = dict(
+        name='fsbw_stripmap',
+        vary={'spatial_bw': bwfs_vals, 'spatial_fs': [2 * bw for bw in bwfs_vals]},
+        overrides={'trajectory_type': 'linear', 'imaging_algorithm': 'stripmap'},
+        custom_title_strings=['Strip-map, BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
+    )
+
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
     snr_db_vals = np.linspace(0, 22, 5).tolist()
     snrdb = dict(
@@ -144,13 +153,14 @@ def _paper_experiments():
     )
 
     return [
-        az_spread,
+        # az_spread,
         # num_pulse,
-        # fsbw,
+        fsbw,
+        fsbw_stripmap,
         # snrdb,
         # wavelength,
         # trajectory_type,
-        az_spread_linear_stripmap,
+        # az_spread_linear_stripmap,
         # trajectory_noise_var,
         # waveform,
         # sphere,
@@ -241,6 +251,7 @@ def generate_linear_sar_comparison_figure(
             'use_sig_magnitude': comparison_kwargs['use_sig_magnitude'],
             'imaging_algorithm': 'cbp',
             'cbp_batch_size': comparison_kwargs['cbp_batch_size'],
+            'signal_interpolation': comparison_kwargs['signal_interpolation'],
             'trajectory_type': 'linear',
             'trajectory_noise_var': comparison_kwargs['trajectory_noise_var'],
             'num_bounce': comparison_kwargs['num_bounce'],
