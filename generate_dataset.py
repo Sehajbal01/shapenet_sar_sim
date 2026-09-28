@@ -30,9 +30,17 @@ Run one process per GPU, each on its own contiguous slice of the object list:
 
 Already-rendered poses are skipped, so an interrupted chunk is resumed by rerunning it.
 
+Only poses whose elevation lies in -elevation_range (default 20..60 deg) are rendered; the rest of
+an object's rgb frames get no image in these modalities. The pose files are never altered, so every
+image that is written matches its pose/<pose_num>.txt exactly.
+
 -test_run renders exactly the same images but writes them to ./figures as
 test_run_<modality>_<obj_id>_az<spread>_<pose>.png and creates nothing under the dataset, so a
 chunk can be checked end to end before the real run. See test.sh.
+
+-gif, allowed only with -test_run, also writes one animated GIF per object and modality to
+./figures/test_run_<modality>_<obj_id>_az<spread>.gif: every in-band pose in pose order, with its
+azimuth and elevation stamped top left. The dataset itself never gets GIFs.
 '''
 import argparse
 import contextlib
@@ -48,6 +56,8 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 import PIL.Image
+import PIL.ImageDraw
+import PIL.ImageFont
 import torch
 import tqdm
 
@@ -59,7 +69,7 @@ from imaging_algorithms import to_asinh, to_db_uint8
 from sidescansonar import side_scan_sonar_image
 from signal_simulation import load_mesh
 from sonar_paper_figures import SONAR_PAPER_BASELINE
-from utils import extract_pose_info, generate_pose_mat
+from utils import extract_pose_info
 
 
 # dataset locations, from config.json
@@ -91,15 +101,20 @@ COMPRESSION   = 'asinh'   # 'linear' | 'db' | 'asinh'
 ASINH_K_RATIO = 0.1
 DB_FLOOR      = -60.0
 
-# srn_cars poses spiral from 0 to 90 deg of elevation, and both ends are degenerate looks rather
-# than hard ones: at 90 the ground projection of the slant range vanishes, so projected_CBP
-# divides by zero and the linear track collapses to a point, and at 0 the sensor sits in the
-# seafloor and side_scan_sonar_image's track direction, cross(line of sight, +z), is undefined.
-# A pose outside the band is re-aimed to the nearest edge of it, keeping its azimuth and range,
-# so every rgb frame still gets an image. 17 of the 251 test poses are re-aimed: 3 at the bottom
-# and 14 at the top. Raise MIN_ELEVATION_DEG to trade more re-aimed poses for fewer grazing ones.
-MIN_ELEVATION_DEG = 1.0
-MAX_ELEVATION_DEG = 85.0
+# srn_cars poses spiral from 0 to 90 deg of elevation. Only the poses inside this band are
+# rendered, overridable with -elevation_range; the rest are skipped rather than re-aimed, so every
+# image written matches its pose file. At 20..60, 111 of the 251 test poses of an object are in
+# band. Both ends of 0..90 are degenerate looks and are refused outright: at 90 the ground
+# projection of the slant range vanishes, so projected_CBP divides by zero and the linear track
+# collapses to a point, and at 0 the sensor sits in the seafloor and side_scan_sonar_image's
+# track direction, cross(line of sight, +z), is undefined
+MIN_ELEVATION_DEG = 20.0
+MAX_ELEVATION_DEG = 60.0
+
+# -gif: frame time, and the colour of the az/el stamp. The frames are gray, so a 255-level gray
+# ramp plus this one colour is an exact palette -- no quantizing or dithering of the image itself
+GIF_FRAME_MS   = 100
+GIF_TEXT_COLOR = (255, 140, 0)  # orange
 
 # the mesh settings both baselines carry and must agree on, since one loaded mesh serves all
 # three modalities. Asserted rather than assumed, so a future edit that moves one baseline's
@@ -150,6 +165,45 @@ def output_path(object_dir, obj_id, pose_num, modality, test_run):
     return os.path.join(object_dir, modality + DIR_SUFFIX, '%s.png' % pose_num)
 
 
+def gif_path(obj_id, modality):
+    '''
+    Where one object's -gif animation of one modality goes: FIGURES_DIR, named like the test run's
+    pngs. -gif is a test run only option, so there is no dataset location.
+    '''
+    return os.path.join(FIGURES_DIR, 'test_run_%s_%s_az%d.gif'
+                        % (modality, obj_id, AZIMUTH_SPREAD_DEG))
+
+
+def save_gif(png_paths, angles, path):
+    '''
+    Stitch one modality's saved pngs into a looping GIF, each frame stamped top left with the
+    pose's azimuth and elevation to the nearest degree, e.g. "az:39 el:60".
+
+    inputs:
+        png_paths (list of str): 8-bit gray pngs, one per frame, in frame order
+        angles (list of (float, float)): (azimuth_deg, elevation_deg) of each frame
+        path (str): gif to write
+    '''
+    # palette index i < 255 is gray i*255/254, index 255 is the text colour
+    palette = [round(i * 255 / 254) for i in range(255) for _ in range(3)] + list(GIF_TEXT_COLOR)
+    font = PIL.ImageFont.load_default()
+
+    frames = []
+    for png_path, (azimuth_deg, elevation_deg) in zip(png_paths, angles):
+        gray = np.asarray(PIL.Image.open(png_path).convert('L'), dtype=np.float32)  # (H,W)
+        frame = PIL.Image.fromarray(np.rint(gray * (254 / 255)).astype(np.uint8), mode='P')
+        frame.putpalette(palette)
+        # %360 so an azimuth of 359.6 reads az:0 rather than az:360
+        PIL.ImageDraw.Draw(frame).text(
+            (2, 1), 'az:%d el:%d' % (round(azimuth_deg) % 360, round(elevation_deg)),
+            fill=255, font=font)
+        frames.append(frame)
+
+    # optimize=False, or Pillow may drop palette entries a frame does not use and reorder the rest
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=GIF_FRAME_MS,
+                   loop=0, optimize=False)
+
+
 def save_gray_png(amplitude, path):
     '''
     Write one raw amplitude image as a 128x128 8-bit gray PNG, compressed by COMPRESSION and
@@ -183,36 +237,25 @@ def save_gray_png(amplitude, path):
     PIL.Image.fromarray(image, mode='L').save(path)
 
 
-def aimed_pose(pose_path, device):
+def read_pose(pose_path):
     '''
-    Read one srn_cars pose and re-aim it into the elevation band both sensor geometries can fly.
+    Read one srn_cars pose, on the cpu, so an object's poses can be sorted into in and out of the
+    elevation band before anything touches the GPU.
 
     inputs:
         pose_path (str): the pose txt of one rgb frame
-        device (str): device to build the pose on
     outputs:
-        poses (1,4,4): the pose to render, clamped in elevation and otherwise unchanged
-        elevation_deg (float): the elevation actually rendered
-        clamped (bool): whether the pose file's own elevation was outside the band
+        pose (1,4,4) float32 numpy: the pose, unchanged
+        azimuth_deg (float), elevation_deg (float): its look angles
     '''
     pose = np.loadtxt(pose_path).reshape(1, 4, 4).astype(np.float32)
-    poses = torch.tensor(pose, device=device)  # (1,4,4)
-
-    pose_info = extract_pose_info(poses)
-    distance, elevation_deg, azimuth_deg = (pose_info[4].item(), pose_info[5].item(),
-                                            pose_info[6].item())
-
-    aimed_elevation_deg = min(max(elevation_deg, MIN_ELEVATION_DEG), MAX_ELEVATION_DEG)
-    clamped = aimed_elevation_deg != elevation_deg
-    if clamped:
-        poses = generate_pose_mat(azimuth_deg, aimed_elevation_deg, distance,
-                                  device=device).reshape(1, 4, 4)
-
-    return poses, aimed_elevation_deg, clamped
+    pose_info = extract_pose_info(torch.from_numpy(pose))
+    return pose, pose_info[6].item(), pose_info[5].item()
 
 
 def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None, verbose=False,
-                  test_run=False):
+                  test_run=False, elevation_range=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
+                  gif=False):
     '''
     Render every pose of one object, in all three modalities, off a single mesh load.
 
@@ -225,10 +268,15 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         verbose (bool): let the renderers' own per-call prints through
         test_run (bool): render exactly as usual but write the PNGs into FIGURES_DIR under
             self-describing names, leaving the dataset untouched
+        elevation_range (float, float): only poses with elevation in [min, max] deg are rendered
+        gif (bool): also write one GIF per modality of every in-band pose, see save_gif. Rewritten
+            on every run, since it is cheap and so never shows a stale band or image. Test runs
+            only, so the dataset never gets GIFs
     outputs:
         n_rendered (int): poses rendered, not counting the ones skipped as already done
-        n_clamped (int): of those, how many had their elevation re-aimed into the band
+        n_out_of_band (int): poses skipped for an elevation outside elevation_range
     '''
+    assert test_run or not gif, 'gif is only written on a test run'
     object_dir = os.path.join(SPLITS_DIR, split, obj_id)
     pose_dir   = os.path.join(object_dir, 'pose')
     mesh_path  = os.path.join(MODELS_DIR, obj_id, 'models', 'model_normalized.obj')
@@ -241,7 +289,16 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         for modality in MODALITIES:
             os.makedirs(os.path.join(object_dir, modality + DIR_SUFFIX), exist_ok=True)
 
-    pose_nums = sorted(os.path.splitext(f)[0] for f in os.listdir(pose_dir) if f.endswith('.txt'))
+    all_pose_nums = sorted(os.path.splitext(f)[0] for f in os.listdir(pose_dir)
+                           if f.endswith('.txt'))
+    poses = {p: read_pose(os.path.join(pose_dir, '%s.txt' % p)) for p in all_pose_nums}
+
+    # the band before max_poses, so a smoke test renders its first few in-band poses rather than
+    # the first few of the spiral, which start at 0 deg and are all out of band
+    min_elevation_deg, max_elevation_deg = elevation_range
+    pose_nums = [p for p in all_pose_nums
+                 if min_elevation_deg <= poses[p][2] <= max_elevation_deg]
+    n_out_of_band = len(all_pose_nums) - len(pose_nums)
     if max_poses is not None:
         pose_nums = pose_nums[:max_poses]
 
@@ -251,9 +308,31 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         if not all(os.path.exists(output_path(object_dir, obj_id, p, m, test_run))
                    for m in MODALITIES)
     ]
-    if not todo:
-        return 0, 0
+    if todo:
+        render_poses(obj_id, object_dir, mesh_path, todo, len(pose_nums), poses, device,
+                     verbose, test_run)
 
+    # from the pngs on disk rather than from this run's renders, so a resumed or already finished
+    # object still animates all of its poses
+    if gif and pose_nums:
+        for modality in MODALITIES:
+            save_gif([output_path(object_dir, obj_id, p, modality, test_run) for p in pose_nums],
+                     [poses[p][1:] for p in pose_nums],
+                     gif_path(obj_id, modality))
+
+    return len(todo), n_out_of_band
+
+
+def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, verbose, test_run):
+    '''
+    The GPU half of render_object: load the mesh once and render the todo poses in every modality.
+
+    inputs:
+        todo (list of str): pose numbers to render
+        n_poses (int): of how many in-band poses in all, for the progress bars
+        poses (dict): pose number -> read_pose's (pose, azimuth_deg, elevation_deg)
+        the rest: as render_object
+    '''
     # the one mesh load and the one octree build this object pays for, shared by every pose and
     # every modality. Both baselines' mesh settings must match for that to be legitimate
     for key in SHARED_MESH_KEYS:
@@ -277,10 +356,10 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     side_scan_kwargs  = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
 
     # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
-    # the next object's bars reuse the same lines. Each counts all of the object's poses and
+    # the next object's bars reuse the same lines. Each counts all of the object's in-band poses and
     # starts at the ones already on disk, so a resumed object shows where it picked up
     width = max(len(m) for m in MODALITIES)
-    bars = {m: tqdm.tqdm(total=len(pose_nums), initial=len(pose_nums) - len(todo), position=i,
+    bars = {m: tqdm.tqdm(total=n_poses, initial=n_poses - len(todo), position=i,
                          leave=False, desc=m.ljust(width), unit='pose', dynamic_ncols=True)
             for i, m in enumerate(MODALITIES)}
 
@@ -289,11 +368,9 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
                       output_path(object_dir, obj_id, pose_num, modality, test_run))
         bars[modality].update()
 
-    n_clamped = 0
     try:
         for pose_num in todo:
-            poses, _, clamped = aimed_pose(os.path.join(pose_dir, '%s.txt' % pose_num), device)
-            n_clamped += clamped
+            pose = torch.tensor(poses[pose_num][0], device=device)  # (1,4,4)
 
             # seed per pose, so a rerun of one pose reproduces its image instead of redrawing the
             # receiver noise. np.random is the one that matters -- apply_snr draws the noise from
@@ -308,7 +385,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
             # for either algorithm, and only the imaging step differs
             sar_images = run(sar_render_image, mesh_path,
                              PAPER_BASELINE['num_pulse'],
-                             poses,
+                             pose,
                              AZIMUTH_SPREAD_DEG,
                              imaging_algorithm = ('cbp', 'stripmap'),
                              trajectory_type   = TRAJECTORY_TYPE,
@@ -320,7 +397,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
 
             # the side scan reads only the sensor *direction* off the pose: it flies its own
             # straight track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
-            sensor_position = extract_pose_info(poses)[0].reshape(3)  # (3,)
+            sensor_position = extract_pose_info(pose)[0].reshape(3)  # (3,)
             sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
                               * SONAR_PAPER_BASELINE['sensor_distance']
             side_scan_image = run(side_scan_sonar_image,
@@ -341,8 +418,6 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         for bar in bars.values():
             bar.close()
 
-    return len(todo), n_clamped
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
@@ -358,14 +433,30 @@ def main():
     parser.add_argument('-max_objects', type=int, default=None,
                         help='stop after this many objects of the chunk, for a smoke test')
     parser.add_argument('-max_poses', type=int, default=None,
-                        help='render only the first this-many poses of each object, for a smoke test')
+                        help='render only the first this-many in-band poses of each object, for a smoke test')
     parser.add_argument('-verbose', action='store_true',
                         help='let the renderers print their own per-call timing lines')
     parser.add_argument('-test_run', action='store_true',
                         help='render everything the same way but write the PNGs into %s/ as '
                              'test_run_<modality>_<obj_id>_az<spread>_<pose>.png, leaving the '
                              'dataset directories untouched' % FIGURES_DIR)
+    parser.add_argument('-elevation_range', type=float, nargs=2, metavar=('MIN', 'MAX'),
+                        default=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
+                        help='render only poses with elevation in [MIN, MAX] deg, skipping the '
+                             'rest (default: %g %g)' % (MIN_ELEVATION_DEG, MAX_ELEVATION_DEG))
+    parser.add_argument('-gif', action='store_true',
+                        help='with -test_run only: also write one GIF per object and modality of '
+                             'all its in-band poses into %s/, stamped with azimuth and elevation'
+                             % FIGURES_DIR)
     args = parser.parse_args()
+
+    if args.gif and not args.test_run:
+        parser.error('-gif only runs with -test_run, the dataset does not get GIFs')
+
+    min_elevation_deg, max_elevation_deg = args.elevation_range
+    if not 0.0 < min_elevation_deg <= max_elevation_deg < 90.0:
+        parser.error('-elevation_range must satisfy 0 < MIN <= MAX < 90, got %g %g -- both '
+                     'ends of 0..90 are degenerate looks' % (min_elevation_deg, max_elevation_deg))
 
     assert 0 <= args.chunk_id < args.num_chunks, \
         'chunk_id must be in 0 .. num_chunks-1, got %d of %d' % (args.chunk_id, args.num_chunks)
@@ -404,24 +495,28 @@ def main():
     else:
         print('writing %s per object'
               % ', '.join('%s%s/' % (m, DIR_SUFFIX) for m in MODALITIES))
+    print('elevation: rendering poses in %g..%g deg, skipping the rest%s'
+          % (min_elevation_deg, max_elevation_deg, '; writing a gif per modality' if args.gif else ''))
     print('display: %s compression%s' % (
         COMPRESSION,
         ', k/ref %g' % ASINH_K_RATIO if COMPRESSION == 'asinh' else
         ', floor %g dB' % DB_FLOOR if COMPRESSION == 'db' else ''))
 
     t_start = time.time()
-    total_rendered, total_clamped = 0, 0
+    total_rendered, total_out_of_band = 0, 0
     failed = []
     for i, obj_id in enumerate(chunk):
         t_object = time.time()
         # one bad object -- a malformed mesh, an OOM -- should cost that object and not the
         # rest of a chunk that runs for hours. Its poses stay un-rendered, so a rerun retries it
         try:
-            n_rendered, n_clamped = render_object(obj_id, args.split,
-                                                  overwrite = args.overwrite,
-                                                  max_poses = args.max_poses,
-                                                  verbose   = args.verbose,
-                                                  test_run  = args.test_run)
+            n_rendered, n_out_of_band = render_object(obj_id, args.split,
+                                                      overwrite       = args.overwrite,
+                                                      max_poses       = args.max_poses,
+                                                      verbose         = args.verbose,
+                                                      test_run        = args.test_run,
+                                                      elevation_range = args.elevation_range,
+                                                      gif             = args.gif)
         except Exception as exception:
             failed.append(obj_id)
             print('[%d/%d] %s FAILED: %s: %s' % (i + 1, len(chunk), obj_id,
@@ -429,17 +524,17 @@ def main():
             torch.cuda.empty_cache()
             continue
         total_rendered += n_rendered
-        total_clamped  += n_clamped
+        total_out_of_band += n_out_of_band
 
         elapsed = time.time() - t_start
         eta_hours = (elapsed / (i + 1)) * (len(chunk) - i - 1) / 3600
-        print('[%d/%d] %s: %d poses in %.1f s (%d re-aimed) -- %.1f h elapsed, %.1f h left'
-              % (i + 1, len(chunk), obj_id, n_rendered, time.time() - t_object, n_clamped,
+        print('[%d/%d] %s: %d poses in %.1f s (%d out of band) -- %.1f h elapsed, %.1f h left'
+              % (i + 1, len(chunk), obj_id, n_rendered, time.time() - t_object, n_out_of_band,
                  elapsed / 3600, eta_hours), flush=True)
 
-    print('chunk %d/%d done: %d poses over %d objects in %.1f h, %d re-aimed in elevation'
+    print('chunk %d/%d done: %d poses over %d objects in %.1f h, %d skipped out of elevation band'
           % (args.chunk_id, args.num_chunks, total_rendered, len(chunk),
-             (time.time() - t_start) / 3600, total_clamped))
+             (time.time() - t_start) / 3600, total_out_of_band))
     if failed:
         print('%d objects failed and were left un-rendered, rerun this chunk to retry them:\n  %s'
               % (len(failed), '\n  '.join(failed)))
