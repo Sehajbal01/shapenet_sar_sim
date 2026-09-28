@@ -49,6 +49,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import numpy as np
 import PIL.Image
 import torch
+import tqdm
 
 from paper_figures import PAPER_BASELINE
 from ray_tracer_v2 import build_octree
@@ -275,56 +276,70 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     sar_kwargs        = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
     side_scan_kwargs  = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
 
+    # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
+    # the next object's bars reuse the same lines. Each counts all of the object's poses and
+    # starts at the ones already on disk, so a resumed object shows where it picked up
+    width = max(len(m) for m in MODALITIES)
+    bars = {m: tqdm.tqdm(total=len(pose_nums), initial=len(pose_nums) - len(todo), position=i,
+                         leave=False, desc=m.ljust(width), unit='pose', dynamic_ncols=True)
+            for i, m in enumerate(MODALITIES)}
+
+    def save(modality, pose_num, amplitude):
+        save_gray_png(amplitude.detach().cpu().numpy(),
+                      output_path(object_dir, obj_id, pose_num, modality, test_run))
+        bars[modality].update()
+
     n_clamped = 0
-    for pose_num in todo:
-        poses, _, clamped = aimed_pose(os.path.join(pose_dir, '%s.txt' % pose_num), device)
-        n_clamped += clamped
+    try:
+        for pose_num in todo:
+            poses, _, clamped = aimed_pose(os.path.join(pose_dir, '%s.txt' % pose_num), device)
+            n_clamped += clamped
 
-        # seed per pose, so a rerun of one pose reproduces its image instead of redrawing the
-        # receiver noise. np.random is the one that matters -- apply_snr draws the noise from
-        # numpy, not torch -- but seed both, since that is what multi_param_experiment does and
-        # which generator a renderer reaches for is not something a caller should have to track.
-        # crc32 and not hash(), whose string seed changes every interpreter
-        seed = zlib.crc32(('%s/%s' % (obj_id, pose_num)).encode())
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+            # seed per pose, so a rerun of one pose reproduces its image instead of redrawing the
+            # receiver noise. np.random is the one that matters -- apply_snr draws the noise from
+            # numpy, not torch -- but seed both, since that is what multi_param_experiment does and
+            # which generator a renderer reaches for is not something a caller should have to track.
+            # crc32 and not hash(), whose string seed changes every interpreter
+            seed = zlib.crc32(('%s/%s' % (obj_id, pose_num)).encode())
+            np.random.seed(seed)
+            torch.manual_seed(seed)
 
-        # both SAR images off one ray trace: the trace and the signal interpolation are the same
-        # for either algorithm, and only the imaging step differs
-        sar_images = run(sar_render_image, mesh_path,
-                         PAPER_BASELINE['num_pulse'],
-                         poses,
-                         AZIMUTH_SPREAD_DEG,
-                         imaging_algorithm = ('cbp', 'stripmap'),
-                         trajectory_type   = TRAJECTORY_TYPE,
-                         preloaded_mesh    = mesh_bundle,
-                         octree            = octree,
-                         **sar_kwargs)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
+            # both SAR images off one ray trace: the trace and the signal interpolation are the same
+            # for either algorithm, and only the imaging step differs
+            sar_images = run(sar_render_image, mesh_path,
+                             PAPER_BASELINE['num_pulse'],
+                             poses,
+                             AZIMUTH_SPREAD_DEG,
+                             imaging_algorithm = ('cbp', 'stripmap'),
+                             trajectory_type   = TRAJECTORY_TYPE,
+                             preloaded_mesh    = mesh_bundle,
+                             octree            = octree,
+                             **sar_kwargs)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
+            save('cbp_sar',       pose_num, sar_images['cbp'][0])
+            save('strip_map_sar', pose_num, sar_images['stripmap'][0])
 
-        # the side scan reads only the sensor *direction* off the pose: it flies its own straight
-        # track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
-        sensor_position = extract_pose_info(poses)[0].reshape(3)  # (3,)
-        sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
-                          * SONAR_PAPER_BASELINE['sensor_distance']
-        side_scan_image = run(side_scan_sonar_image,
-                              sensor_position,
-                              SONAR_PAPER_BASELINE['track_length'],
-                              SONAR_PAPER_BASELINE['num_pings'],
-                              SONAR_PAPER_BASELINE['elevation_fov_deg'],
-                              SONAR_PAPER_BASELINE['azimuth_beam_width_deg'],
-                              *mesh_bundle,
-                              SONAR_PAPER_BASELINE['num_ray_width'],
-                              SONAR_PAPER_BASELINE['num_ray_height'],
-                              SONAR_PAPER_BASELINE['region_radius'],
-                              octree = octree,
-                              **side_scan_kwargs)[0]  # (T,H,W), one track
-
-        rendered = {'side_scan_sonar': side_scan_image[0],
-                    'cbp_sar':         sar_images['cbp'][0],
-                    'strip_map_sar':   sar_images['stripmap'][0]}
-        for modality in MODALITIES:
-            save_gray_png(rendered[modality].detach().cpu().numpy(),
-                          output_path(object_dir, obj_id, pose_num, modality, test_run))
+            # the side scan reads only the sensor *direction* off the pose: it flies its own
+            # straight track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
+            sensor_position = extract_pose_info(poses)[0].reshape(3)  # (3,)
+            sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
+                              * SONAR_PAPER_BASELINE['sensor_distance']
+            side_scan_image = run(side_scan_sonar_image,
+                                  sensor_position,
+                                  SONAR_PAPER_BASELINE['track_length'],
+                                  SONAR_PAPER_BASELINE['num_pings'],
+                                  SONAR_PAPER_BASELINE['elevation_fov_deg'],
+                                  SONAR_PAPER_BASELINE['azimuth_beam_width_deg'],
+                                  *mesh_bundle,
+                                  SONAR_PAPER_BASELINE['num_ray_width'],
+                                  SONAR_PAPER_BASELINE['num_ray_height'],
+                                  SONAR_PAPER_BASELINE['region_radius'],
+                                  octree = octree,
+                                  **side_scan_kwargs)[0]  # (T,H,W), one track
+            save('side_scan_sonar', pose_num, side_scan_image[0])
+    finally:
+        # also on a failed object, so its bars do not linger under the next object's
+        for bar in bars.values():
+            bar.close()
 
     return len(todo), n_clamped
 
