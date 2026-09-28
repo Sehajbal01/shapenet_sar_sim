@@ -6,11 +6,12 @@ Loads config.json, the one place this repo's dataset locations and paper figure 
     CONFIG             the whole file, with the three baselines under side_scan_sonar_baseline,
                        sar_baseline and range_angle_baseline
 
-JSON has no tuples, so every list is turned back into one on load: the baselines' raids and
+Whole-line // comments are stripped before parsing. JSON has no tuples, so every list is turned back into one on load: the baselines' raids and
 rotations were tuples when they lived in the figure scripts, and stay tuples for their callers.
 '''
 import json
 import os
+import re
 
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
@@ -25,8 +26,10 @@ def _tuplify(value):
 
 
 def load_config(path=CONFIG_PATH):
+    # whole-line // comments are allowed, e.g. to keep another cluster's dataset paths on hand
     with open(path) as f:
-        return _tuplify(json.load(f))
+        text = re.sub(r'^\s*//.*$', '', f.read(), flags=re.MULTILINE)
+    return _tuplify(json.loads(text))
 
 
 CONFIG = load_config()

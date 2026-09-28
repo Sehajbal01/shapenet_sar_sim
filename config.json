@@ -1,6 +1,11 @@
 {
-    "srn_cars_dir": "/workspace/data/srn_cars",
-    "shapenet_cars_dir": "/workspace/data/shapenet_cars/02958343",
+    // cluster 2 dataset paths
+    // "srn_cars_dir": "/workspace/data/srn_cars",
+    // "shapenet_cars_dir": "/workspace/data/shapenet_cars/02958343",
+
+    // cluster 1 dataset paths
+    "srn_cars_dir": "/workspace/data/srncars",
+    "shapenet_cars_dir": "/workspace/data/srncars/02958343",
     "side_scan_sonar_baseline": {
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
         "pose_num": "000043",
