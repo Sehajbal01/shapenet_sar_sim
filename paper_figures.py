@@ -50,6 +50,17 @@ def _paper_experiments():
         custom_title_strings=['Pulses: %d' % p for p in pulse_vals],
     )
 
+    # Ray count sweep — how densely the ray grid samples the scene, from half to five times the
+    # baseline's rays per side, linearly spaced. Width and height move together, as in the range
+    # angle suite's n_ray sweep.
+    base_n_ray = PAPER_BASELINE['n_ray_width']
+    n_ray_vals = np.linspace(base_n_ray / 2, 5 * base_n_ray, 5).round().astype(int).tolist()
+    n_ray = dict(
+        name='n_ray',
+        vary={'n_ray_width': n_ray_vals, 'n_ray_height': n_ray_vals},
+        custom_title_strings=['Rays: %d x %d' % (r, r) for r in n_ray_vals],
+    )
+
     # Spatial bandwidth sweep — range resolution goes as 1/BW. Fs = 2*BW throughout, as in the
     # baseline, so the panels differ by bandwidth alone and not by how finely each pulse is sampled.
     bwfs_vals = [4, 16, 64, 128, 512]
@@ -154,8 +165,9 @@ def _paper_experiments():
 
     return [
         # az_spread,
-        num_pulse,
-        fsbw,
+        # num_pulse,
+        n_ray,
+        # fsbw,
         # fsbw_stripmap,
         # snrdb,
         # wavelength,

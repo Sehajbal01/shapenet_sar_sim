@@ -42,6 +42,9 @@ chunk can be checked end to end before the real run. See test.sh.
 -gif, allowed only with -test_run, also writes one animated GIF per object and modality to
 ./figures/test_run_<modality>_<obj_id>_az<spread>.gif: every in-band pose in pose order, with its
 azimuth and elevation stamped top left. The dataset itself never gets GIFs.
+
+-only_stripmap renders the strip map SAR image alone: the side scan trace and the CBP imaging step
+are skipped, and only strip_map_sar_<spread>azspread/ is created or checked for being done.
 '''
 import argparse
 import contextlib
@@ -90,6 +93,9 @@ assert 0.0 <= AZIMUTH_SPREAD_DEG < 180.0, \
 # overwriting it
 MODALITIES = ('side_scan_sonar', 'cbp_sar', 'strip_map_sar')
 DIR_SUFFIX = '_%dazspread' % AZIMUTH_SPREAD_DEG
+
+# the imaging_algorithm sar_render_image names each SAR modality by
+SAR_ALGORITHMS = {'cbp_sar': 'cbp', 'strip_map_sar': 'stripmap'}
 
 # where -test_run writes instead, alongside the paper figures
 FIGURES_DIR = 'figures'
@@ -259,15 +265,15 @@ def read_pose(pose_path):
 
 def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None, verbose=False,
                   test_run=False, elevation_range=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
-                  gif=False):
+                  gif=False, modalities=MODALITIES):
     '''
-    Render every pose of one object, in all three modalities, off a single mesh load.
+    Render every pose of one object, in each of modalities, off a single mesh load.
 
     inputs:
         obj_id (str): srn_cars object id, a directory under both MODELS_DIR and the split
         split (str): 'cars_train' | 'cars_val' | 'cars_test'
         device (str): device to render on
-        overwrite (bool): re-render poses whose three PNGs are already on disk
+        overwrite (bool): re-render poses whose PNGs are already on disk
         max_poses (int): stop after this many poses, for a smoke test; None renders them all
         verbose (bool): let the renderers' own per-call prints through
         test_run (bool): render exactly as usual but write the PNGs into FIGURES_DIR under
@@ -276,11 +282,16 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         gif (bool): also write one GIF per modality of every in-band pose, see save_gif. Rewritten
             on every run, since it is cheap and so never shows a stale band or image. Test runs
             only, so the dataset never gets GIFs
+        modalities (sequence of str): which of MODALITIES to render; a pose counts as done once
+            these alone are on disk
     outputs:
         n_rendered (int): poses rendered, not counting the ones skipped as already done
         n_out_of_band (int): poses skipped for an elevation outside elevation_range
     '''
     assert test_run or not gif, 'gif is only written on a test run'
+    assert modalities and set(modalities) <= set(MODALITIES), 'unknown modalities %r' % (modalities,)
+    # in MODALITIES order, whatever order they were asked for in
+    modalities = tuple(m for m in MODALITIES if m in modalities)
     object_dir = os.path.join(SPLITS_DIR, split, obj_id)
     pose_dir   = os.path.join(object_dir, 'pose')
     mesh_path  = os.path.join(MODELS_DIR, obj_id, 'models', 'model_normalized.obj')
@@ -290,7 +301,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     if test_run:
         os.makedirs(FIGURES_DIR, exist_ok=True)
     else:
-        for modality in MODALITIES:
+        for modality in modalities:
             os.makedirs(os.path.join(object_dir, modality + DIR_SUFFIX), exist_ok=True)
 
     all_pose_nums = sorted(os.path.splitext(f)[0] for f in os.listdir(pose_dir)
@@ -310,16 +321,16 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     todo = pose_nums if overwrite else [
         p for p in pose_nums
         if not all(os.path.exists(output_path(object_dir, obj_id, p, m, test_run))
-                   for m in MODALITIES)
+                   for m in modalities)
     ]
     if todo:
         render_poses(obj_id, object_dir, mesh_path, todo, len(pose_nums), poses, device,
-                     verbose, test_run)
+                     verbose, test_run, modalities)
 
     # from the pngs on disk rather than from this run's renders, so a resumed or already finished
     # object still animates all of its poses
     if gif and pose_nums:
-        for modality in MODALITIES:
+        for modality in modalities:
             save_gif([output_path(object_dir, obj_id, p, modality, test_run) for p in pose_nums],
                      [poses[p][1:] for p in pose_nums],
                      gif_path(obj_id, modality))
@@ -327,9 +338,10 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     return len(todo), n_out_of_band
 
 
-def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, verbose, test_run):
+def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, verbose, test_run,
+                 modalities):
     '''
-    The GPU half of render_object: load the mesh once and render the todo poses in every modality.
+    The GPU half of render_object: load the mesh once and render the todo poses in each modality.
 
     inputs:
         todo (list of str): pose numbers to render
@@ -359,13 +371,17 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
     sar_kwargs        = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
     side_scan_kwargs  = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
 
+    # the SAR imaging steps to run off the one SAR trace, and whether the side scan is traced at all
+    sar_modalities = [m for m in modalities if m in SAR_ALGORITHMS]
+    render_side_scan = 'side_scan_sonar' in modalities
+
     # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
     # the next object's bars reuse the same lines. Each counts all of the object's in-band poses and
     # starts at the ones already on disk, so a resumed object shows where it picked up
-    width = max(len(m) for m in MODALITIES)
+    width = max(len(m) for m in modalities)
     bars = {m: tqdm.tqdm(total=n_poses, initial=n_poses - len(todo), position=i,
                          leave=False, desc=m.ljust(width), unit='pose', dynamic_ncols=True)
-            for i, m in enumerate(MODALITIES)}
+            for i, m in enumerate(modalities)}
 
     def save(modality, pose_num, amplitude):
         save_gray_png(amplitude.detach().cpu().numpy(),
@@ -387,17 +403,21 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
 
             # both SAR images off one ray trace: the trace and the signal interpolation are the same
             # for either algorithm, and only the imaging step differs
-            sar_images = run(sar_render_image, mesh_path,
-                             PAPER_BASELINE['num_pulse'],
-                             pose,
-                             AZIMUTH_SPREAD_DEG,
-                             imaging_algorithm = ('cbp', 'stripmap'),
-                             trajectory_type   = TRAJECTORY_TYPE,
-                             preloaded_mesh    = mesh_bundle,
-                             octree            = octree,
-                             **sar_kwargs)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
-            save('cbp_sar',       pose_num, sar_images['cbp'][0])
-            save('strip_map_sar', pose_num, sar_images['stripmap'][0])
+            if sar_modalities:
+                sar_images = run(sar_render_image, mesh_path,
+                                 PAPER_BASELINE['num_pulse'],
+                                 pose,
+                                 AZIMUTH_SPREAD_DEG,
+                                 imaging_algorithm = tuple(SAR_ALGORITHMS[m] for m in sar_modalities),
+                                 trajectory_type   = TRAJECTORY_TYPE,
+                                 preloaded_mesh    = mesh_bundle,
+                                 octree            = octree,
+                                 **sar_kwargs)  # {'cbp': (1,H,W), 'stripmap': (1,H,W)}
+                for modality in sar_modalities:
+                    save(modality, pose_num, sar_images[SAR_ALGORITHMS[modality]][0])
+
+            if not render_side_scan:
+                continue
 
             # the side scan reads only the sensor *direction* off the pose: it flies its own
             # straight track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
@@ -452,7 +472,11 @@ def main():
                         help='with -test_run only: also write one GIF per object and modality of '
                              'all its in-band poses into %s/, stamped with azimuth and elevation'
                              % FIGURES_DIR)
+    parser.add_argument('-only_stripmap', action='store_true',
+                        help='render only the strip map SAR image, skipping the side scan sonar '
+                             'and CBP SAR')
     args = parser.parse_args()
+    modalities = ('strip_map_sar',) if args.only_stripmap else MODALITIES
 
     if args.gif and not args.test_run:
         parser.error('-gif only runs with -test_run, the dataset does not get GIFs')
@@ -498,7 +522,7 @@ def main():
               'the dataset is not touched' % (FIGURES_DIR, AZIMUTH_SPREAD_DEG))
     else:
         print('writing %s per object'
-              % ', '.join('%s%s/' % (m, DIR_SUFFIX) for m in MODALITIES))
+              % ', '.join('%s%s/' % (m, DIR_SUFFIX) for m in modalities))
     print('elevation: rendering poses in %g..%g deg, skipping the rest%s'
           % (min_elevation_deg, max_elevation_deg, '; writing a gif per modality' if args.gif else ''))
     print('display: %s compression%s' % (
@@ -520,7 +544,8 @@ def main():
                                                       verbose         = args.verbose,
                                                       test_run        = args.test_run,
                                                       elevation_range = args.elevation_range,
-                                                      gif             = args.gif)
+                                                      gif             = args.gif,
+                                                      modalities      = modalities)
         except Exception as exception:
             failed.append(obj_id)
             print('[%d/%d] %s FAILED: %s: %s' % (i + 1, len(chunk), obj_id,
