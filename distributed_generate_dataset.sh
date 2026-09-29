@@ -1,19 +1,20 @@
 #! /bin/bash
 #
-# Render one srn_cars split across 6 GPUs: six generate_dataset.py processes in parallel, each
-# pinned to one GPU and given one chunk of the object list.
+# Render every srn_cars split across 6 GPUs: six workers in parallel, each pinned to one GPU. Each
+# split is chunked on its own, and GPU i renders chunk i of cars_train, then chunk i of cars_val,
+# then chunk i of cars_test. A worker moves on to its next split without waiting for the others.
 #
-#   ./distributed_generate_dataset.sh                 # cars_test, the default
-#   ./distributed_generate_dataset.sh cars_train      # another split
-#   ./distributed_generate_dataset.sh cars_test -test_run   # extra args go to generate_dataset.py
+#   ./distributed_generate_dataset.sh                 # all three splits
+#   ./distributed_generate_dataset.sh -test_run       # args go to every generate_dataset.py call
 #
 # Finished poses are skipped, so a chunk that dies is resumed by rerunning the whole script.
-# Logs land one per chunk in logs/, since six processes interleaved on one terminal are unreadable.
+# Logs land one per split and chunk in logs/, since six processes interleaved on one terminal are
+# unreadable.
 
 set -u
 
-SPLIT=${1:-cars_test}
-shift 2>/dev/null || true          # anything further is forwarded to generate_dataset.py
+# rendered in this order by every worker; all args are forwarded to generate_dataset.py
+SPLITS=(cars_train cars_val cars_test)
 
 GPUS=(0 1 2 3 4 5)
 NUM_CHUNKS=${#GPUS[@]}
@@ -47,31 +48,50 @@ mkdir -p "$LOG_DIR"
 # kill the whole group on Ctrl-C, so one interrupt stops all six and not just the wait
 trap 'echo; echo "interrupted -- stopping all chunks"; kill 0; exit 130' INT TERM
 
-echo "split $SPLIT: $NUM_CHUNKS chunks over GPUs $GPU_LIST"
+echo "splits ${SPLITS[*]}, in that order: $NUM_CHUNKS chunks each over GPUs $GPU_LIST"
+
+log_path() {  # split, chunk index
+    echo "$LOG_DIR/${1}_chunk${2}of${NUM_CHUNKS}_gpu${GPUS[$2]}.log"
+}
+
+# one worker per GPU: its chunk of each split in turn. A split that crashes is reported and the
+# worker goes on to the next one, since the splits are independent; the worker exits non-zero if
+# any of its splits did
+run_worker() {  # chunk index, then the args for generate_dataset.py
+    local i=$1 gpu=${GPUS[$1]} split failed=0
+    shift
+    for split in "${SPLITS[@]}"; do
+        echo "  GPU $gpu: starting $split chunk $i  log $(log_path "$split" "$i")"
+        if CUDA_VISIBLE_DEVICES=$gpu "$PYTHON" generate_dataset.py \
+                -split "$split" -num_chunks "$NUM_CHUNKS" -chunk_id "$i" "$@" \
+                > "$(log_path "$split" "$i")" 2>&1; then
+            echo "  GPU $gpu: $split chunk $i finished"
+        else
+            echo "  GPU $gpu: $split chunk $i FAILED -- see $(log_path "$split" "$i")"
+            failed=1
+        fi
+    done
+    return $failed
+}
 
 pids=()
 for i in "${!GPUS[@]}"; do
-    gpu=${GPUS[$i]}
-    log="$LOG_DIR/${SPLIT}_chunk${i}of${NUM_CHUNKS}_gpu${gpu}.log"
-    CUDA_VISIBLE_DEVICES=$gpu "$PYTHON" generate_dataset.py \
-        -split "$SPLIT" -num_chunks "$NUM_CHUNKS" -chunk_id "$i" "$@" \
-        > "$log" 2>&1 &
+    run_worker "$i" "$@" &
     pids+=($!)
-    echo "  GPU $gpu -> chunk $i  pid ${pids[$i]}  log $log"
 done
 
-echo "watch one with:  tail -f $LOG_DIR/${SPLIT}_chunk0of${NUM_CHUNKS}_gpu${GPUS[0]}.log"
+echo "watch one with:  tail -f $(log_path "${SPLITS[0]}" 0)"
 
-# wait on each chunk by pid, so the exit status of every one is reported rather than only the last
+# wait on each worker by pid, so the exit status of every one is reported rather than only the last
 status=0
 for i in "${!pids[@]}"; do
     if wait "${pids[$i]}"; then
-        echo "chunk $i (GPU ${GPUS[$i]}) finished"
+        echo "GPU ${GPUS[$i]} (chunk $i) done with all splits"
     else
-        echo "chunk $i (GPU ${GPUS[$i]}) FAILED -- see $LOG_DIR/${SPLIT}_chunk${i}of${NUM_CHUNKS}_gpu${GPUS[$i]}.log"
+        echo "GPU ${GPUS[$i]} (chunk $i) had a failed split -- see its logs above"
         status=1
     fi
 done
 
-echo "all chunks done for $SPLIT"
+echo "all chunks done for ${SPLITS[*]}"
 exit $status
