@@ -23,10 +23,14 @@ LOG_DIR=logs
 
 GPU_LIST=$(IFS=,; echo "${GPUS[*]}")
 
-# Cap board power as test.sh's commented nvidia-smi line does. sudo wants a password here, so
-# try the non-interactive form first, prompt only when there is a terminal to prompt on, and
-# never block: under nohup a plain sudo would hang forever waiting for input.
-if sudo -n nvidia-smi -i "$GPU_LIST" -pl "$POWER_LIMIT_W" >/dev/null 2>&1; then
+# Cap board power as test.sh does, skipping sudo entirely when every GPU already has the limit.
+# Otherwise sudo wants a password here, so try the non-interactive form first, prompt only when
+# there is a terminal to prompt on, and never block: under nohup a plain sudo would hang forever
+# waiting for input. An empty query (nvidia-smi failed) counts as not set.
+if nvidia-smi -i "$GPU_LIST" --query-gpu=power.limit --format=csv,noheader,nounits 2>/dev/null \
+        | awk -v w="$POWER_LIMIT_W" 'int($1) != w {bad=1} END {exit (bad || NR == 0)}'; then
+    echo "power limit: already ${POWER_LIMIT_W}W on GPUs $GPU_LIST"
+elif sudo -n nvidia-smi -i "$GPU_LIST" -pl "$POWER_LIMIT_W" >/dev/null 2>&1; then
     echo "power limit: ${POWER_LIMIT_W}W on GPUs $GPU_LIST"
 elif [ -t 0 ]; then
     echo "power limit: ${POWER_LIMIT_W}W on GPUs $GPU_LIST (sudo needs your password)"
