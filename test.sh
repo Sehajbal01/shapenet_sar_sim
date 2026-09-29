@@ -13,7 +13,7 @@ rm -f figures/*
 NUM_MODELS=$(ls "$(sed 's|^\s*//.*$||' config.json | jq -r .srn_cars_dir)/cars_test" | wc -l)
 NUM_CHUNKS=$((NUM_MODELS))
 CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif -modalities range_angle
+    generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif 
 
 # the sar paper figures, on config.json's sar_baseline obj_id/azimuth_deg/elevation_deg -- set to
 # the test run's chunk 5 object at az 0 el 33, to look into its striations. Only the n_ray sweep is

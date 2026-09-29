@@ -13,7 +13,9 @@ image comes from a single pulse fanned over a field of view rather than from an 
     grid_width / grid_height = 1.2
         -> fov_width_deg / fov_height_deg, the angular extent of the ray fan. 1.2 units across
            at the srn_cars camera distance of 1.3 subtends 2*atan(0.6/1.3) = 49.4 deg, so the
-           50 deg fan below covers the same scene the paper's ray grid does
+           50 deg wide fan below covers the same scene the paper's ray grid does. The fan is
+           115 deg tall, so its lowest rays reach the ground at the near end of the range window
+           (see config.json)
     image_width / image_height = 128
         -> n_angle_bins / n_range_bins
     use_sig_magnitude = False
@@ -41,8 +43,8 @@ from utils import extract_pose_info
 from imaging_algorithms import db_compress
 
 
-# config.json's range_angle_baseline. fov_width_deg/fov_height_deg of 50 are the angular
-# equivalent of the paper's 1.2 wide ray grid at range 1.3
+# config.json's range_angle_baseline. fov_width_deg of 50 is the angular equivalent of the
+# paper's 1.2 wide ray grid at range 1.3; fov_height_deg is taller, to reach the ground
 RANGE_ANGLE_BASELINE = dict(CONFIG['range_angle_baseline'])
 
 

@@ -156,7 +156,8 @@ SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_plane_width', 'image_pla
                   'wavelength', 'num_bounce', 'spherical_spread', 'water_absorption',
                   'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
 RANGE_ANGLE_KEYS = ('fov_width_deg', 'fov_height_deg', 'beam_width_deg', 'n_ray_width',
-                    'n_ray_height', 'n_range_bins', 'n_angle_bins', 'region_radius', 'wavelength',
+                    'n_ray_height', 'n_range_bins', 'n_angle_bins', 'range_near', 'range_far',
+                    'region_radius', 'wavelength',
                     'use_sig_magnitude', 'num_bounce', 'obj_raids', 'ground_raids',
                     'object_x_flip', 'object_rotate_xyz')
 
