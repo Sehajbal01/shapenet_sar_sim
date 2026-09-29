@@ -277,7 +277,7 @@ def read_pose(pose_path):
 
 def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None, verbose=False,
                   test_run=False, elevation_range=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
-                  gif=False, modalities=MODALITIES):
+                  gif=False, modalities=MODALITIES, progress_bars=False):
     '''
     Render every pose of one object, in each of modalities, off a single mesh load.
 
@@ -296,6 +296,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
             only, so the dataset never gets GIFs
         modalities (sequence of str): which of MODALITIES to render; a pose counts as done once
             these alone are on disk
+        progress_bars (bool): show a per-pose tqdm bar per modality while the object renders
     outputs:
         n_rendered (int): poses rendered in at least one modality, not counting the ones skipped
             as already done in all of them
@@ -341,7 +342,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
             todo[p] = missing
     if todo:
         render_poses(obj_id, object_dir, mesh_path, todo, len(pose_nums), poses, device,
-                     verbose, test_run, modalities)
+                     verbose, test_run, modalities, progress_bars)
 
     # from the pngs on disk rather than from this run's renders, so a resumed or already finished
     # object still animates all of its poses
@@ -355,7 +356,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
 
 
 def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, verbose, test_run,
-                 modalities):
+                 modalities, progress_bars):
     '''
     The GPU half of render_object: load the mesh once and render the todo poses in each modality.
 
@@ -409,12 +410,13 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
 
     # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
     # the next object's bars reuse the same lines. Each counts all of the object's in-band poses and
-    # starts at the ones already on disk, so a resumed object shows where it picked up
+    # starts at the ones already on disk, so a resumed object shows where it picked up. Off unless
+    # progress_bars: redirected to a log, every redraw lands in it as another line
     width = max(len(m) for m in modalities)
     bars = {m: tqdm.tqdm(total=n_poses,
                          initial=n_poses - sum(m in missing for missing in todo.values()),
                          position=i, leave=False, desc=m.ljust(width), unit='pose',
-                         dynamic_ncols=True)
+                         dynamic_ncols=True, disable=not progress_bars)
             for i, m in enumerate(modalities)}
 
     def save(modality, pose_num, amplitude):
@@ -509,6 +511,9 @@ def main():
                         default=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
                         help='render only poses with elevation in [MIN, MAX] deg, skipping the '
                              'rest (default: %g %g)' % (MIN_ELEVATION_DEG, MAX_ELEVATION_DEG))
+    parser.add_argument('-progress_bars', action='store_true',
+                        help='show per-pose tqdm bars while each object renders; off by default, '
+                             'since a log would get one line per redraw')
     parser.add_argument('-gif', action='store_true',
                         help='with -test_run only: also write one GIF per object and modality of '
                              'all its in-band poses into %s/, stamped with azimuth and elevation'
@@ -570,6 +575,13 @@ def main():
         ', k/ref %g' % ASINH_K_RATIO if COMPRESSION == 'asinh' else
         ', floor %g dB' % DB_FLOOR if COMPRESSION == 'db' else ''))
 
+    # the one line printed per object, once it is done: which chunk, how far through it, and the
+    # object's own outcome
+    def progress(i, message):
+        print('chunk %d/%d: %d/%d objects complete (%.1f%%) -- %s'
+              % (args.chunk_id, args.num_chunks, i + 1, len(chunk), 100 * (i + 1) / len(chunk),
+                 message), flush=True)
+
     t_start = time.time()
     total_rendered, total_out_of_band = 0, 0
     failed = []
@@ -585,11 +597,11 @@ def main():
                                                       test_run        = args.test_run,
                                                       elevation_range = args.elevation_range,
                                                       gif             = args.gif,
-                                                      modalities      = modalities)
+                                                      modalities      = modalities,
+                                                      progress_bars   = args.progress_bars)
         except Exception as exception:
             failed.append(obj_id)
-            print('[%d/%d] %s FAILED: %s: %s' % (i + 1, len(chunk), obj_id,
-                                                 type(exception).__name__, exception), flush=True)
+            progress(i, '%s FAILED: %s: %s' % (obj_id, type(exception).__name__, exception))
             torch.cuda.empty_cache()
             continue
         total_rendered += n_rendered
@@ -597,9 +609,9 @@ def main():
 
         elapsed = time.time() - t_start
         eta_hours = (elapsed / (i + 1)) * (len(chunk) - i - 1) / 3600
-        print('[%d/%d] %s: %d poses in %.1f s (%d out of band) -- %.1f h elapsed, %.1f h left'
-              % (i + 1, len(chunk), obj_id, n_rendered, time.time() - t_object, n_out_of_band,
-                 elapsed / 3600, eta_hours), flush=True)
+        progress(i, '%s: %d poses in %.1f s (%d out of band) -- %.1f h elapsed, %.1f h left'
+                    % (obj_id, n_rendered, time.time() - t_object, n_out_of_band,
+                       elapsed / 3600, eta_hours))
 
     print('chunk %d/%d done: %d poses over %d objects in %.1f h, %d skipped out of elevation band'
           % (args.chunk_id, args.num_chunks, total_rendered, len(chunk),
