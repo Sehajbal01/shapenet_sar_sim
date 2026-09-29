@@ -275,6 +275,49 @@ def read_pose(pose_path):
     return pose, pose_info[6].item(), pose_info[5].item()
 
 
+def plan_object(obj_id, split, overwrite, max_poses, test_run, elevation_range, modalities):
+    '''
+    Which poses of one object are in band and which of their images are still missing, touching
+    neither the GPU nor the disk beyond reads. Shared by render_object and -count, so the count
+    the ETA is projected from is exactly what the render will do.
+
+    inputs:
+        obj_id, split, overwrite, max_poses, test_run, elevation_range: as for render_object
+        modalities (tuple of str): of MODALITIES, in MODALITIES order
+    outputs:
+        pose_nums (list of str): the in-band poses, cut to max_poses
+        poses (dict): pose number -> read_pose's (pose, azimuth_deg, elevation_deg), of every pose
+        todo (dict): pose number -> the modalities it is missing, in MODALITIES order
+        n_out_of_band (int): poses skipped for an elevation outside elevation_range
+    '''
+    object_dir = os.path.join(SPLITS_DIR, split, obj_id)
+    pose_dir   = os.path.join(object_dir, 'pose')
+
+    all_pose_nums = sorted(os.path.splitext(f)[0] for f in os.listdir(pose_dir)
+                           if f.endswith('.txt'))
+    poses = {p: read_pose(os.path.join(pose_dir, '%s.txt' % p)) for p in all_pose_nums}
+
+    # the band before max_poses, so a smoke test renders its first few in-band poses rather than
+    # the first few of the spiral, which start at 0 deg and are all out of band
+    min_elevation_deg, max_elevation_deg = elevation_range
+    pose_nums = [p for p in all_pose_nums
+                 if min_elevation_deg <= poses[p][2] <= max_elevation_deg]
+    n_out_of_band = len(all_pose_nums) - len(pose_nums)
+    if max_poses is not None:
+        pose_nums = pose_nums[:max_poses]
+
+    # figure out what is left to do before touching the GPU, so a finished object costs no mesh
+    # load. Per modality, so adding a modality to a finished dataset renders only that one
+    todo = {}  # pose number -> the modalities it is missing, in MODALITIES order
+    for p in pose_nums:
+        missing = modalities if overwrite else tuple(
+            m for m in modalities
+            if not os.path.exists(output_path(object_dir, obj_id, p, m, test_run)))
+        if missing:
+            todo[p] = missing
+    return pose_nums, poses, todo, n_out_of_band
+
+
 def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None, verbose=False,
                   test_run=False, elevation_range=(MIN_ELEVATION_DEG, MAX_ELEVATION_DEG),
                   gif=False, modalities=MODALITIES, progress_bars=False):
@@ -300,6 +343,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     outputs:
         n_rendered (int): poses rendered in at least one modality, not counting the ones skipped
             as already done in all of them
+        n_images (int): images rendered, one per pose and missing modality
         n_out_of_band (int): poses skipped for an elevation outside elevation_range
     '''
     assert test_run or not gif, 'gif is only written on a test run'
@@ -307,7 +351,6 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
     # in MODALITIES order, whatever order they were asked for in
     modalities = tuple(m for m in MODALITIES if m in modalities)
     object_dir = os.path.join(SPLITS_DIR, split, obj_id)
-    pose_dir   = os.path.join(object_dir, 'pose')
     mesh_path  = os.path.join(MODELS_DIR, obj_id, 'models', 'model_normalized.obj')
 
     # a test run creates nothing under the object, so it cannot leave half-filled modality
@@ -318,28 +361,8 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
         for modality in modalities:
             os.makedirs(os.path.join(object_dir, modality + DIR_SUFFIX), exist_ok=True)
 
-    all_pose_nums = sorted(os.path.splitext(f)[0] for f in os.listdir(pose_dir)
-                           if f.endswith('.txt'))
-    poses = {p: read_pose(os.path.join(pose_dir, '%s.txt' % p)) for p in all_pose_nums}
-
-    # the band before max_poses, so a smoke test renders its first few in-band poses rather than
-    # the first few of the spiral, which start at 0 deg and are all out of band
-    min_elevation_deg, max_elevation_deg = elevation_range
-    pose_nums = [p for p in all_pose_nums
-                 if min_elevation_deg <= poses[p][2] <= max_elevation_deg]
-    n_out_of_band = len(all_pose_nums) - len(pose_nums)
-    if max_poses is not None:
-        pose_nums = pose_nums[:max_poses]
-
-    # figure out what is left to do before touching the GPU, so a finished object costs no mesh
-    # load. Per modality, so adding a modality to a finished dataset renders only that one
-    todo = {}  # pose number -> the modalities it is missing, in MODALITIES order
-    for p in pose_nums:
-        missing = modalities if overwrite else tuple(
-            m for m in modalities
-            if not os.path.exists(output_path(object_dir, obj_id, p, m, test_run)))
-        if missing:
-            todo[p] = missing
+    pose_nums, poses, todo, n_out_of_band = plan_object(obj_id, split, overwrite, max_poses,
+                                                        test_run, elevation_range, modalities)
     if todo:
         render_poses(obj_id, object_dir, mesh_path, todo, len(pose_nums), poses, device,
                      verbose, test_run, modalities, progress_bars)
@@ -352,7 +375,7 @@ def render_object(obj_id, split, device='cuda', overwrite=False, max_poses=None,
                      [poses[p][1:] for p in pose_nums],
                      gif_path(obj_id, modality))
 
-    return len(todo), n_out_of_band
+    return len(todo), sum(len(missing) for missing in todo.values()), n_out_of_band
 
 
 def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, verbose, test_run,
@@ -520,6 +543,10 @@ def main():
                              % FIGURES_DIR)
     parser.add_argument('-modalities', nargs='+', choices=MODALITIES, default=list(MODALITIES),
                         help='render only these modalities (default: all of %s)' % ' '.join(MODALITIES))
+    parser.add_argument('-count', action='store_true',
+                        help='render nothing: print "count: <split> <n>", the images still to '
+                             'render over every chunk of the split, and exit. What '
+                             'distributed_generate_dataset.sh projects its ETA from')
     args = parser.parse_args()
     modalities = tuple(m for m in MODALITIES if m in args.modalities)
 
@@ -549,9 +576,22 @@ def main():
 
     # contiguous slices, so chunk 0 takes the front of the list. array_split spreads the
     # remainder over the first chunks rather than piling it onto the last one
-    chunk = [str(o) for o in np.array_split(np.array(obj_ids), args.num_chunks)[args.chunk_id]]
-    if args.max_objects is not None:
-        chunk = chunk[:args.max_objects]
+    def chunk_objects(chunk_id):
+        chunk = [str(o) for o in np.array_split(np.array(obj_ids), args.num_chunks)[chunk_id]]
+        return chunk if args.max_objects is None else chunk[:args.max_objects]
+
+    # every chunk rather than this one, so one call per split covers all the workers of a run
+    if args.count:
+        n_images = 0
+        for chunk_id in range(args.num_chunks):
+            for obj_id in chunk_objects(chunk_id):
+                todo = plan_object(obj_id, args.split, args.overwrite, args.max_poses,
+                                   args.test_run, args.elevation_range, modalities)[2]
+                n_images += sum(len(missing) for missing in todo.values())
+        print('count: %s %d' % (args.split, n_images))
+        return
+
+    chunk = chunk_objects(args.chunk_id)
     if not chunk:
         print('%s: chunk %d/%d is empty (%d objects over %d chunks), nothing to do'
               % (args.split, args.chunk_id, args.num_chunks, len(obj_ids), args.num_chunks))
@@ -590,15 +630,15 @@ def main():
         # one bad object -- a malformed mesh, an OOM -- should cost that object and not the
         # rest of a chunk that runs for hours. Its poses stay un-rendered, so a rerun retries it
         try:
-            n_rendered, n_out_of_band = render_object(obj_id, args.split,
-                                                      overwrite       = args.overwrite,
-                                                      max_poses       = args.max_poses,
-                                                      verbose         = args.verbose,
-                                                      test_run        = args.test_run,
-                                                      elevation_range = args.elevation_range,
-                                                      gif             = args.gif,
-                                                      modalities      = modalities,
-                                                      progress_bars   = args.progress_bars)
+            n_rendered, n_images, n_out_of_band = render_object(obj_id, args.split,
+                                                                overwrite       = args.overwrite,
+                                                                max_poses       = args.max_poses,
+                                                                verbose         = args.verbose,
+                                                                test_run        = args.test_run,
+                                                                elevation_range = args.elevation_range,
+                                                                gif             = args.gif,
+                                                                modalities      = modalities,
+                                                                progress_bars   = args.progress_bars)
         except Exception as exception:
             failed.append(obj_id)
             progress(i, '%s FAILED: %s: %s' % (obj_id, type(exception).__name__, exception))
@@ -609,8 +649,10 @@ def main():
 
         elapsed = time.time() - t_start
         eta_hours = (elapsed / (i + 1)) * (len(chunk) - i - 1) / 3600
-        progress(i, '%s: %d poses in %.1f s (%d out of band) -- %.1f h elapsed, %.1f h left'
-                    % (obj_id, n_rendered, time.time() - t_object, n_out_of_band,
+        # "(<n> images)" is what distributed_generate_dataset.sh sums for its status line
+        progress(i, '%s: %d poses (%d images) in %.1f s (%d out of band) -- %.1f h elapsed, '
+                    '%.1f h left'
+                    % (obj_id, n_rendered, n_images, time.time() - t_object, n_out_of_band,
                        elapsed / 3600, eta_hours))
 
     print('chunk %d/%d done: %d poses over %d objects in %.1f h, %d skipped out of elevation band'
