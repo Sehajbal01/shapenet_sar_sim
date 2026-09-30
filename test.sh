@@ -26,13 +26,14 @@ NUM_CHUNKS=$((NUM_MODELS))
 #     paper_figures.py
 
 # the side scan sonar paper figures: beam width, elevation fov and bandwidth sweeps. Only the
-# beam width sweep is on in SONAR_PAPER_EXPERIMENTS
+# bandwidth sweep is on in SONAR_PAPER_EXPERIMENTS
 CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
     sonar_paper_figures.py
 
-# the forward looking sonar paper figures: the same three sweeps
-# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     fls_paper_figures.py
+# the forward looking sonar paper figures. The beam width and bandwidth sweeps are on in
+# FLS_PAPER_EXPERIMENTS
+CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+    fls_paper_figures.py
 
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 sonar_paper_figures.py
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 paper_figures.py

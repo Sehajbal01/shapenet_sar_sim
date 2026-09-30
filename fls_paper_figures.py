@@ -42,19 +42,34 @@ def _fls_experiments():
         custom_title_strings=['Ray Az FOV: %.1f deg' % fov for fov in ray_fov_az_vals],
     )
 
-    # Spatial bandwidth sweep -- range resolution goes as 1/BW. Fs = 2*BW throughout, as in
-    # paper_figures' fsbw, so the panels differ by bandwidth alone.
-    bwfs_vals = [4, 16, 64, 128, 512]
-    fsbw = dict(
-        name='fsbw',
-        vary={'spatial_bw': bwfs_vals, 'spatial_fs': [2 * bw for bw in bwfs_vals]},
-        custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
+    # Elevation FOV sweep, the side scan suite's on the ray fan -- from a narrow fan that lights one
+    # band of range through the target up to the baseline's, which fills the range window.
+    # num_ray_height follows the fov as num_ray_width does above, so only the coverage changes.
+    base_fov_el = FLS_PAPER_BASELINE['ray_fov_el']
+    base_n_ray_el = FLS_PAPER_BASELINE['num_ray_height']
+    elevation_fov_vals = np.linspace(10, base_fov_el, 5).tolist()
+    elevation_fov = dict(
+        name='elevation_fov',
+        vary={'ray_fov_el': elevation_fov_vals,
+              'num_ray_height': [int(round(base_n_ray_el * fov / base_fov_el)) for fov in elevation_fov_vals]},
+        custom_title_strings=['Elevation FOV: %.1f deg' % fov for fov in elevation_fov_vals],
+    )
+
+    # Spatial bandwidth sweep, the side scan suite's -- range resolution goes as 1/BW. Fs = 2*BW
+    # throughout, so the panels differ by bandwidth alone.
+    spatial_bw_vals = [2 ** p for p in range(2, 10)]  # 4 .. 512
+    spatial_bw = dict(
+        name='spatial_bw',
+        vary={'spatial_bw': spatial_bw_vals,
+              'spatial_fs': [2 * bw for bw in spatial_bw_vals]},
+        custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in spatial_bw_vals],
     )
 
     return [
         beam_width,
-        ray_fov_az,
-        fsbw,
+        # ray_fov_az,
+        # elevation_fov,
+        spatial_bw,
     ]
 
 
