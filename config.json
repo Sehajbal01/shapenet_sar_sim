@@ -76,32 +76,6 @@
         "db_floor": -60.0,
         "asinh_k_ratio": 0.005
     },
-    "range_angle_baseline": {
-        "fov_width_deg": 50.0,
-        // tall enough that, over the 20..60 deg elevation band, every column's lowest ray meets the
-        // ground at range_near or at the nearest ground that column can see at all (111.9 deg
-        // needed, at el 34). n_ray_height keeps the 128 per 50 deg ray density
-        "fov_height_deg": 115.0,
-        "beam_width_deg": 0.1,
-        "n_ray_width": 128,
-        "n_ray_height": 294,
-        "n_range_bins": 128,
-        "n_angle_bins": 128,
-        // fixed one-way range window. 0.75 keeps the car's near side (~0.8). The floor reaches the
-        // bottom row up to el 35; above that the sensor height 1.3*sin(el) exceeds 0.75, so the
-        // ground under the sensor is the nearest ground there is and its edge shows.
-        // 3.0 is the camera distance 1.3 + region_radius 1.7
-        "range_near": 0.75,
-        "range_far": 3.0,
-        "region_radius": 1.7,
-        "wavelength": 0.5,
-        "use_sig_magnitude": true,
-        "num_bounce": 2,
-        "object_x_flip": false,
-        "object_rotate_xyz": [90.0, 0.0, 0.0],
-        "obj_raids": [0.8, 0.0, 0.9, 0.1, 0.2],
-        "ground_raids": [0.5, 0.0, 0.8, 0.2, 0.5]
-    },
     "forward_looking_sonar_baseline": {
         // the side scan baseline's car, from a 40.6 deg elevation pose that throws a shadow
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",

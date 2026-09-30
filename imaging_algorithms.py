@@ -339,8 +339,8 @@ def strip_map_imaging(  signal,
 
 # ---------------------------------------------------------------------------
 # Display compression: amplitude -> dB or asinh-compressed values for plotting.
-# Every place that turns a raw amplitude image into something imshow-able (SAR and side scan
-# paper figures, range-angle images, signal-column stills, the side scan composite PNG) shares
+# Every place that turns a raw amplitude image into something imshow-able (SAR, side scan and
+# forward looking sonar paper figures, signal-column stills, the side scan composite PNG) shares
 # these two primitives rather than each re-deriving the same formulas.
 # ---------------------------------------------------------------------------
 

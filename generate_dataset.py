@@ -1,10 +1,10 @@
 '''
-Render the side scan sonar, CBP SAR and range angle views of every srn_cars object, one image
-per rgb pose, into the split's own object directories:
+Render the side scan sonar, CBP SAR and forward looking sonar views of every srn_cars object, one
+image per rgb pose, into the split's own object directories:
 
     <srn_cars_dir>/cars_test/<obj_id>/side_scan_sonar_135azspread/<pose_num>.png
     <srn_cars_dir>/cars_test/<obj_id>/cbp_sar_135azspread/<pose_num>.png
-    <srn_cars_dir>/cars_test/<obj_id>/range_angle_135azspread/<pose_num>.png
+    <srn_cars_dir>/cars_test/<obj_id>/forward_looking_sonar_135azspread/<pose_num>.png
 
 beside the rgb/, pose/, sonar/ and raysar/ directories already there, where <srn_cars_dir> and the
 meshes' shapenet_cars_dir are read from config.json. 128x128 8-bit gray PNGs
@@ -15,14 +15,12 @@ The physics comes from the paper figure baselines rather than being restated her
 dataset tracks whatever those figures show: sonar_paper_figures.SONAR_PAPER_BASELINE for the
 side scan, paper_figures.PAPER_BASELINE for the CBP SAR image, with the trajectory forced
 linear at AZIMUTH_SPREAD_DEG, the sar_baseline azimuth_spread in config.json (135 deg below) --
-which is what the directory suffix records -- and paper_figures_range_angle.RANGE_ANGLE_BASELINE
-for the range angle image, a single pulse from the pose's own camera position.
+which is what the directory suffix records -- and fls_paper_figures.FLS_PAPER_BASELINE for the
+forward looking sonar image, beam-steered pings from the pose's own camera position.
 
 Each object is loaded and octree-built once and then imaged from all of its poses, and each
 pose is ray traced once per modality: the SAR from a distant plane along its aperture, the side
-scan from a point flying a track, and the range angle image from a point fanning rays out. The
-range angle baseline has its own materials, so the mesh is loaded a second time with those, but
-the geometry is the same and so is the one octree.
+scan from a point flying a track, and the forward looking sonar from a point fanning rays out.
 
 Run one process per GPU, each on its own contiguous slice of the object list:
 
@@ -45,9 +43,9 @@ chunk can be checked end to end before the real run. See test.sh.
 ./figures/test_run_<modality>_<obj_id>_az<spread>.gif: every in-band pose in pose order, with its
 azimuth and elevation stamped top left. The dataset itself never gets GIFs.
 
--modalities renders a subset, e.g. -modalities range_angle to add the range angle images to a
-dataset whose side scan and CBP images are already done. Skipping is per pose and per modality,
-so even without it a rerun only renders the modalities a pose is missing.
+-modalities renders a subset, e.g. -modalities forward_looking_sonar to add the forward looking
+sonar images to a dataset whose side scan and CBP images are already done. Skipping is per pose
+and per modality, so even without it a rerun only renders the modalities a pose is missing.
 '''
 import argparse
 import contextlib
@@ -69,8 +67,8 @@ import torch
 import tqdm
 
 from paper_figures import PAPER_BASELINE
-from paper_figures_range_angle import RANGE_ANGLE_BASELINE
-from range_angle_images import sar_render_range_angle_image
+from fls_paper_figures import FLS_PAPER_BASELINE
+from forwardlookingsonar import forward_looking_sonar_image
 from ray_tracer_v2 import build_octree
 from render_images import sar_render_image
 from config import SHAPENET_CARS_DIR, SRN_CARS_DIR
@@ -95,9 +93,9 @@ assert 0.0 <= AZIMUTH_SPREAD_DEG < 180.0, \
 
 # the three modalities, in the order they are rendered and saved. Each names a directory under
 # the object, carrying the suffix so a rerun at another spread lands beside this one rather than
-# overwriting it. The range angle image has no aperture, but carries the suffix anyway, as the
+# overwriting it. The forward looking sonar has no aperture, but carries the suffix anyway, as the
 # side scan does, so every modality of one run shares one name
-MODALITIES = ('side_scan_sonar', 'cbp_sar', 'range_angle')
+MODALITIES = ('side_scan_sonar', 'cbp_sar', 'forward_looking_sonar')
 DIR_SUFFIX = '_%dazspread' % AZIMUTH_SPREAD_DEG
 
 # where -test_run writes instead, alongside the paper figures
@@ -129,17 +127,16 @@ MAX_ELEVATION_DEG = 60.0
 GIF_FRAME_MS   = 100
 GIF_TEXT_COLOR = (255, 140, 0)  # orange
 
-# the mesh settings the SAR and sonar baselines carry and must agree on, since one loaded mesh
-# serves both. Asserted rather than assumed, so a future edit that moves one baseline's
-# geometry without the other's is caught here instead of silently rendering the SAR on the
-# sonar's car. make_ground and level_with_ground are not on this list because only
-# SONAR_PAPER_BASELINE states them -- the SAR and range angle paths leave both at their True
-# default, which is what the sonar baseline asks for, so all three still agree
+# the mesh settings all three baselines carry and must agree on, since one loaded mesh serves
+# every modality. Asserted rather than assumed, so a future edit that moves one baseline's
+# geometry without the others' is caught here instead of silently rendering the SAR on the
+# sonar's car. make_ground and level_with_ground are not on this list because the SAR baseline
+# does not state them -- the SAR path leaves both at their True default, which is what both sonar
+# baselines ask for, so all three still agree
 SHARED_MESH_KEYS = ('object_x_flip', 'object_rotate_xyz', 'obj_raids', 'ground_raids')
 
-# the range angle baseline has materials of its own, so it gets its own load_mesh -- but only
-# the materials may differ: the geometry must match for it to share the one octree
-SHARED_GEOMETRY_KEYS = ('object_x_flip', 'object_rotate_xyz')
+# the ground settings only the two sonar baselines state; the one load takes the side scan's
+SONAR_GROUND_KEYS = ('make_ground', 'level_with_ground')
 
 # baseline keys forwarded to each renderer. Spelled out rather than filtered by signature so a
 # renamed baseline key raises a KeyError here instead of quietly falling back to a default.
@@ -155,11 +152,8 @@ SAR_KEYS = ('spatial_bw', 'spatial_fs', 'waveform', 'snr_db', 'wavelength', 'use
 SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_plane_width', 'image_plane_height',
                   'wavelength', 'num_bounce', 'spherical_spread', 'water_absorption',
                   'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
-RANGE_ANGLE_KEYS = ('fov_width_deg', 'fov_height_deg', 'beam_width_deg', 'n_ray_width',
-                    'n_ray_height', 'n_range_bins', 'n_angle_bins', 'range_near', 'range_far',
-                    'region_radius', 'wavelength',
-                    'use_sig_magnitude', 'num_bounce', 'obj_raids', 'ground_raids',
-                    'object_x_flip', 'object_rotate_xyz')
+FLS_KEYS = ('range_near', 'range_far', 'region_radius', 'wavelength', 'num_bounce',
+            'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
 
 
 def _quiet(fn, *args, **kwargs):
@@ -389,47 +383,32 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
         poses (dict): pose number -> read_pose's (pose, azimuth_deg, elevation_deg)
         the rest: as render_object
     '''
-    # the mesh loads and the one octree build this object pays for, shared by every pose and
+    # the one mesh load and the one octree build this object pays for, shared by every pose and
     # every modality. The baselines' mesh settings must match for that to be legitimate
     for key in SHARED_MESH_KEYS:
         assert PAPER_BASELINE[key] == SONAR_PAPER_BASELINE[key], \
             'PAPER_BASELINE[%r] != SONAR_PAPER_BASELINE[%r]; the two modalities no longer ' \
             'share one mesh, so they can no longer share one load' % (key, key)
-    for key in SHARED_GEOMETRY_KEYS:
-        assert PAPER_BASELINE[key] == RANGE_ANGLE_BASELINE[key], \
-            'PAPER_BASELINE[%r] != RANGE_ANGLE_BASELINE[%r]; the range angle mesh no longer ' \
-            'has the SAR geometry, so it can no longer share its octree' % (key, key)
+    for key in SHARED_MESH_KEYS + SONAR_GROUND_KEYS:
+        assert FLS_PAPER_BASELINE[key] == SONAR_PAPER_BASELINE[key], \
+            'FLS_PAPER_BASELINE[%r] != SONAR_PAPER_BASELINE[%r]; the two sonars no longer ' \
+            'share one mesh, so they can no longer share one load' % (key, key)
 
     run = (lambda fn, *a, **k: fn(*a, **k)) if verbose else _quiet
+    mesh_bundle = run(load_mesh, mesh_path,
+                      device            = device,
+                      make_ground       = SONAR_PAPER_BASELINE['make_ground'],
+                      level_with_ground = SONAR_PAPER_BASELINE['level_with_ground'],
+                      obj_raids         = PAPER_BASELINE['obj_raids'],
+                      ground_raids      = PAPER_BASELINE['ground_raids'],
+                      x_flip            = PAPER_BASELINE['object_x_flip'],
+                      rotate_xyz        = PAPER_BASELINE['object_rotate_xyz'],
+                      )
+    octree = build_octree(mesh_bundle[0])
 
-    def load(baseline):
-        return run(load_mesh, mesh_path,
-                   device            = device,
-                   make_ground       = SONAR_PAPER_BASELINE['make_ground'],
-                   level_with_ground = SONAR_PAPER_BASELINE['level_with_ground'],
-                   obj_raids         = baseline['obj_raids'],
-                   ground_raids      = baseline['ground_raids'],
-                   x_flip            = baseline['object_x_flip'],
-                   rotate_xyz        = baseline['object_rotate_xyz'],
-                   )
-
-    # only the loads some pose still needs. The range angle bundle is the SAR one whenever the
-    # two baselines' materials agree, and a load of its own otherwise
-    needed = {m for missing in todo.values() for m in missing}
-    mesh_bundle, range_angle_mesh_bundle = None, None
-    if needed & {'side_scan_sonar', 'cbp_sar'}:
-        mesh_bundle = load(PAPER_BASELINE)
-    if 'range_angle' in needed:
-        same_materials = all(PAPER_BASELINE[k] == RANGE_ANGLE_BASELINE[k]
-                             for k in ('obj_raids', 'ground_raids'))
-        range_angle_mesh_bundle = mesh_bundle if same_materials and mesh_bundle is not None \
-                                  else load(RANGE_ANGLE_BASELINE)
-    # the octree depends only on the geometry, which the loads share
-    octree = build_octree((mesh_bundle or range_angle_mesh_bundle)[0])
-
-    sar_kwargs         = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
-    side_scan_kwargs   = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
-    range_angle_kwargs = {k: RANGE_ANGLE_BASELINE[k] for k in RANGE_ANGLE_KEYS}
+    sar_kwargs       = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
+    side_scan_kwargs = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
+    fls_kwargs       = {k: FLS_PAPER_BASELINE[k] for k in FLS_KEYS}
 
     # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
     # the next object's bars reuse the same lines. Each counts all of the object's in-band poses and
@@ -472,15 +451,27 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
                                 **sar_kwargs)  # (1,H,W)
                 save('cbp_sar', pose_num, sar_image[0])
 
-            # one pulse from the pose's own camera position, boresight on the scene origin. Rows
-            # are range, near range at the bottom, and columns are look angle
-            if 'range_angle' in missing:
-                range_angle_image = run(sar_render_range_angle_image, mesh_path,
-                                        pose,
-                                        preloaded_mesh = range_angle_mesh_bundle,
-                                        octree         = octree,
-                                        **range_angle_kwargs)[0]  # (1,n_range_bins,n_angle_bins)
-                save('range_angle', pose_num, range_angle_image[0])
+            # pings from the pose's camera position (or along it at sensor_distance, when set),
+            # boresight on the origin. Rows are range, near at the bottom; columns are ping azimuth
+            if 'forward_looking_sonar' in missing:
+                sensor_position = extract_pose_info(pose)[0].reshape(1, 3)  # (1,3)
+                if FLS_PAPER_BASELINE['sensor_distance'] is not None:
+                    sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
+                                      * FLS_PAPER_BASELINE['sensor_distance']
+                fls_image = run(forward_looking_sonar_image,
+                                sensor_position,
+                                FLS_PAPER_BASELINE['image_azimuth_range'],
+                                FLS_PAPER_BASELINE['num_pings'],
+                                FLS_PAPER_BASELINE['num_range_values'],
+                                FLS_PAPER_BASELINE['ray_fov_az'],
+                                FLS_PAPER_BASELINE['ray_fov_el'],
+                                FLS_PAPER_BASELINE['azimuth_beam_width_deg'],
+                                *mesh_bundle,
+                                FLS_PAPER_BASELINE['num_ray_width'],
+                                FLS_PAPER_BASELINE['num_ray_height'],
+                                octree = octree,
+                                **fls_kwargs)[0]  # (T,H,W), one sensor position
+                save('forward_looking_sonar', pose_num, fls_image[0])
 
             if 'side_scan_sonar' not in missing:
                 continue

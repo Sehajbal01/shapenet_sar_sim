@@ -12,7 +12,7 @@ mkdir -p figures
 # clear the whole folder, so nothing from an earlier run is mistaken for this one's output.
 rm -f figures/*
 
-# # dataset generation test run, range angle only
+# # dataset generation test run
 # strip config.json's whole-line // comments first, as config.py does -- jq can't parse them
 NUM_MODELS=$(ls "$(sed 's|^\s*//.*$||' config.json | jq -r .srn_cars_dir)/cars_test" | wc -l)
 NUM_CHUNKS=$((NUM_MODELS))

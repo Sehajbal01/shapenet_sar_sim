@@ -14,11 +14,33 @@ import torch
 
 from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import extract_pose_info
-from range_angle_images import beam_spread_weights
 from signal_simulation import interpolate_signal, load_mesh
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
 from signal_visualization import signal_gif, signal_column_image
 from imaging_algorithms import to_db_uint8, to_asinh, compute_dataset_reference
+
+
+# a Gaussian's full width at half maximum is 2*sqrt(2*ln2) standard deviations
+FWHM_PER_SIGMA = 2 * np.sqrt(2 * np.log(2))
+
+
+def beam_spread_weights(angle_difference_deg, beam_width_deg):
+    '''
+    Gaussian beam pattern: the weight a beam gives a scatter angle_difference_deg off its
+    boresight.
+
+    beam_width_deg is the full width at half maximum of the pattern, so a scatter sitting half a
+    beam width off boresight keeps half its energy. The pattern peaks at 1 rather than
+    integrating to 1: a scatter dead on boresight keeps its full energy.
+
+    inputs:
+        angle_difference_deg (...): scatter azimuth off the beam's boresight, in degrees
+        beam_width_deg (float): FWHM of the beam, in degrees
+    outputs:
+        weights (...): beam pattern value in (0, 1]
+    '''
+    sigma_deg = beam_width_deg / FWHM_PER_SIGMA
+    return torch.exp(-0.5 * (angle_difference_deg / sigma_deg) ** 2)
 
 
 def apply_beam_pattern(energy, tx_azimuth_deg, rx_azimuth_deg, beam_width_deg):
@@ -102,10 +124,10 @@ def side_scan_sonar_image(
 
     # figure out the camera matrix for each sensor position. Broadside: every ping shares the
     # single orientation built at the track center, so all the boresights are parallel and only
-    # the translation column changes down the track. That is what separates this from the
-    # spotlight geometry of range_angle_images, where each pose steers onto the origin and the
-    # object therefore never leaves azimuth 0; here the object drifts across the beam as the
-    # platform passes, and the azimuth weighting below has something to bite on.
+    # the translation column changes down the track. That is what separates this from a
+    # spotlight geometry, where each pose steers onto the origin and the object therefore never
+    # leaves azimuth 0; here the object drifts across the beam as the platform passes, and the
+    # azimuth weighting below has something to bite on.
     # Columns are (right, up, forward, center), the srn_cars layout of generate_pose_mat.
     up_vector = torch.linalg.cross(track_direction, line_of_sight)                  # (3,)
     mean_pose = torch.zeros(4, 4, device=device)                                    # (4,4)
@@ -342,9 +364,9 @@ def render_side_scan_image(
             range sample against the seafloor's fall with range, referenced to the window
             center so the target's own level is unchanged. 0 = off
         compression (str): how the composite panel is displayed. 'db' (default here) shows dB
-            relative to the brightest pixel, floored at db_floor, as plot_range_angle_image does
-            -- a linear stretch is all seafloor and specular glint, since the returns span ~100
-            dB. 'linear' is that plain min-max stretch. 'asinh' arcsinh-compresses referenced to
+            relative to the brightest pixel, floored at db_floor -- a linear stretch is all
+            seafloor and specular glint, since the returns span ~100 dB. 'linear' is that plain
+            min-max stretch. 'asinh' arcsinh-compresses referenced to
             this image's own 99.9th percentile amplitude (see asinh_compress) -- stays linear
             near zero and logarithmic past asinh_k_ratio * that reference, so seafloor texture
             survives without dB's hard floor

@@ -80,8 +80,8 @@ def forward_looking_sonar_image(
         azimuth_beam_width_deg (float): two-way FWHM of the beam each ping steers, in degrees
         num_ray_width/num_ray_height (int): rays across the fan in azimuth and elevation
         range_near/range_far (float): one-way range of the bottom and top rows. None brackets the
-            scene origin at +/- region_radius along the line of sight, as range_angle_images does,
-            so moving the sensor moves the window with it
+            scene origin at +/- region_radius along the line of sight, so moving the sensor moves
+            the window with it
         region_radius (float): half the default range window, ignored when both ends are given
         wavelength (float): when given, scatter energies are complex and sum coherently
         remaining arguments: as in sidescansonar.side_scan_sonar_image

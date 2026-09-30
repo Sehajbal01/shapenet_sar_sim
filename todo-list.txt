@@ -27,7 +27,7 @@
 
         - we simulate many azimuth angle pulses using a single perspective view of rays
             - ray tracing is only done once, then we can calculate the signal for each image_azimuth
-            - the fov of the perspective rays is different than the azimuth angles considered for range angle imaging
+            - the fov of the perspective rays is different than the azimuth angles considered for the image
 
         - we create a different signal for each ping
             - each ping has a ping_az angle determined by linspace between +- image_azimuth_range/2
@@ -63,7 +63,7 @@
     - submit to MDPI
 
 - add a section for how these imaging modalities are done:
-    - range-angle (forward looking sonar)
+    - forward looking sonar
     - side scan sonar
     - cbp sar
     - strip map sar
