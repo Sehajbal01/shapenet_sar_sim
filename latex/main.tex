@@ -532,6 +532,77 @@ pedestal nor the analysis above.
 \subsection{Range-Angle Imaging (Forward-Looking Sonar)}
 \label{sec:range-angle}
 
+A range-angle image is formed from a single pulse rather than from an aperture of $P$ pulses. The
+sensor sits at one position $\vec{v}$, given by an azimuth $a$ and elevation $e$ as in Section
+\ref{sec:problem}, and its boresight always points at the scene origin. Range is measured
+directly from the delay of each return, and angle is measured by the beam pattern of the sensor.
+This is the geometry of a forward-looking sonar. Because every quantity in our simulator is
+expressed in spatial units, the same model applies to sonar and radar alike.
+
+Since the sensor is a point rather than a plane, the parallel $W_g \times H_g$ ray grid of the
+signal simulation is replaced by a fan of $R_h \times R_w$ rays that all leave $\vec{v}$. Let
+$\vec{u}_f = -\vec{v}/\lVert\vec{v}\rVert$ be the boresight direction, and let $\vec{u}_h$ and
+$\vec{u}_v$ be the horizontal and vertical axes of the sensor. A ray launched at an azimuth
+offset $\phi$ and an elevation offset $\psi$ from boresight has direction
+\begin{equation}
+    \vec{d}(\phi,\psi) = \cos(\psi)\cos(\phi)\,\vec{u}_f + \cos(\psi)\sin(\phi)\,\vec{u}_h + \sin(\psi)\,\vec{u}_v
+    ,
+    \label{eq:ray-fan}
+\end{equation}
+where $R_w$ values of $\phi$ are spaced uniformly over $[-\Theta_w/2,\Theta_w/2]$ and $R_h$ values
+of $\psi$ over $[-\Theta_h/2,\Theta_h/2]$, and $\Theta_w \times \Theta_h$ is the angular field of
+view. Parameterizing the fan by angle rather than by a flat image plane keeps the angular sampling
+uniform, which matters because the image is binned in angle.
+
+Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
+true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
+expanding sphere, which a planar wavefront does not, so each return is attenuated by the spreading
+loss over its round-trip range and normalized by the number of transmitted rays. With the carrier
+phase of (\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
+\begin{equation}
+    \tilde{E}_k = \frac{E_k}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    ,
+    \label{eq:ra-energy}
+\end{equation}
+and the phasor is omitted when no wavelength is given. Each return is assigned the launch azimuth
+$\phi_k$ of the ray that produced it. For a second-bounce return this is the direction of the
+ray's first path, not the direction of its second point of contact.
+
+The sensor cannot resolve the bearing of a single return, so each return is spread over the angle
+axis by the beam pattern. We model the beam as a Gaussian with full width at half maximum $\beta$,
+\begin{equation}
+    b(\phi) = \exp\bigg(-\frac{\phi^2}{2\sigma_\beta^2}\bigg)
+    , \quad
+    \sigma_\beta = \frac{\beta}{2\sqrt{2\ln 2}}
+    .
+    \label{eq:beam-pattern}
+\end{equation}
+The pattern peaks at $1$ rather than integrating to $1$, so a return on the boresight of a column
+deposits its full energy there, and widening the beam spreads a return over more columns without
+dividing its energy among them.
+
+The image has $M$ rows spaced uniformly in one-way range over $[\rho_{near},\rho_{far})$, with
+spacing $\Delta\rho = (\rho_{far}-\rho_{near})/M$ and row centers $\rho_m = \rho_{near} +
+(m+\frac{1}{2})\Delta\rho$. Its $A$ columns are look angles $\phi_n$ spaced uniformly over the
+field of view $\Theta_w$. The pixel at range $\rho_m$ and angle $\phi_n$ is the sum over every return
+whose one-way range $\zeta_k = z_k/2$ falls in row $m$, weighted by the beam pattern,
+\begin{equation}
+    I(\rho_m,\phi_n) = \sum_{k=1}^{N}\tilde{E}_k\,\Pi\bigg(\frac{\rho_m-\zeta_k}{\Delta\rho}\bigg)\,b(\phi_n-\phi_k)
+    ,
+    \label{eq:range-angle}
+\end{equation}
+where $\Pi(x)$ is $1$ for $-\frac{1}{2} < x \leq \frac{1}{2}$ and $0$ otherwise. Returns outside
+the range window are discarded. By default the window brackets the scene origin along the line of
+sight, $\rho_{near} = \max(0, \lVert\vec{v}\rVert - r_{reg})$ and $\rho_{far} = \lVert\vec{v}\rVert +
+r_{reg}$, where $r_{reg}$ is the radius of the scene region.
+
+In range, (\ref{eq:range-angle}) has the form of (\ref{eq:interposummation}) with the rectangular
+window $\Pi$ of width $\Delta\rho$ in place of $w(z)$: the range resolution is set by the row
+spacing rather than by a pulse bandwidth $B_s$. In angle, the resolution is set by the beam width
+$\beta$ rather than by a synthetic aperture. When $\lambda$ is given, the returns that share a pixel
+sum coherently, so interference between nearby rays appears as speckle. The displayed image is
+$|I(\rho_m,\phi_n)|$, with near range in the bottom row.
+
 \subsection{Side-Scan Sonar}
 \label{sec:side-scan}
 

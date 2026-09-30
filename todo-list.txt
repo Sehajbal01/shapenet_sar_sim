@@ -1,3 +1,4 @@
+- Physics issue in the code: each return is placed at the azimuth its ray was launched at. For a second-bounce return, that is the direction of the ray's first leg. A real receiver would see that energy arrive from the second contact point. The paper states this as it is. It may be worth changing in the code before a reviewer notices, but the figure script uses one bounce, so its figures aren't affected.
 
 - make a "range angle profile vs range dataset" for the L3 harris project
     - ask professor for how the data is made again...
