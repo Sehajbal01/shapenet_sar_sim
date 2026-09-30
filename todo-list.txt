@@ -1,4 +1,44 @@
-- Physics issue in the code: each return is placed at the azimuth its ray was launched at. For a second-bounce return, that is the direction of the ray's first leg. A real receiver would see that energy arrive from the second contact point. The paper states this as it is. It may be worth changing in the code before a reviewer notices, but the figure script uses one bounce, so its figures aren't affected.
+- implement a "range binning" waveform option in interpolate signal
+    - it is theoretically equivalent to a waveform who's matched filter output is equal to a perfect rectangular pulse
+    - it operates as sum of energy of scatters whos range is within sample_z +- 1/(2*bw)
+    - note: bins will overlap unles sample rate <= bw
+
+- Physics issue in the code: each return is placed at the azimuth its ray was launched at. For a second-bounce return, that is the direction of the ray's first leg. A real receiver would see that energy arrive from the second contact point. 
+
+    - effectively we shoot out rays according to a beam pattern, but we also receive them according to a beam pattern
+
+    - we already record the transmit azimuth of each ray, but now we need to record the received azimuth of each scatter this should be done in accumulate_scatters base function. every scatter should have a "tx_azimuth" and an "rx_azimuth"
+
+    - beam pattern is never to be applied in accumulate_scatters
+
+    DONE - ensure tx/rx azimuth is accounted for in side scan sonar imaging
+        DONE - apply beam pattern in a dedicated function that runs after accumulate scatters
+        DONE - multiply each scatter energy by gaussian_beam_weight(tx_azimuth) * gaussian_beam_weight(rx_azimuth)
+        DONE - then signal interpolation is done as it always is done
+
+
+    - how forward looking sonar imaging works
+        - there is a dedicated forward looking sonar imaging python file
+        - we have image_azimuth_range, num_pings, num_range_values, ray_fov_az, ray_fov_el
+            - the range of azimuths considered for the image need not match the fov of the rays, in fact it should be less than the fov of the rays
+            - number of pings is the number of columns
+            - number of range values is the number of rows, lowest range goes at the bottom of the image
+            - ray_fov_az and ray_fov_el are the azimuth and elevation field of view of the casted rays respectively
+
+        - we simulate many azimuth angle pulses using a single perspective view of rays
+            - ray tracing is only done once, then we can calculate the signal for each image_azimuth
+            - the fov of the perspective rays is different than the azimuth angles considered for range angle imaging
+
+        - we create a different signal for each ping
+            - each ping has a ping_az angle determined by linspace between +- image_azimuth_range/2
+            - the ping adjusted tx and rx azimuth angle are calculated as 
+                - ping_adjusted_tx_azimuth = tx_azimuth - ping_azimuth 
+            - then we simply apply the same beam pattern dedicated function from side scan sonar
+            - then we can run interpolate_signal as is usual for all imaging approaches
+        - the signals are assembled into columns of the image
+        
+        
+        
 
 - make a "range angle profile vs range dataset" for the L3 harris project
     - ask professor for how the data is made again...
