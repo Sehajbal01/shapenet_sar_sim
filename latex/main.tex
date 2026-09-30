@@ -529,14 +529,14 @@ pedestal nor the analysis above.
 \section{Imaging Modalities}
 \label{sec:modalities}
 
-\subsection{Range-Angle Imaging (Forward-Looking Sonar)}
-\label{sec:range-angle}
+\subsection{Forward-Looking Sonar}
+\label{sec:forward-looking}
 
-A range-angle image is formed from a single pulse rather than from an aperture of $P$ pulses. The
-sensor sits at one position $\vec{v}$, given by an azimuth $a$ and elevation $e$ as in Section
-\ref{sec:problem}, and its boresight always points at the scene origin. Range is measured
-directly from the delay of each return, and angle is measured by the beam pattern of the sensor.
-This is the geometry of a forward-looking sonar. Because every quantity in our simulator is
+A forward-looking sonar image is formed from $P$ pings, the sonar term for pulses, all transmitted
+from a single position with the beam steered to a different azimuth for each. The sensor sits at
+$\vec{v}$, given by an azimuth $a$ and elevation $e$ as in Section \ref{sec:problem}, and its
+boresight points at the scene origin. Range is measured from the delay of each return, and azimuth
+is measured by steering the beam pattern of the sensor. Because every quantity in our simulator is
 expressed in spatial units, the same model applies to sonar and radar alike.
 
 Since the sensor is a point rather than a plane, the parallel $W_g \times H_g$ ray grid of the
@@ -551,8 +551,8 @@ offset $\phi$ and an elevation offset $\psi$ from boresight has direction
 \end{equation}
 where $R_w$ values of $\phi$ are spaced uniformly over $[-\Theta_w/2,\Theta_w/2]$ and $R_h$ values
 of $\psi$ over $[-\Theta_h/2,\Theta_h/2]$, and $\Theta_w \times \Theta_h$ is the angular field of
-view. Parameterizing the fan by angle rather than by a flat image plane keeps the angular sampling
-uniform, which matters because the image is binned in angle.
+view of the fan. Parameterizing the fan by angle rather than by a flat image plane keeps the
+angular sampling uniform, which matters because the beam pattern is applied in angle.
 
 Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
 true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
@@ -562,49 +562,133 @@ phase of (\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
 \begin{equation}
     \tilde{E}_k = \frac{E_k}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
     ,
-    \label{eq:ra-energy}
+    \label{eq:sonar-energy}
 \end{equation}
-and the phasor is omitted when no wavelength is given. Each return is assigned the launch azimuth
-$\phi_k$ of the ray that produced it. For a second-bounce return this is the direction of the
-ray's first path, not the direction of its second point of contact.
+and the phasor is omitted when no wavelength is given.
 
-The sensor cannot resolve the bearing of a single return, so each return is spread over the angle
-axis by the beam pattern. We model the beam as a Gaussian with full width at half maximum $\beta$,
+Each return also carries two azimuths off boresight. Its transmit azimuth $\phi^{tx}_k$ is the
+launch azimuth $\phi$ of the ray that produced it. Its receive azimuth $\phi^{rx}_k$ is the
+azimuth of the point $\vec{p}_k$ that scattered it back to the sensor,
+\begin{equation}
+    \phi^{rx}_k = \operatorname{atan2}\big(\vec{u}_h\cdot(\vec{p}_k-\vec{v}),\,\vec{u}_f\cdot(\vec{p}_k-\vec{v})\big)
+    .
+    \label{eq:rx-azimuth}
+\end{equation}
+The two are equal for a first-bounce return. For a second-bounce return, $\phi^{tx}_k$ is the
+direction of the ray's first path, while $\phi^{rx}_k$ is the direction of its second point of
+contact, which is where a real receiver hears the energy arrive from.
+
+The sensor cannot resolve the bearing of a single return, so each return is weighted by the beam
+pattern on both transmit and receive. We model the one-way beam as a Gaussian with full width at
+half maximum $\sqrt{2}\beta$,
 \begin{equation}
     b(\phi) = \exp\bigg(-\frac{\phi^2}{2\sigma_\beta^2}\bigg)
     , \quad
-    \sigma_\beta = \frac{\beta}{2\sqrt{2\ln 2}}
-    .
+    \sigma_\beta = \frac{\sqrt{2}\beta}{2\sqrt{2\ln 2}}
+    ,
     \label{eq:beam-pattern}
 \end{equation}
-The pattern peaks at $1$ rather than integrating to $1$, so a return on the boresight of a column
-deposits its full energy there, and widening the beam spreads a return over more columns without
-dividing its energy among them.
+and weight the $k^{th}$ return by $b(\phi^{tx}_k)\,b(\phi^{rx}_k)$. For a first-bounce return this
+product is a Gaussian with full width at half maximum $\beta$, the two-way beam width. The pattern
+peaks at $1$ rather than integrating to $1$, so a return on boresight keeps its full energy, and
+widening the beam spreads a return over more pings without dividing its energy among them.
 
-The image has $M$ rows spaced uniformly in one-way range over $[\rho_{near},\rho_{far})$, with
-spacing $\Delta\rho = (\rho_{far}-\rho_{near})/M$ and row centers $\rho_m = \rho_{near} +
-(m+\frac{1}{2})\Delta\rho$. Its $A$ columns are look angles $\phi_n$ spaced uniformly over the
-field of view $\Theta_w$. The pixel at range $\rho_m$ and angle $\phi_n$ is the sum over every return
-whose one-way range $\zeta_k = z_k/2$ falls in row $m$, weighted by the beam pattern,
+Ping $i$ steers both beams to an azimuth $\phi_i$, where the $P$ values of $\phi_i$ are spaced
+uniformly over $[-\Theta_p/2,\Theta_p/2]$. Steering shifts both patterns by $\phi_i$, and the
+digital signal of the $i^{th}$ ping is the interposummation of the weighted returns,
 \begin{equation}
-    I(\rho_m,\phi_n) = \sum_{k=1}^{N}\tilde{E}_k\,\Pi\bigg(\frac{\rho_m-\zeta_k}{\Delta\rho}\bigg)\,b(\phi_n-\phi_k)
+    s_i(z_o) = \sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k-\phi_i\big)\,b\big(\phi^{rx}_k-\phi_i\big)\,w\big(z_o-\zeta_k\big)
     ,
-    \label{eq:range-angle}
+    \label{eq:fls-signal}
 \end{equation}
-where $\Pi(x)$ is $1$ for $-\frac{1}{2} < x \leq \frac{1}{2}$ and $0$ otherwise. Returns outside
-the range window are discarded. By default the window brackets the scene origin along the line of
-sight, $\rho_{near} = \max(0, \lVert\vec{v}\rVert - r_{reg})$ and $\rho_{far} = \lVert\vec{v}\rVert +
-r_{reg}$, where $r_{reg}$ is the radius of the scene region.
+where $\zeta_k = z_k/2$ is the one-way range of the $k^{th}$ return. The beam is applied after ray
+tracing rather than during it, and the sensor does not move between pings, so every ping shares
+the same returns and differs only in their weights. The fan is therefore ray traced once, and the
+$P$ signals cost $P$ interposummations but a single ray trace.
 
-In range, (\ref{eq:range-angle}) has the form of (\ref{eq:interposummation}) with the rectangular
-window $\Pi$ of width $\Delta\rho$ in place of $w(z)$: the range resolution is set by the row
-spacing rather than by a pulse bandwidth $B_s$. In angle, the resolution is set by the beam width
-$\beta$ rather than by a synthetic aperture. When $\lambda$ is given, the returns that share a pixel
-sum coherently, so interference between nearby rays appears as speckle. The displayed image is
-$|I(\rho_m,\phi_n)|$, with near range in the bottom row.
+The image has $M$ rows at one-way ranges $\rho_m$, spaced uniformly from $\rho_{near}$ in the
+bottom row to $\rho_{far}$ in the top row, and one column per ping, with $\phi_i$ increasing from
+left to right. The pixel at range $\rho_m$ and azimuth $\phi_i$ is
+\begin{equation}
+    I(\rho_m,\phi_i) = \big|s_i(\rho_m)\big|
+    ,
+    \label{eq:fls-image}
+\end{equation}
+where $|s_i|$ is evaluated between its samples by linear interpolation, and every signal is
+sampled over a window that covers $[\rho_{near},\rho_{far}]$. By default the window brackets the
+scene origin along the line of sight, $\rho_{near} = \max(0, \lVert\vec{v}\rVert - r_{reg})$ and
+$\rho_{far} = \lVert\vec{v}\rVert + r_{reg}$, where $r_{reg}$ is the radius of the scene region,
+so the window follows the sensor when it is moved away from the scene.
+
+In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
+as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
+rather than by a synthetic aperture, and the pings sample it every $\Theta_p/(P-1)$. The azimuth
+span of the image $\Theta_p$ is separate from the field of view $\Theta_w$ of the fan, and should
+be narrower than it by about $3\beta$. The two-way beam falls to about $0.002$ at $1.5\beta$ off
+its axis, so this margin puts rays under the whole beam of every ping, including the pings at the
+edges of the image. A fan narrower than that leaves the outer pings with part of their beam unlit,
+and the edges of the image darken. When $\lambda$ is given, the returns sum coherently within each
+ping, so interference between nearby rays appears as speckle.
 
 \subsection{Side-Scan Sonar}
 \label{sec:side-scan}
+
+A side-scan sonar image is formed from $P$ pings transmitted along a straight track, with a beam
+that is never steered. The platform flies through a mean position $\bar{\vec{v}}$, given by $a$
+and $e$ as in Section \ref{sec:problem}, and every ping looks in the same direction, the boresight
+$\vec{u}_f = -\bar{\vec{v}}/\lVert\bar{\vec{v}}\rVert$ at the center of the track. The track runs
+along the horizontal axis of the sensor, $\vec{u}_h = (\vec{u}_f \times \vec{u}_z)/\lVert\vec{u}_f
+\times \vec{u}_z\rVert$, where $\vec{u}_z$ is the unit vector along the $z$ axis, so the scene
+stays off to one side of the platform the whole way. Ping $i$ is transmitted from
+\begin{equation}
+    \vec{v}_i = \bar{\vec{v}} + \ell_i\vec{u}_h
+    ,
+    \label{eq:ss-track}
+\end{equation}
+where the $P$ offsets $\ell_i$ are spaced uniformly over $[-L/2,L/2]$ for a track of length $L$.
+Where a forward-looking sonar sweeps its beam across the target from one position, a side-scan
+sonar holds its beam fixed, and the target drifts across the beam as the platform passes.
+
+Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan shares the axes
+$\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan spans $\Theta_w =
+3\beta$ in azimuth, since the two-way beam has fallen to about $0.002$ at its edges, and
+$\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The returns take the
+energy of (\ref{eq:sonar-energy}) with an added absorption loss over their round trip through the
+water,
+\begin{equation}
+    \tilde{E}_k = \frac{E_k e^{-\kappa z_k}}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    ,
+    \label{eq:ss-energy}
+\end{equation}
+where $\kappa$ is the absorption coefficient in nepers per unit length. Their azimuths
+$\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
+with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
+rather than always lying near $0$.
+
+The beam pattern (\ref{eq:beam-pattern}) is applied as in forward-looking sonar, but without
+steering, and the digital signal of the $i^{th}$ ping is
+\begin{equation}
+    s_i(z_o) = z_o^{\eta}\sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k\big)\,b\big(\phi^{rx}_k\big)\,w\big(z_o-\zeta_k\big)
+    ,
+    \label{eq:ss-signal}
+\end{equation}
+where the sum runs over the returns of that ping. The factor $z_o^{\eta}$ is a time-varying gain, a
+receiver ramp against the fall of the seafloor return with range, and $\eta = 0$ disables it.
+Every ping is sampled over the same window, $\lVert\bar{\vec{v}}\rVert \pm r_{reg}$, so the
+samples of all pings line up in range.
+
+Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\ell_i$
+and slant range $z_o$. The image interpolates them bilinearly onto an $H \times W$ pixel grid that
+spans $W_p$ along the track and $H_p$ in slant range, centered on $\ell = 0$ and on the target
+range $\lVert\bar{\vec{v}}\rVert$, with near range in the bottom row. Pixels outside the sampled
+track or range window are zero, so the track length $L$ should be at least $W_p$. The rows are in
+slant range, since no projection onto the ground plane is applied.
+
+Along the track, the resolution is set by the beam: at slant range $\rho$ the beam covers about
+$\rho\beta$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
+range, it is set by $B_s$ as before. The seafloor is seen at a grazing angle, so an object standing
+off it occludes the ground down range and casts an acoustic shadow, and the top of the object
+returns before the seafloor beneath it because it is closer to the sensor.
 
 \subsection{Convolution Back-Projection SAR}
 \label{sec:cbp-sar}
