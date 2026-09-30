@@ -1,9 +1,10 @@
 '''
-One stitched-sweep layout, shared by all three paper figure suites: render_images'
-multi_param_experiment (SAR), paper_figures_range_angle's multi_param_range_angle_experiment, and
-sonar_paper_figures' multi_param_sonar_experiment. Each of the three grew its own copy of the same
-matplotlib code, so the layout now lives here and they all call stitch_panels. The display
-compression the panels are stitched with lives here too, as panel_display, for the same reason.
+One stitched-sweep layout, shared by all four paper figure suites: render_images'
+multi_param_experiment (SAR), paper_figures_range_angle's multi_param_range_angle_experiment,
+sonar_paper_figures' multi_param_sonar_experiment and fls_paper_figures' multi_param_fls_experiment.
+The first three each grew their own copy of the same matplotlib code, so the layout now lives here
+and they all call stitch_panels. The display compression the panels are stitched with lives here
+too, as panel_display, for the same reason.
 
 Every panel carries its own horizontal colorbar directly underneath it and its own short
 description directly above it, with white space between panels. Per-panel colorbars are the point:

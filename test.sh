@@ -26,8 +26,12 @@ NUM_CHUNKS=$((NUM_MODELS))
 #     paper_figures.py
 
 # the sonar paper figures
+# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+#     sonar_paper_figures.py
+
+# the forward looking sonar paper figures: beam width, ray azimuth fov and fs/bw sweeps
 CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    sonar_paper_figures.py
+    fls_paper_figures.py
 
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 sonar_paper_figures.py
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 paper_figures.py

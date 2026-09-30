@@ -101,5 +101,40 @@
         "object_rotate_xyz": [90.0, 0.0, 0.0],
         "obj_raids": [0.8, 0.0, 0.9, 0.1, 0.2],
         "ground_raids": [0.5, 0.0, 0.8, 0.2, 0.5]
+    },
+    "forward_looking_sonar_baseline": {
+        // the side scan baseline's car, from a 40.6 deg elevation pose that throws a shadow
+        "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
+        "pose_num": "000000",
+        // null keeps the pose file's 1.3. To move the sensor back, also null range_near/range_far and narrow the fovs
+        "sensor_distance": null,
+        "image_azimuth_range": 50.0,
+        "num_pings": 128,
+        "num_range_values": 128,
+        // wider than image_azimuth_range, so the edge pings still have rays under their beam
+        "ray_fov_az": 60.0,
+        "ray_fov_el": 100.0,
+        "azimuth_beam_width_deg": 1.0,
+        "num_ray_width": 1024,
+        "num_ray_height": 1024,
+        // one-way range of the bottom and top rows; null brackets the target at +/- region_radius
+        "range_near": 0.75,
+        "range_far": 3.0,
+        "region_radius": 1.7,
+        "wavelength": null,
+        "num_bounce": 2,
+        "spatial_bw": 30,
+        "spatial_fs": 60,
+        "waveform": "gaussian",
+        "use_sig_magnitude": true,
+        "compression": "db",
+        "db_floor": -60.0,
+        "asinh_k_ratio": 0.005,
+        "make_ground": true,
+        "level_with_ground": true,
+        "object_x_flip": false,
+        "object_rotate_xyz": [90.0, 0.0, 0.0],
+        "obj_raids": [1.0, 1.0, 100.0, 0.1, 0.9],
+        "ground_raids": [1.0, 1.0, 1.0, 5, 0.1]
     }
 }

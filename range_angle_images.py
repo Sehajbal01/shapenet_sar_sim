@@ -219,7 +219,7 @@ def sar_render_range_angle_image(
     if verbose:
         print('Accumulating scatters...')
     torch.cuda.empty_cache()
-    all_ranges, all_energies, all_azimuths, _ = accumulate_scatters_perspective(
+    all_ranges, all_energies, all_azimuths, _, _ = accumulate_scatters_perspective(
         mesh, normals, material_properties, trajectory,
         wavelength     = wavelength,
         fov_width_deg  = fov_width_deg,
