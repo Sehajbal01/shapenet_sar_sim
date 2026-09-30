@@ -21,6 +21,12 @@
     - convert paper to MDPI format
     - submit to MDPI
 
+- add a section for how these imaging modalities are done:
+    - range-angle (forward looking sonar)
+    - side scan sonar
+    - cbp sar
+    - strip map sar
+
             
             
             
