@@ -280,7 +280,7 @@ def render_side_scan_image(
         num_pings = 128,
         elevation_fov_deg = 60.0,
         azimuth_beam_width_deg = 1.0,
-        num_ray_width = 64,
+        num_ray_width = 1,
         num_ray_height = 512,
         region_radius = 1.0,
 
@@ -351,7 +351,8 @@ def render_side_scan_image(
             distance so the target sits mid-window. Keep 2*region_radius at least
             image_plane_height, or the image's near and far edges fall outside the window and
             come out zero
-        num_ray_width/num_ray_height (int): rays per ping across the fan
+        num_ray_width/num_ray_height (int): rays per ping across the fan. num_ray_width 1 is a
+            single boresight ray, which leaves the azimuth beam nothing to spread
         image_width/image_height (int): pixels across and down the image
         image_plane_width/image_plane_height (float): extent of the image in world units, along
             the track (cross range) and out in slant range. Centered on the target range, so it

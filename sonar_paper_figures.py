@@ -18,6 +18,7 @@ from paper_figure_layout import panel_display, stitch_panels
 #     sweep only reads as a sweep when the geometry is the one thing that does not change between
 #     panels. 000000 is 40.6 deg elevation, a grazing angle that throws a visible shadow
 #   sensor_distance None keeps the pose file's own range; set to override it
+#   num_ray_width 1 is one boresight ray: no azimuth beam spreading outside the beam_width sweep
 #   waveform 'gaussian', since the sinc pulse shows heavy side lobes. it may be a bug
 #   compression/db_floor/asinh_k_ratio -- the one place these are decided; both the paper sweeps'
 #     stitched figures and debug_side_scan.py's render_side_scan_image call read these off the
@@ -35,7 +36,19 @@ def _sonar_experiments():
     beam_width = dict(
         name='beam_width',
         vary={'azimuth_beam_width_deg': beam_width_vals},
+        overrides={'num_ray_width': 250},  # the baseline's one ray leaves the beam nothing to weight
         custom_title_strings=['Beam Width: %.2f deg' % b for b in beam_width_vals],
+    )
+
+    # Azimuth ray count sweep at a fixed 10 deg beam, to test whether beam width is ray-starved
+    ray_width_beam_deg = 10.0
+    ray_width_vals = [3 ** p for p in range(1, 7)]  # 3 .. 729, odd so one ray stays on boresight
+    num_ray_width = dict(
+        name='num_ray_width',
+        vary={'num_ray_width': ray_width_vals},
+        overrides={'azimuth_beam_width_deg': ray_width_beam_deg},
+        custom_title_strings=['%d Az Rays, %.0f deg Beam' % (n, ray_width_beam_deg)
+                              for n in ray_width_vals],
     )
 
     # Time varying gain sweep -- how hard the receiver ramp lifts far range against the
@@ -108,12 +121,13 @@ def _sonar_experiments():
     )
 
     return [
-        # beam_width,
+        beam_width,
+        # num_ray_width,
         # tvg,
         # compression,
         # asinh_k,
         # elevation_fov,
-        spatial_bw,
+        # spatial_bw,
         # waveform,
     ]
 

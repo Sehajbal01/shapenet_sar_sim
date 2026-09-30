@@ -1,6 +1,6 @@
 #! /bin/bash
 
-GPU_NUM=6
+GPU_NUM=7
 # cap the gpu's power draw, in watts -- only when it isn't already capped, to skip the sudo prompt
 POWER_LIMIT=200
 CUR_POWER_LIMIT=$(nvidia-smi -i $GPU_NUM --query-gpu=power.limit --format=csv,noheader,nounits)
@@ -25,13 +25,14 @@ NUM_CHUNKS=$((NUM_MODELS))
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
 #     paper_figures.py
 
-# the sonar paper figures
-# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     sonar_paper_figures.py
-
-# the forward looking sonar paper figures: beam width, ray azimuth fov and fs/bw sweeps
+# the side scan sonar paper figures: beam width, elevation fov and bandwidth sweeps. Only the
+# beam width sweep is on in SONAR_PAPER_EXPERIMENTS
 CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    fls_paper_figures.py
+    sonar_paper_figures.py
+
+# the forward looking sonar paper figures: the same three sweeps
+# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+#     fls_paper_figures.py
 
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 sonar_paper_figures.py
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 paper_figures.py

@@ -14,7 +14,7 @@
         "num_pings": 128,
         "elevation_fov_deg": 30.0,
         "azimuth_beam_width_deg": 0.1,
-        "num_ray_width": 3,
+        "num_ray_width": 1,
         "num_ray_height": 700,
         "region_radius": 2.0,
         "image_width": 128,
