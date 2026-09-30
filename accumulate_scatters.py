@@ -812,7 +812,10 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
         azimuth (T,)[P,][R']: list of lists of 1-D tensors; the launch azimuth in degrees off
             the fixed boresight, positive toward the sensor's right vector (i.e. forward along
             track), of the ray that produced each scatter. On a second bounce that is where the
-            ray left, not where the scatter ended up
+            ray left, not where the scatter ended up. This is the transmit beam pattern's angle
+        arrival_azimuth (T,)[P,][R']: like azimuth, but of the direction from the sensor to the
+            scatter, i.e. where the receiver hears it from. Equal to azimuth on a first bounce;
+            this is the receive beam pattern's angle
         debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None. The energy map
             is the raw first-bounce energy, before the spreading loss and ray-count normalization
     '''
@@ -839,10 +842,12 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     scatter_ranges = []
     scatter_energies = []
     scatter_azimuths = []
+    scatter_arrival_azimuths = []
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
         scatter_azimuths.append([])
+        scatter_arrival_azimuths.append([])
         for p in range(P):
 
             t_setup_start = sync_time()
@@ -862,7 +867,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
             t_setup_total += sync_time() - t_setup_start
 
             # rays leave the sensor itself, so the default sensor_positions is what we want
-            ranges_p, energies_p, _, ray_indices_p, first_bounce = accumulate_scatters_from_rays(
+            ranges_p, energies_p, positions_p, ray_indices_p, first_bounce = accumulate_scatters_from_rays(
                 mesh, face_normals, material_properties,
                 ray_origins, ray_directions,
                 wavelength       = wavelength,
@@ -880,6 +885,11 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
             # straight off the fan rather than recovered from the scatter's position.
             azimuths_p = ray_azimuths[ray_indices_p]                                         # (R',)
 
+            # arrival azimuth: the sensor's view of the scatter itself, in the fan's atan2 convention
+            to_scatter = positions_p - sensor_position                                       # (R',3)
+            arrival_azimuths_p = torch.atan2(to_scatter @ right_vector,
+                                             to_scatter @ forward_vector) * 180 / np.pi      # (R',)
+
             # DEBUG: azimuths_p is 1-D over hit rays only, so it has no grid to imshow; the
             # fan's azimuths do fill the (H,W) grid the rays were laid out on.
             if DEBUG_AZIMUTH_MAP:
@@ -893,6 +903,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
             scatter_ranges[t].append(ranges_p)
             scatter_energies[t].append(energies_p/n_ray_width/n_ray_height)
             scatter_azimuths[t].append(azimuths_p)
+            scatter_arrival_azimuths[t].append(arrival_azimuths_p)
 
             if first_bounce is not None:
                 debugging_maps[(t, p)] = {
@@ -903,8 +914,9 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     _print_stats('accumulate_scatters_side_scan', stats,
                  sync_time() - t_overall_start, t_octree_build, t_setup_total)
 
-    return scatter_ranges, scatter_energies, scatter_azimuths, debugging_maps if debug_gif else None
-    #      list[T][P] of 1-D tensors (R' hit rays, varies per ping) x3, dict (t,p)->(H,W) or None
+    return (scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths,
+            debugging_maps if debug_gif else None)
+    #      list[T][P] of 1-D tensors (R' hit rays, varies per ping) x4, dict (t,p)->(H,W) or None
 
 
 # ================================================================================
@@ -944,12 +956,14 @@ GOLDEN = {
         'range': (3228, 2.4311271969e+04, 0.0000000000e+00, 1.9580755615e+02),
     },
     'side scan absorption 0.05': {
+        'arrival_azimuth': (4367, -1.2216744125e+03, 0.0000000000e+00, 1.3628024292e+02),
         'azimuth': (4367, 1.5338709664e+02, 0.0000000000e+00, 1.4999999046e+01),
         'energy': (4367, -2.0285154739e-06, -2.3755772956e-06, 2.2365038888e-07),
         'maps': (6144, 1.0861379572e+04, 0.0000000000e+00, 7.0999932289e+00),
         'range': (4367, 3.4078427491e+04, 0.0000000000e+00, 1.8021507263e+02),
     },
     'side scan absorption 0.00': {
+        'arrival_azimuth': (4367, -1.2216744125e+03, 0.0000000000e+00, 1.3628024292e+02),
         'azimuth': (4367, 1.5338709664e+02, 0.0000000000e+00, 1.4999999046e+01),
         'energy': (4367, -2.9221323254e-06, -2.7978030329e-06, 2.8793971296e-07),
         'maps': (6144, 1.0861379572e+04, 0.0000000000e+00, 7.0999932289e+00),
@@ -1120,11 +1134,11 @@ def _wrapper_cases(device):
     yield 'perspective 2 bounce', _fingerprint(range=r, energy=e, azimuth=a, maps=maps)
 
     for absorption in (0.05, 0.0):
-        r, e, a, maps = _quiet(accumulate_scatters_side_scan, mesh, normals, materials, poses,
-                               num_bounce=2, wavelength=0.03, debug_gif=True,
-                               water_absorption=absorption, **fan)
+        r, e, a, rx, maps = _quiet(accumulate_scatters_side_scan, mesh, normals, materials, poses,
+                                   num_bounce=2, wavelength=0.03, debug_gif=True,
+                                   water_absorption=absorption, **fan)
         yield ('side scan absorption %.2f' % absorption,
-               _fingerprint(range=r, energy=e, azimuth=a, maps=maps))
+               _fingerprint(range=r, energy=e, azimuth=a, arrival_azimuth=rx, maps=maps))
 
 
 def test_golden_fingerprints(device='cuda'):

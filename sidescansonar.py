@@ -103,7 +103,7 @@ def side_scan_sonar_image(
     fan_elevation_fov_deg = elevation_fov_deg
 
     # use accumulate_scatters to ray trace on the object for each camera matrix
-    scatter_ranges, scatter_energies, scatter_azimuths, debugging_maps = accumulate_scatters_side_scan(
+    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, debugging_maps = accumulate_scatters_side_scan(
         object_mesh, face_normals, material_properties,
         poses.unsqueeze(0),                      # (1,P,4,4), one scene
         wavelength     = wavelength,
@@ -119,11 +119,14 @@ def side_scan_sonar_image(
         octree         = octree,
     )  # list[T][P] of (R',) each
 
-    # weigh received scatters according to azimuth beam width with gaussian
+    # two-way beam pattern: transmit at the launch azimuth, receive at the arrival azimuth. Each
+    # one-way Gaussian is sqrt(2) wider, so on a first bounce the product is the two-way beam
+    one_way_beam_width_deg = azimuth_beam_width_deg * np.sqrt(2)
     scatter_energies = [
-        [energy * beam_spread_weights(azimuth, azimuth_beam_width_deg)
-         for energy, azimuth in zip(energies_t, azimuths_t)]
-        for energies_t, azimuths_t in zip(scatter_energies, scatter_azimuths)
+        [energy * beam_spread_weights(tx, one_way_beam_width_deg)
+                * beam_spread_weights(rx, one_way_beam_width_deg)
+         for energy, tx, rx in zip(energies_t, tx_t, rx_t)]
+        for energies_t, tx_t, rx_t in zip(scatter_energies, scatter_azimuths, scatter_arrival_azimuths)
     ]  # list[T][P] of (R',)
 
     # interpolate signal, on one range window shared by every ping so the columns line up.
