@@ -1,6 +1,6 @@
 '''
 One stitched-sweep layout, shared by all three paper figure suites: render_images'
-multi_param_experiment (SAR), sonar_paper_figures' multi_param_sonar_experiment and
+multi_param_sar_experiment, sss_paper_figures' multi_param_sss_experiment and
 fls_paper_figures' multi_param_fls_experiment.
 The first two each grew their own copy of the same matplotlib code, so the layout now lives here
 and they all call stitch_panels. The display compression the panels are stitched with lives here

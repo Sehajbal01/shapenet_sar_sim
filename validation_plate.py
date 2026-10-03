@@ -41,7 +41,7 @@ import contextlib
 import io
 import os
 
-# see paper_figures.py -- MKL and torch each bring their own OpenMP runtime
+# see sar_paper_figures.py -- MKL and torch each bring their own OpenMP runtime
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np

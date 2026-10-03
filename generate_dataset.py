@@ -12,8 +12,8 @@ named after the pose, so every rgb frame has one image per modality, as check_so
 and check_raysar_exists.py assert of the existing modalities.
 
 The physics comes from the paper figure baselines rather than being restated here, so the
-dataset tracks whatever those figures show: sonar_paper_figures.SONAR_PAPER_BASELINE for the
-side scan, paper_figures.PAPER_BASELINE for the CBP SAR image, with the trajectory forced
+dataset tracks whatever those figures show: sss_paper_figures.SSS_PAPER_BASELINE for the
+side scan, sar_paper_figures.SAR_PAPER_BASELINE for the CBP SAR image, with the trajectory forced
 linear at AZIMUTH_SPREAD_DEG, the sar_baseline azimuth_spread in config.json (135 deg below) --
 which is what the directory suffix records -- and fls_paper_figures.FLS_PAPER_BASELINE for the
 forward looking sonar image, beam-steered pings from the pose's own camera position.
@@ -56,7 +56,7 @@ import time
 import zlib
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the second to
-# initialize aborts with "OMP: Error #15". Allow the duplicate, as paper_figures.py does.
+# initialize aborts with "OMP: Error #15". Allow the duplicate, as sar_paper_figures.py does.
 # Must be set before numpy/torch import.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
@@ -67,7 +67,7 @@ import PIL.ImageFont
 import torch
 import tqdm
 
-from paper_figures import PAPER_BASELINE
+from sar_paper_figures import SAR_PAPER_BASELINE
 from fls_paper_figures import FLS_PAPER_BASELINE
 from forwardlookingsonar import forward_looking_sonar_image
 from ray_tracer_v2 import build_octree
@@ -76,7 +76,7 @@ from config import SHAPENET_CARS_DIR, SRN_CARS_DIR
 from imaging_algorithms import to_asinh, to_db_uint8
 from sidescansonar import side_scan_sonar_image
 from signal_simulation import load_mesh
-from sonar_paper_figures import SONAR_PAPER_BASELINE
+from sss_paper_figures import SSS_PAPER_BASELINE
 from utils import extract_pose_info
 
 
@@ -87,7 +87,7 @@ SPLITS_DIR = SRN_CARS_DIR
 # the one trajectory this dataset is rendered on: linear, at config.json's sar_baseline
 # azimuth_spread, so the dataset and the paper figures fly the same aperture. Strictly below
 # 180 deg, which is where generate_trajectory's linear track runs off to infinity
-AZIMUTH_SPREAD_DEG = float(PAPER_BASELINE['azimuth_spread'])
+AZIMUTH_SPREAD_DEG = float(SAR_PAPER_BASELINE['azimuth_spread'])
 TRAJECTORY_TYPE    = 'linear'
 assert 0.0 <= AZIMUTH_SPREAD_DEG < 180.0, \
     'sar_baseline azimuth_spread must be in 0..180 deg for a linear track, got %g' % AZIMUTH_SPREAD_DEG
@@ -387,28 +387,28 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
     # the one mesh load and the one octree build this object pays for, shared by every pose and
     # every modality. The baselines' mesh settings must match for that to be legitimate
     for key in SHARED_MESH_KEYS:
-        assert PAPER_BASELINE[key] == SONAR_PAPER_BASELINE[key], \
-            'PAPER_BASELINE[%r] != SONAR_PAPER_BASELINE[%r]; the two modalities no longer ' \
+        assert SAR_PAPER_BASELINE[key] == SSS_PAPER_BASELINE[key], \
+            'SAR_PAPER_BASELINE[%r] != SSS_PAPER_BASELINE[%r]; the two modalities no longer ' \
             'share one mesh, so they can no longer share one load' % (key, key)
     for key in SHARED_MESH_KEYS + SONAR_GROUND_KEYS:
-        assert FLS_PAPER_BASELINE[key] == SONAR_PAPER_BASELINE[key], \
-            'FLS_PAPER_BASELINE[%r] != SONAR_PAPER_BASELINE[%r]; the two sonars no longer ' \
+        assert FLS_PAPER_BASELINE[key] == SSS_PAPER_BASELINE[key], \
+            'FLS_PAPER_BASELINE[%r] != SSS_PAPER_BASELINE[%r]; the two sonars no longer ' \
             'share one mesh, so they can no longer share one load' % (key, key)
 
     run = (lambda fn, *a, **k: fn(*a, **k)) if verbose else _quiet
     mesh_bundle = run(load_mesh, mesh_path,
                       device            = device,
-                      make_ground       = SONAR_PAPER_BASELINE['make_ground'],
-                      level_with_ground = SONAR_PAPER_BASELINE['level_with_ground'],
-                      obj_raids         = PAPER_BASELINE['obj_raids'],
-                      ground_raids      = PAPER_BASELINE['ground_raids'],
-                      x_flip            = PAPER_BASELINE['object_x_flip'],
-                      rotate_xyz        = PAPER_BASELINE['object_rotate_xyz'],
+                      make_ground       = SSS_PAPER_BASELINE['make_ground'],
+                      level_with_ground = SSS_PAPER_BASELINE['level_with_ground'],
+                      obj_raids         = SAR_PAPER_BASELINE['obj_raids'],
+                      ground_raids      = SAR_PAPER_BASELINE['ground_raids'],
+                      x_flip            = SAR_PAPER_BASELINE['object_x_flip'],
+                      rotate_xyz        = SAR_PAPER_BASELINE['object_rotate_xyz'],
                       )
     octree = build_octree(mesh_bundle[0])
 
-    sar_kwargs       = {k: PAPER_BASELINE[k] for k in SAR_KEYS}
-    side_scan_kwargs = {k: SONAR_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
+    sar_kwargs       = {k: SAR_PAPER_BASELINE[k] for k in SAR_KEYS}
+    side_scan_kwargs = {k: SSS_PAPER_BASELINE[k] for k in SIDE_SCAN_KEYS}
     fls_kwargs       = {k: FLS_PAPER_BASELINE[k] for k in FLS_KEYS}
 
     # one bar per modality, stacked in MODALITIES order and cleared once the object is done, so
@@ -433,16 +433,16 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
 
             # seed per pose, so a rerun of one pose reproduces its image instead of redrawing the
             # receiver noise. np.random is the one that matters -- apply_snr draws the noise from
-            # numpy, not torch -- but seed both, since that is what multi_param_experiment does and
-            # which generator a renderer reaches for is not something a caller should have to track.
-            # crc32 and not hash(), whose string seed changes every interpreter
+            # numpy, not torch -- but seed both, since that is what multi_param_sar_experiment does
+            # and which generator a renderer reaches for is not something a caller should have to
+            # track. crc32 and not hash(), whose string seed changes every interpreter
             seed = zlib.crc32(('%s/%s' % (obj_id, pose_num)).encode())
             np.random.seed(seed)
             torch.manual_seed(seed)
 
             if 'cbp_sar' in missing:
                 sar_image = run(sar_render_image, mesh_path,
-                                PAPER_BASELINE['num_pulse'],
+                                SAR_PAPER_BASELINE['num_pulse'],
                                 pose,
                                 AZIMUTH_SPREAD_DEG,
                                 imaging_algorithm = 'cbp',
@@ -478,20 +478,20 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
                 continue
 
             # the side scan reads only the sensor *direction* off the pose: it flies its own
-            # straight track at SONAR_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
+            # straight track at SSS_PAPER_BASELINE's sensor_distance, not the pose file's own 1.3
             sensor_position = extract_pose_info(pose)[0].reshape(3)  # (3,)
             sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) \
-                              * SONAR_PAPER_BASELINE['sensor_distance']
+                              * SSS_PAPER_BASELINE['sensor_distance']
             side_scan_image = run(side_scan_sonar_image,
                                   sensor_position,
-                                  SONAR_PAPER_BASELINE['track_length'],
-                                  SONAR_PAPER_BASELINE['num_pings'],
-                                  SONAR_PAPER_BASELINE['elevation_fov_deg'],
-                                  SONAR_PAPER_BASELINE['azimuth_beam_width_deg'],
+                                  SSS_PAPER_BASELINE['track_length'],
+                                  SSS_PAPER_BASELINE['num_pings'],
+                                  SSS_PAPER_BASELINE['elevation_fov_deg'],
+                                  SSS_PAPER_BASELINE['azimuth_beam_width_deg'],
                                   *mesh_bundle,
-                                  SONAR_PAPER_BASELINE['num_ray_width'],
-                                  SONAR_PAPER_BASELINE['num_ray_height'],
-                                  SONAR_PAPER_BASELINE['region_radius'],
+                                  SSS_PAPER_BASELINE['num_ray_width'],
+                                  SSS_PAPER_BASELINE['num_ray_height'],
+                                  SSS_PAPER_BASELINE['region_radius'],
                                   octree = octree,
                                   **side_scan_kwargs)[0]  # (T,H,W), one track
             save('side_scan_sonar', pose_num, side_scan_image[0])

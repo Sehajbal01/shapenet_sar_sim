@@ -457,8 +457,8 @@ def render_random_image(
 
 
 
-def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134,
-                           custom_title_strings=None):
+def multi_param_sar_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134,
+                               custom_title_strings=None):
     """
     A modular function to run experiments by varying multiple parameters together
 

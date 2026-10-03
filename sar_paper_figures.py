@@ -1,4 +1,4 @@
-"""Paper figure experiments. `main` runs the full suite via one call."""
+"""SAR paper figure experiments. `main` runs the full suite via one call."""
 import os
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the
@@ -13,7 +13,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from config import CONFIG, SHAPENET_CARS_DIR, srn_split_dir
-from render_images import multi_param_experiment, sar_render_image
+from render_images import multi_param_sar_experiment, sar_render_image
 from utils import extract_pose_info, generate_pose_mat
 
 
@@ -21,18 +21,18 @@ from utils import extract_pose_info, generate_pose_mat
 #   obj_id/azimuth_deg/elevation_deg pin the object and the look: render_random_image renders the
 #     object's pose nearest that azimuth and elevation, e.g. one read off a generate_dataset.py
 #     test-run gif, and draws both at random when None. The object may be from any split
-#   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SONAR_PAPER_BASELINE
+#   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SSS_PAPER_BASELINE
 #   wavelength can't be None, unlike the side scan baseline's: strip_map_imaging always demodulates
 #     by wavelength, and az_spread_linear_stripmap below needs it
 #   waveform 'gaussian', since the default sinc rings; its side lobes streak off the car
 #   image_plane_width/height 1.1 frames an srn car the way the side scan images do
-#   compression/db_floor/asinh_k_ratio -- the one place these are decided; multi_param_experiment
-#     reads these off the baseline (popping them before the rest is forwarded to
-#     render_random_image) unless an experiment's overrides set one instead
-PAPER_BASELINE = dict(CONFIG['sar_baseline'])
+#   compression/db_floor/asinh_k_ratio -- the one place these are decided;
+#     multi_param_sar_experiment reads these off the baseline (popping them before the rest is
+#     forwarded to render_random_image) unless an experiment's overrides set one instead
+SAR_PAPER_BASELINE = dict(CONFIG['sar_baseline'])
 
 
-def _paper_experiments():
+def _sar_experiments():
 
     # Synthetic aperture arc length sweep — how azimuth coverage shapes the image.
     az_vals = np.linspace(0, 360, 5).tolist()
@@ -53,7 +53,7 @@ def _paper_experiments():
     # Ray count sweep — how densely the ray grid samples the scene, from half to five times the
     # baseline's rays per side, linearly spaced. Width and height move together, as in the range
     # angle suite's n_ray sweep.
-    base_n_ray = PAPER_BASELINE['n_ray_width']
+    base_n_ray = SAR_PAPER_BASELINE['n_ray_width']
     n_ray_vals = np.linspace(base_n_ray / 2, 5 * base_n_ray, 5).round().astype(int).tolist()
     n_ray = dict(
         name='n_ray',
@@ -138,7 +138,7 @@ def _paper_experiments():
     # baseline, so it follows the wider pulse instead of aliasing it. Twice and not more: past that
     # the range resolution outruns what 64 pulses of aperture resolve in cross range, and the panel
     # turns into grating lobes rather than a sharper car.
-    base_bw = PAPER_BASELINE['spatial_bw']
+    base_bw = SAR_PAPER_BASELINE['spatial_bw']
     waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13', 'lfm']
     waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
@@ -179,7 +179,7 @@ def _paper_experiments():
     ]
 
 
-PAPER_EXPERIMENTS = _paper_experiments()
+SAR_PAPER_EXPERIMENTS = _sar_experiments()
 
 
 def _normalize_sar_for_display(sar_image, rgb_shape):
@@ -214,7 +214,7 @@ def _normalize_sar_for_display(sar_image, rgb_shape):
 def generate_linear_sar_comparison_figure(
     num_examples=4,
     output_path='figures/linear_sar_comparison.png',
-    baseline=PAPER_BASELINE,
+    baseline=SAR_PAPER_BASELINE,
     seed=8134,
     min_elevation_deg=20,
 ):
@@ -318,10 +318,10 @@ def generate_linear_sar_comparison_figure(
     return output_path
 
 
-def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE):
+def run_sar_paper_experiments(experiments=SAR_PAPER_EXPERIMENTS, baseline=SAR_PAPER_BASELINE):
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
-        multi_param_experiment(
+        multi_param_sar_experiment(
             exp['vary'],
             kwargs,
             exp['name'],
@@ -330,5 +330,5 @@ def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE
 
 
 if __name__ == '__main__':
-    run_paper_experiments()
+    run_sar_paper_experiments()
     # generate_linear_sar_comparison_figure()

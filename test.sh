@@ -21,11 +21,11 @@ NUM_CHUNKS=$((NUM_MODELS))
 
 # SAR paper figures
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     paper_figures.py
+#     sar_paper_figures.py
 
 # SSS paper figures
 CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    sonar_paper_figures.py
+    sss_paper_figures.py
 
 # FLS paper figures
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \

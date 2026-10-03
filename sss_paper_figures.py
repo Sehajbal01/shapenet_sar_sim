@@ -24,10 +24,10 @@ from paper_figure_layout import panel_display, stitch_panels
 #     stitched figures and debug_side_scan.py's render_side_scan_image call read these off the
 #     baseline. compression is 'linear' | 'db' | 'asinh'; k = asinh_k_ratio * ref, where ref is
 #     each image's own 99.9th-percentile amplitude
-SONAR_PAPER_BASELINE = dict(CONFIG['side_scan_sonar_baseline'])
+SSS_PAPER_BASELINE = dict(CONFIG['side_scan_sonar_baseline'])
 
 
-def _sonar_experiments():
+def _sss_experiments():
 
     # Azimuth beam width sweep -- the beam is what resolves along track, so this is the knob that
     # takes the target from a smear to a shape. Logarithmic, since a degree is a big step at 0.1
@@ -65,7 +65,7 @@ def _sonar_experiments():
     # regime (dB-like, texture-heavy); k near 1 keeps most of the image linear, close to the
     # 'linear' panel. Logarithmic spacing for the same reason as beam width. The raw amplitude
     # this sweep renders is identical panel to panel -- only display changes -- but it still goes
-    # through render_side_scan_image so this sweep reuses multi_param_sonar_experiment like the
+    # through render_side_scan_image so this sweep reuses multi_param_sss_experiment like the
     # others instead of a one-off display-only path.
     asinh_k_vals = np.logspace(-3, 0, 5).tolist()
     asinh_k = dict(
@@ -77,13 +77,13 @@ def _sonar_experiments():
 
     # Display compression comparison -- one amplitude four ways: linear, dB, the baseline's asinh,
     # and a larger asinh k at the near-linear end of the family.
-    compression_k = SONAR_PAPER_BASELINE['asinh_k_ratio']
+    compression_k = SSS_PAPER_BASELINE['asinh_k_ratio']
     compression = dict(
         name='compression',
         vary={'compression': ['linear', 'db', 'asinh', 'asinh'],
               'asinh_k_ratio': [compression_k, compression_k, compression_k, 0.1]},
         custom_title_strings=['Linear Amplitude',
-                              'dB, %.0f dB Floor' % SONAR_PAPER_BASELINE['db_floor'],
+                              'dB, %.0f dB Floor' % SSS_PAPER_BASELINE['db_floor'],
                               'asinh, k/ref %.3g' % compression_k,
                               'asinh, k/ref 0.1'],
     )
@@ -153,24 +153,24 @@ def _sonar_experiments():
     ]
 
 
-SONAR_PAPER_EXPERIMENTS = _sonar_experiments()
+SSS_PAPER_EXPERIMENTS = _sss_experiments()
 
 
-def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
-                                 custom_title_strings=None, ncols=None):
+def multi_param_sss_experiment(param_dict, default_kwargs, experiment_name='experiment',
+                               custom_title_strings=None, ncols=None):
     '''
     Run one side scan sweep and stitch its panels into a single figure.
 
-    The side scan analogue of render_images.multi_param_experiment: render_side_scan_image writes
-    the raw amplitude of each run to figures/side_scan_amp_<suffix>.npy, and those are read back
-    here so the panels share one display treatment instead of each run's own saved png.
+    The side scan analogue of render_images.multi_param_sar_experiment: render_side_scan_image
+    writes the raw amplitude of each run to figures/side_scan_amp_<suffix>.npy, and those are read
+    back here so the panels share one display treatment instead of each run's own saved png.
 
     inputs:
         param_dict (dict): parameter name -> list of values, one entry per panel. Every list must
             be the same length
         default_kwargs (dict): the baseline passed to render_side_scan_image. Its
             'compression'/'db_floor'/'asinh_k_ratio' entries also set the stitched figure's
-            display, so SONAR_PAPER_BASELINE is the one place that decides all three -- unless
+            display, so SSS_PAPER_BASELINE is the one place that decides all three -- unless
             param_dict itself varies one of those three (e.g. an asinh_k_ratio sweep), in which
             case each panel is displayed with its own swept value instead of the baseline's
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
@@ -269,12 +269,11 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     )
 
 
-def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
-                                baseline=SONAR_PAPER_BASELINE):
+def run_sss_paper_experiments(experiments=SSS_PAPER_EXPERIMENTS, baseline=SSS_PAPER_BASELINE):
     paths = []
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
-        paths.append(multi_param_sonar_experiment(
+        paths.append(multi_param_sss_experiment(
             exp['vary'],
             kwargs,
             exp['name'],
@@ -285,4 +284,4 @@ def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
 
 
 if __name__ == '__main__':
-    run_sonar_paper_experiments()
+    run_sss_paper_experiments()

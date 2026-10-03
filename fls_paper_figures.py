@@ -111,7 +111,7 @@ def multi_param_fls_experiment(param_dict, default_kwargs, experiment_name='expe
     '''
     Run one forward looking sonar sweep and stitch its panels into a single figure.
 
-    The clone of sonar_paper_figures.multi_param_sonar_experiment: render_forward_looking_sonar_image
+    The clone of sss_paper_figures.multi_param_sss_experiment: render_forward_looking_sonar_image
     writes the raw amplitude and axes of each run to figures/fls_amp_<suffix>.npz, and those are
     read back here so the panels share one display treatment and keep their azimuth and range axes.
 

@@ -11,7 +11,7 @@ Run this file to check the wrappers still behave:
 import os
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the second to
-# initialize aborts with "OMP: Error #15". Allow the duplicate, as paper_figures.py does.
+# initialize aborts with "OMP: Error #15". Allow the duplicate, as sar_paper_figures.py does.
 # Must be set before numpy/torch import.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
