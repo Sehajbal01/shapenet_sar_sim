@@ -28,33 +28,6 @@ def _fls_experiments():
         custom_title_strings=['Beam Width: %.2f deg' % b for b in beam_width_vals],
     )
 
-    # Ray azimuth fov sweep -- from half the image's azimuth span to 1.5x it. A fan narrower than the
-    # image leaves the edge pings with no rays under their beam. num_ray_width follows the fov, so
-    # the rays per degree stay the baseline's and only the coverage changes.
-    base_image_az = FLS_PAPER_BASELINE['image_azimuth_range']
-    base_fov_az = FLS_PAPER_BASELINE['ray_fov_az']
-    base_n_ray = FLS_PAPER_BASELINE['num_ray_width']
-    ray_fov_az_vals = [f * base_image_az for f in (0.5, 0.75, 1.0, 1.2, 1.5)]
-    ray_fov_az = dict(
-        name='ray_fov_az',
-        vary={'ray_fov_az': ray_fov_az_vals,
-              'num_ray_width': [int(round(base_n_ray * fov / base_fov_az)) for fov in ray_fov_az_vals]},
-        custom_title_strings=['Ray Az FOV: %.1f deg' % fov for fov in ray_fov_az_vals],
-    )
-
-    # Elevation FOV sweep, the side scan suite's on the ray fan -- from a narrow fan that lights one
-    # band of range through the target up to the baseline's, which fills the range window.
-    # num_ray_height follows the fov as num_ray_width does above, so only the coverage changes.
-    base_fov_el = FLS_PAPER_BASELINE['ray_fov_el']
-    base_n_ray_el = FLS_PAPER_BASELINE['num_ray_height']
-    elevation_fov_vals = np.linspace(10, base_fov_el, 5).tolist()
-    elevation_fov = dict(
-        name='elevation_fov',
-        vary={'ray_fov_el': elevation_fov_vals,
-              'num_ray_height': [int(round(base_n_ray_el * fov / base_fov_el)) for fov in elevation_fov_vals]},
-        custom_title_strings=['Elevation FOV: %.1f deg' % fov for fov in elevation_fov_vals],
-    )
-
     # Spatial bandwidth sweep, the side scan suite's -- range resolution goes as 1/BW. Fs = 2*BW
     # throughout, so the panels differ by bandwidth alone.
     spatial_bw_vals = [2 ** p for p in range(2, 10)]  # 4 .. 512
@@ -65,11 +38,58 @@ def _fls_experiments():
         custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in spatial_bw_vals],
     )
 
+    # dB floor sweep, display only -- -60 was set for the near seafloor's dominance at range 1.3
+    db_floor_vals = [-30.0, -40.0, -50.0, -60.0, -70.0]
+    db_floor = dict(
+        name='db_floor',
+        vary={'db_floor': db_floor_vals},
+        custom_title_strings=['dB Floor: %.0f' % f for f in db_floor_vals],
+    )
+
+    # Ray count sweep, as many elevation rays as azimuth rays, in factors of 2 about the baseline's 300
+    num_rays_vals = [75, 150, 300, 600, 1200]
+    num_rays = dict(
+        name='num_rays',
+        vary={'num_ray_width': num_rays_vals,
+              'num_ray_height': num_rays_vals},
+        custom_title_strings=['%d Az x %d El Rays' % (n, n) for n in num_rays_vals],
+    )
+
+    # Sensor distance x pose grid, a row per distance, the image spanning 1 across the origin in azimuth
+    # 5 of the baseline car's 20 in-band poses, drawn at random: (azimuth, elevation) in deg
+    random_poses = {'000025': (325.2, 23.4), '000037': (256.6, 33.8), '000028': (46.2, 37.7),
+                    '000029': (286.2, 37.8), '000023': (8.5, 42.1)}
+    beam_per_span = FLS_PAPER_BASELINE['azimuth_beam_width_deg'] / FLS_PAPER_BASELINE['image_azimuth_range']
+    grid = [(d, pose) for d in [2.5, 5.0, 7.5, 10.0] for pose in random_poses]
+    grid_spans = [2 * np.degrees(np.arctan(0.5 / d)) for d, _ in grid]
+    grid_beams = [beam_per_span * span for span in grid_spans]  # the baseline's ~1.75 ping spacings
+    sensor_distance = dict(
+        name='sensor_distance',
+        vary={'sensor_distance': [d for d, _ in grid],
+              'pose_num': [pose for _, pose in grid],
+              'image_azimuth_range': grid_spans,
+              'azimuth_beam_width_deg': grid_beams,
+              'ray_fov_az': [span + 3 * beam for span, beam in zip(grid_spans, grid_beams)],  # paper's margin
+              'ray_fov_el': [2 * np.degrees(np.arctan(1.0 / d)) for d, _ in grid]},  # past the +/-0.9 window
+        ncols=len(random_poses),
+        custom_title_strings=['Dist %.1f, Az %.0f, El %.1f deg' % ((d,) + random_poses[pose])
+                              for d, pose in grid],
+    )
+
+    # The baseline at each of the 5 random poses above
+    poses = dict(
+        name='random_poses',
+        vary={'pose_num': list(random_poses)},
+        custom_title_strings=['Az %.1f, El %.1f deg' % random_poses[pose] for pose in random_poses],
+    )
+
     return [
-        beam_width,
-        # ray_fov_az,
-        # elevation_fov,
-        spatial_bw,
+        # beam_width,
+        # spatial_bw,
+        # db_floor,
+        # num_rays,
+        # sensor_distance,
+        poses,
     ]
 
 
@@ -77,7 +97,7 @@ FLS_PAPER_EXPERIMENTS = _fls_experiments()
 
 
 def multi_param_fls_experiment(param_dict, default_kwargs, experiment_name='experiment',
-                               custom_title_strings=None):
+                               custom_title_strings=None, ncols=None):
     '''
     Run one forward looking sonar sweep and stitch its panels into a single figure.
 
@@ -94,6 +114,7 @@ def multi_param_fls_experiment(param_dict, default_kwargs, experiment_name='expe
             with its own swept value
         experiment_name (str): names the saved files, and picks out this sweep's .npz files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
+        ncols (int): panels per row of the stitched figure, all in one row when None
     outputs:
         path (str): the stitched figure written
     '''
@@ -185,6 +206,7 @@ def multi_param_fls_experiment(param_dict, default_kwargs, experiment_name='expe
         xlabel='Azimuth (deg)',
         ylabel='Range',
         show_axes=True,
+        ncols=ncols,
     )
 
 
@@ -197,6 +219,7 @@ def run_fls_paper_experiments(experiments=FLS_PAPER_EXPERIMENTS, baseline=FLS_PA
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
+            ncols=exp.get('ncols'),
         ))
     return paths
 

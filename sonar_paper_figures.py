@@ -120,6 +120,16 @@ def _sonar_experiments():
                               'LFM Chirp', 'Barker 13'],
     )
 
+    # The baseline at fls_paper_figures' 5 random in-band poses of the same car, so the two figures
+    # show the same views: (azimuth, elevation) in deg
+    random_poses = {'000025': (325.2, 23.4), '000037': (256.6, 33.8), '000028': (46.2, 37.7),
+                    '000029': (286.2, 37.8), '000023': (8.5, 42.1)}
+    poses = dict(
+        name='random_poses',
+        vary={'pose_num': list(random_poses)},
+        custom_title_strings=['Az %.1f, El %.1f deg' % random_poses[pose] for pose in random_poses],
+    )
+
     return [
         # beam_width,
         # num_ray_width,
@@ -127,8 +137,9 @@ def _sonar_experiments():
         # compression,
         # asinh_k,
         # elevation_fov,
-        spatial_bw,
+        # spatial_bw,
         # waveform,
+        poses,
     ]
 
 
