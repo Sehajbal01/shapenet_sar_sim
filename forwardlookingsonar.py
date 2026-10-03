@@ -183,6 +183,7 @@ def render_forward_looking_sonar_image(
 
         override_obj_path = None,
         sensor_distance = None,
+        elevation_angle_deg = None,
 
         # image geometry
         image_azimuth_range = 50.0,
@@ -241,6 +242,10 @@ def render_forward_looking_sonar_image(
             azimuth and elevation, to move the sensor back. Null range_near/range_far along with
             it so the range window follows, and narrow the fovs to the smaller angle the car
             subtends. None keeps the pose file's own distance
+        elevation_angle_deg (float): overrides the pose's elevation, keeping its azimuth and
+            distance, so a sweep can reach elevations no pose file has: 0 puts the sensor on the
+            seafloor, 90 straight overhead. The rgb beside the sonar stays the pose file's view.
+            None keeps the pose file's own elevation
         compression (str): how the saved png is displayed, 'db' | 'linear' | 'asinh', as
             paper_figure_layout.panel_display does it for the stitched figures
         db_floor/asinh_k_ratio (float): that display's dB floor and asinh softening ratio
@@ -281,13 +286,22 @@ def render_forward_looking_sonar_image(
 
     pose_info = extract_pose_info(poses)
     az, el = pose_info[6].item(), pose_info[5].item()
+    if elevation_angle_deg is not None:
+        el = float(elevation_angle_deg)
     print('Center azimuth (deg):   ', az)
     print('Center elevation (deg): ', el)
 
     # a sensor below the seafloor would image the ground plane from underneath
-    assert el > 0.0, 'pose elevation %.1f deg puts the sensor below the seafloor' % el
+    assert el >= 0.0, 'elevation %.1f deg puts the sensor below the seafloor' % el
 
     sensor_position = pose_info[0].reshape(1, 3)  # (1,3) camera center of the rgb view
+    if elevation_angle_deg is not None:
+        # the pose's azimuth and distance at this elevation, in float64 so cos(90 deg) keeps the azimuth's sign
+        x, y, z = sensor_position[0].tolist()
+        az_rad, el_rad = np.arctan2(y, x), np.radians(el)
+        sensor_position = torch.tensor(np.sqrt(x * x + y * y + z * z) * np.array(
+            [[np.cos(el_rad) * np.cos(az_rad), np.cos(el_rad) * np.sin(az_rad), np.sin(el_rad)]]),
+            dtype=torch.float32, device=device)  # (1,3)
     if sensor_distance is not None:
         # normalize then rescale so azimuth/elevation (a ratio of components) survive the change
         sensor_position = torch.nn.functional.normalize(sensor_position, dim=-1) * sensor_distance

@@ -17,7 +17,7 @@ set -u
 # rendered in this order by every worker; all args are forwarded to generate_dataset.py
 SPLITS=(cars_train cars_val cars_test)
 
-GPUS=(0 1 2 3 4 5)
+GPUS=(2 3 4 5 6 7)
 NUM_CHUNKS=${#GPUS[@]}
 POWER_LIMIT_W=200
 PYTHON=/workspace/berian/miniconda3/envs/sarrender/bin/python3.8

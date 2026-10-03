@@ -12,7 +12,7 @@
         "sensor_distance": 7.5,
         "track_length": 1.1,
         "num_pings": 128,
-        "elevation_fov_deg": 7.6,
+        "elevation_fov_deg": 50,
         "azimuth_beam_width_deg": 0.1,
         "num_ray_width": 1,
         "num_ray_height": 700,
@@ -81,7 +81,7 @@
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
         "pose_num": "000000",
         // along the pose's direction, as the side scan's; null keeps the pose file's 1.3
-        "sensor_distance": 10,
+        "sensor_distance": 5,
         // the rgb camera's 52 deg view from 1.3, seen from 10: 2*atan(1.3*64/131.25/10)
         // looking top down form a distance of 7.5 to get a swath of 1: 2*np.arctan(1/(2*7.5))*180/3.14159
         "image_azimuth_range": 7.6,
@@ -99,7 +99,7 @@
         "range_near": null,
         "range_far": null,
         // car and shadow fit at every 20-60 deg pose, and match the rgb car's height on median
-        "region_radius": 0.9,
+        "region_radius": 1,
         "wavelength": null,
         "num_bounce": 2,
         // pulse FWHM 0.62/bw spans ~1.4 rows

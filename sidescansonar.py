@@ -114,8 +114,12 @@ def side_scan_sonar_image(
     device = mean_sensor_position.device
     line_of_sight   = torch.nn.functional.normalize(-mean_sensor_position, dim=-1)  # (3,) sensor -> origin
     world_up        = torch.tensor([0.0, 0.0, 1.0], device=device)                  # +z
-    track_direction = torch.nn.functional.normalize(
-        torch.linalg.cross(line_of_sight, world_up), dim=-1)                        # (3,) sensor's right
+    track_direction = torch.linalg.cross(line_of_sight, world_up)                   # (3,) sensor's right, unnormalized
+    if track_direction.norm() < 1e-6:
+        # a nadir look zeroes the cross product, so the right comes from the sensor's azimuth instead
+        azimuth = torch.atan2(mean_sensor_position[1], mean_sensor_position[0])
+        track_direction = torch.stack((-torch.sin(azimuth), torch.cos(azimuth), torch.zeros_like(azimuth)))
+    track_direction = torch.nn.functional.normalize(track_direction, dim=-1)        # (3,)
 
     # calculate trajectory of the sensor
     ping_offsets = centered_linspace(track_length, num_pings, device)               # (P,)
@@ -274,6 +278,7 @@ def render_side_scan_image(
 
         override_obj_path = None,
         sensor_distance = None,
+        elevation_angle_deg = None,
 
         # track geometry
         track_length = 2.0,
@@ -340,6 +345,10 @@ def render_side_scan_image(
         sensor_distance (float): overrides the pose's sensor range from the origin, keeping its
             azimuth and elevation. The sensor position is normalized then scaled to this distance;
             None keeps the pose file's own distance
+        elevation_angle_deg (float): overrides the pose's elevation, keeping its azimuth and
+            distance, so a sweep can reach elevations no pose file has: 0 puts the sensor on the
+            seafloor, 90 straight overhead. The rgb beside the sonar stays the pose file's view.
+            None keeps the pose file's own elevation
         track_length (float): along-track extent the platform flies, centered on the pose
             position. Keep it at least image_plane_width: a track shorter than the image is wide
             leaves the outer image columns with no ping abeam of them, and they come out zero
@@ -415,15 +424,22 @@ def render_side_scan_image(
 
     pose_info = extract_pose_info(poses)
     az, el = pose_info[6].item(), pose_info[5].item()
+    if elevation_angle_deg is not None:
+        el = float(elevation_angle_deg)
     print('Center azimuth (deg):   ', az)
     print('Center elevation (deg): ', el)
 
-    # the track runs along cross(line of sight, +z), which collapses for a nadir look, and the
-    # swath geometry needs the platform above the seafloor rather than below it
-    assert el < 85.0, 'pose elevation %.1f deg is too close to vertical for a side scan track' % el
-    assert el > 0.0,  'pose elevation %.1f deg puts the sensor below the seafloor' % el
+    # the swath geometry needs the platform on or above the seafloor; side_scan_sonar_image handles nadir
+    assert 0.0 <= el <= 90.0, 'elevation %.1f deg puts the sensor below the seafloor or past overhead' % el
 
     mean_sensor_position = pose_info[0].reshape(3)  # (3,) camera center of the rgb view
+    if elevation_angle_deg is not None:
+        # the pose's azimuth and distance at this elevation, in float64 so cos(90 deg) keeps the azimuth's sign
+        x, y, z = mean_sensor_position.tolist()
+        az_rad, el_rad = np.arctan2(y, x), np.radians(el)
+        mean_sensor_position = torch.tensor(np.sqrt(x * x + y * y + z * z) * np.array(
+            [np.cos(el_rad) * np.cos(az_rad), np.cos(el_rad) * np.sin(az_rad), np.sin(el_rad)]),
+            dtype=torch.float32, device=device)  # (3,)
     if sensor_distance is not None:
         # normalize then rescale so azimuth/elevation (a ratio of components) survive the change
         mean_sensor_position = torch.nn.functional.normalize(mean_sensor_position, dim=-1) * sensor_distance

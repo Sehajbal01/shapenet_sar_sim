@@ -37,7 +37,8 @@ image that is written matches its pose/<pose_num>.txt exactly.
 
 -test_run renders exactly the same images but writes them to ./figures as
 test_run_<modality>_<obj_id>_az<spread>_<pose>.png and creates nothing under the dataset, so a
-chunk can be checked end to end before the real run. See test.sh.
+chunk can be checked end to end before the real run. It always shows the per-pose progress bars,
+which a dataset run only gets with -progress_bars. See test.sh.
 
 -gif, allowed only with -test_run, also writes one animated GIF per object and modality to
 ./figures/test_run_<modality>_<obj_id>_az<spread>.gif: every in-band pose in pose order, with its
@@ -526,8 +527,9 @@ def main():
                         help='render only poses with elevation in [MIN, MAX] deg, skipping the '
                              'rest (default: %g %g)' % (MIN_ELEVATION_DEG, MAX_ELEVATION_DEG))
     parser.add_argument('-progress_bars', action='store_true',
-                        help='show per-pose tqdm bars while each object renders; off by default, '
-                             'since a log would get one line per redraw')
+                        help='show per-pose tqdm bars while each object renders; always on with '
+                             '-test_run, otherwise off by default, since a log would get one line '
+                             'per redraw')
     parser.add_argument('-gif', action='store_true',
                         help='with -test_run only: also write one GIF per object and modality of '
                              'all its in-band poses into %s/, stamped with azimuth and elevation'
@@ -540,6 +542,8 @@ def main():
                              'distributed_generate_dataset.sh projects its ETA from')
     args = parser.parse_args()
     modalities = tuple(m for m in MODALITIES if m in args.modalities)
+    # every test run gets the bars; a dataset run opts in, since its output usually goes to a log
+    progress_bars = args.progress_bars or args.test_run
 
     if args.gif and not args.test_run:
         parser.error('-gif only runs with -test_run, the dataset does not get GIFs')
@@ -629,7 +633,7 @@ def main():
                                                                 elevation_range = args.elevation_range,
                                                                 gif             = args.gif,
                                                                 modalities      = modalities,
-                                                                progress_bars   = args.progress_bars)
+                                                                progress_bars   = progress_bars)
         except Exception as exception:
             failed.append(obj_id)
             progress(i, '%s FAILED: %s: %s' % (obj_id, type(exception).__name__, exception))

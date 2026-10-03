@@ -130,6 +130,15 @@ def _sonar_experiments():
         custom_title_strings=['Az %.1f, El %.1f deg' % random_poses[pose] for pose in random_poses],
     )
 
+    # Elevation sweep from the seafloor to overhead, at the baseline pose's azimuth, in a 4x4 grid
+    elevation_vals = np.linspace(0, 90, 16).tolist()
+    elevation_angle = dict(
+        name='elevation_angle',
+        vary={'elevation_angle_deg': elevation_vals},
+        ncols=4,
+        custom_title_strings=['Elevation: %.0f deg' % e for e in elevation_vals],
+    )
+
     return [
         # beam_width,
         # num_ray_width,
@@ -139,7 +148,8 @@ def _sonar_experiments():
         # elevation_fov,
         # spatial_bw,
         # waveform,
-        poses,
+        # poses,
+        elevation_angle,
     ]
 
 
@@ -147,7 +157,7 @@ SONAR_PAPER_EXPERIMENTS = _sonar_experiments()
 
 
 def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
-                                 custom_title_strings=None):
+                                 custom_title_strings=None, ncols=None):
     '''
     Run one side scan sweep and stitch its panels into a single figure.
 
@@ -165,6 +175,7 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
             case each panel is displayed with its own swept value instead of the baseline's
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
+        ncols (int): panels per row of the stitched figure, all in one row when None
     outputs:
         path (str): the stitched figure written
     '''
@@ -254,6 +265,7 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
         vmax=vmaxs,
         cbar_label=cbar_labels,
         cbar_tick_fmt=tick_fmts,
+        ncols=ncols,
     )
 
 
@@ -267,6 +279,7 @@ def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
+            ncols=exp.get('ncols'),
         ))
     return paths
 

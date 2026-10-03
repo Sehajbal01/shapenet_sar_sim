@@ -83,13 +83,23 @@ def _fls_experiments():
         custom_title_strings=['Az %.1f, El %.1f deg' % random_poses[pose] for pose in random_poses],
     )
 
+    # Elevation sweep from the seafloor to overhead, at the baseline pose's azimuth, in a 4x4 grid
+    elevation_vals = np.linspace(0, 90, 16).tolist()
+    elevation_angle = dict(
+        name='elevation_angle',
+        vary={'elevation_angle_deg': elevation_vals},
+        ncols=4,
+        custom_title_strings=['Elevation: %.0f deg' % e for e in elevation_vals],
+    )
+
     return [
         # beam_width,
         # spatial_bw,
         # db_floor,
         # num_rays,
         # sensor_distance,
-        poses,
+        # poses,
+        elevation_angle,
     ]
 
 
