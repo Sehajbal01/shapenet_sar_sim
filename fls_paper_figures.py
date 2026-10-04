@@ -66,6 +66,19 @@ def _fls_experiments():
         custom_title_strings=['%d El Rays' % n for n in num_ray_height_vals],
     )
 
+    # Elevation fan sweep at 60 deg, the band's steepest look -- the fan needs ~56 deg to reach the window's near edge
+    ray_fov_el_vals = np.linspace(5, 60, 12).tolist()  # 5 .. 60, where the 60 deg look's fan reaches straight down
+    ray_fov_el_60 = dict(
+        name='ray_fov_el_60',
+        vary={'ray_fov_el': ray_fov_el_vals},
+        overrides={'elevation_angle_deg': 60.0},
+        ncols=6,
+        custom_title_strings=['Elevation FOV: %.0f deg' % f for f in ray_fov_el_vals],
+    )
+
+    # The same sweep at 20 deg, the band's most grazing look, where a wide fan thins the el rays on the seafloor
+    ray_fov_el_20 = dict(ray_fov_el_60, name='ray_fov_el_20', overrides={'elevation_angle_deg': 20.0})
+
     # Sensor distance x pose grid, a row per distance, the image spanning 1 across the origin in azimuth
     # 5 of the baseline car's 20 in-band poses, drawn at random: (azimuth, elevation) in deg
     random_poses = {'000025': (325.2, 23.4), '000037': (256.6, 33.8), '000028': (46.2, 37.7),
@@ -108,7 +121,9 @@ def _fls_experiments():
         # spatial_bw,
         # db_floor,
         # num_rays,
-        num_ray_height,
+        # num_ray_height,
+        ray_fov_el_60,
+        ray_fov_el_20,
         # sensor_distance,
         # poses,
         # elevation_angle,

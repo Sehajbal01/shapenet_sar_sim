@@ -16,18 +16,18 @@ rm -f figures/*
 # strip config.json's whole-line // comments first, as config.py does -- jq can't parse them
 NUM_MODELS=$(ls "$(sed 's|^\s*//.*$||' config.json | jq -r .srn_cars_dir)/cars_test" | wc -l)
 NUM_CHUNKS=$((NUM_MODELS))
-# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif
+CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+    generate_dataset.py -num_chunks $NUM_CHUNKS -chunk_id 5 -test_run -gif -modalities forward_looking_sonar side_scan_sonar
 
 # SAR paper figures
 # CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
 #     sar_paper_figures.py
 
-# SSS paper figures
-CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    sss_paper_figures.py
+# # SSS paper figures
+# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+#     sss_paper_figures.py
 
-# FLS paper figures
-CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-    fls_paper_figures.py
+# # FLS paper figures
+# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+#     fls_paper_figures.py
 
