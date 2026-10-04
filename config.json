@@ -16,11 +16,11 @@
         "azimuth_beam_width_deg": 0.1,
         "num_ray_width": 1,
         "num_ray_height": 500,
-        "region_radius": 1.0,
         "image_width": 128,
         "image_height": 128,
-        "image_plane_width": 1,
-        "image_plane_height": 1,
+        // the image spans sensor_distance +/- image_range_swath/2 in slant range, +/- image_cross_range_swath/2 along the track
+        "image_cross_range_swath": 1,
+        "image_range_swath": 1,
         "wavelength": null,
         "num_bounce": 2,
         "spherical_spread": false,
@@ -96,11 +96,8 @@
         "num_ray_width": 350,
         // stripe-free over the 20 deg fan down to the 20 deg pose, where the seafloor rays are sparsest; 400 leaves faint arcs
         "num_ray_height": 500,
-        // one-way range of the bottom and top rows; null brackets the target at +/- region_radius
-        "range_near": null,
-        "range_far": null,
-        // car and shadow fit at every 20-60 deg pose, and match the rgb car's height on median
-        "region_radius": 1,
+        // rows span sensor_distance +/- image_range_swath/2; matches the side scan's, so the 20 deg fan reaches the near edge at every 20-60 deg pose
+        "image_range_swath": 1,
         "wavelength": null,
         "num_bounce": 2,
         // pulse FWHM 0.62/bw spans ~1.4 rows

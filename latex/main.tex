@@ -615,10 +615,10 @@ left to right. The pixel at range $\rho_m$ and azimuth $\phi_i$ is
     \label{eq:fls-image}
 \end{equation}
 where $|s_i|$ is evaluated between its samples by linear interpolation, and every signal is
-sampled over a window that covers $[\rho_{near},\rho_{far}]$. By default the window brackets the
-scene origin along the line of sight, $\rho_{near} = \max(0, \lVert\vec{v}\rVert - r_{reg})$ and
-$\rho_{far} = \lVert\vec{v}\rVert + r_{reg}$, where $r_{reg}$ is the radius of the scene region,
-so the window follows the sensor when it is moved away from the scene.
+sampled over a window that covers $[\rho_{near},\rho_{far}]$. The rows span a range swath
+$S_\rho$ that brackets the scene origin along the line of sight, $\rho_{near} =
+\lVert\vec{v}\rVert - S_\rho/2$ and $\rho_{far} = \lVert\vec{v}\rVert + S_\rho/2$, so the window
+follows the sensor when it is moved away from the scene.
 
 In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
 as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
@@ -674,15 +674,15 @@ steering, and the digital signal of the $i^{th}$ ping is
 \end{equation}
 where the sum runs over the returns of that ping. The factor $z_o^{\eta}$ is a time-varying gain, a
 receiver ramp against the fall of the seafloor return with range, and $\eta = 0$ disables it.
-Every ping is sampled over the same window, $\lVert\bar{\vec{v}}\rVert \pm r_{reg}$, so the
+Every ping is sampled over the same window, which covers the range swath of the image, so the
 samples of all pings line up in range.
 
 Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\ell_i$
 and slant range $z_o$. The image interpolates them bilinearly onto an $H \times W$ pixel grid that
-spans $W_p$ along the track and $H_p$ in slant range, centered on $\ell = 0$ and on the target
-range $\lVert\bar{\vec{v}}\rVert$, with near range in the bottom row. Pixels outside the sampled
-track or range window are zero, so the track length $L$ should be at least $W_p$. The rows are in
-slant range, since no projection onto the ground plane is applied.
+spans a cross-range swath $S_\ell$ along the track and a range swath $S_\rho$ in slant range,
+centered on $\ell = 0$ and on the target range $\lVert\bar{\vec{v}}\rVert$, with near range in the
+bottom row. Pixels outside the sampled track are zero, so the track length $L$ should be at least
+$S_\ell$. The rows are in slant range, since no projection onto the ground plane is applied.
 
 Along the track, the resolution is set by the beam: at slant range $\rho$ the beam covers about
 $\rho\beta$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
@@ -956,7 +956,7 @@ In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the
 Section \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$. The platform passes the
 car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
 $\lVert\bar{\vec{v}}\rVert = 10$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
-spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $W_p = H_p = 1.1$.
+spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $S_\ell = S_\rho = 1.1$.
 Each ping casts a fan of $R_h \times R_w = 700 \times 250$ rays over $\Theta_h = 30^\circ$ in
 elevation and $\Theta_w = 3\beta$ in azimuth. The $250$ azimuth rays are enough for the image to
 converge even at $10^\circ$, where they are spread the most sparsely. The pulse is Gaussian with

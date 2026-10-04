@@ -52,7 +52,7 @@ if __name__ == '__main__':
             num_pings  = 256,   # 4x SSS_PAPER_BASELINE's 64
             spatial_fs = 64,    # 2x SSS_PAPER_BASELINE's 32
             spatial_bw = 128,   # 2x SSS_PAPER_BASELINE's 64
-            region_radius = 2.0,  # 2x SSS_PAPER_BASELINE's 1.0
+            image_range_swath = 4.0,  # samples +/-2 about the target, as the old region_radius 2.0 did
             sensor_distance = 10.0,  # both poses sit at range ~1.3; push out to sonar-scale range
             elevation_fov_deg = 15.0,  # baseline's 45 deg * 1.3/10, so the fan covers the same ground swath at the new range
             # compression/db_floor/asinh_k_ratio come from SSS_PAPER_BASELINE unless overridden here

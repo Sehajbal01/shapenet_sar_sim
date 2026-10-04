@@ -150,10 +150,10 @@ SAR_KEYS = ('spatial_bw', 'spatial_fs', 'waveform', 'snr_db', 'wavelength', 'use
             'image_width', 'image_height', 'image_plane_width', 'image_plane_height',
             'grid_width', 'grid_height', 'n_ray_width', 'n_ray_height', 'region_radius',
             'obj_raids', 'ground_raids', 'object_x_flip', 'object_rotate_xyz')
-SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_plane_width', 'image_plane_height',
+SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_cross_range_swath', 'image_range_swath',
                   'wavelength', 'num_bounce', 'spherical_spread', 'water_absorption',
                   'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
-FLS_KEYS = ('range_near', 'range_far', 'region_radius', 'wavelength', 'num_bounce',
+FLS_KEYS = ('image_range_swath', 'wavelength', 'num_bounce',
             'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude')
 
 
@@ -491,7 +491,6 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
                                   *mesh_bundle,
                                   SSS_PAPER_BASELINE['num_ray_width'],
                                   SSS_PAPER_BASELINE['num_ray_height'],
-                                  SSS_PAPER_BASELINE['region_radius'],
                                   octree = octree,
                                   **side_scan_kwargs)[0]  # (T,H,W), one track
             save('side_scan_sonar', pose_num, side_scan_image[0])

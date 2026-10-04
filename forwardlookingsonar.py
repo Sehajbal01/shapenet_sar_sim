@@ -50,9 +50,7 @@ def forward_looking_sonar_image(
     num_ray_width, # azimuth direction
     num_ray_height, # elevation direction
 
-    range_near = None,
-    range_far = None,
-    region_radius = 1.7,
+    image_range_swath = 2.0,
 
     wavelength = None,
     num_bounce = 1,
@@ -79,10 +77,9 @@ def forward_looking_sonar_image(
         ray_fov_az/ray_fov_el (float): azimuth and elevation extent of the ray fan, in degrees
         azimuth_beam_width_deg (float): two-way FWHM of the beam each ping steers, in degrees
         num_ray_width/num_ray_height (int): rays across the fan in azimuth and elevation
-        range_near/range_far (float): one-way range of the bottom and top rows. None brackets the
-            scene origin at +/- region_radius along the line of sight, so moving the sensor moves
-            the window with it
-        region_radius (float): half the default range window, ignored when both ends are given
+        image_range_swath (float): one-way range the rows span, from sensor_distance -
+            image_range_swath/2 in the bottom row to sensor_distance + image_range_swath/2 in the
+            top row, so moving the sensor moves the window with it
         wavelength (float): when given, scatter energies are complex and sum coherently
         remaining arguments: as in sidescansonar.side_scan_sonar_image
     outputs:
@@ -107,13 +104,12 @@ def forward_looking_sonar_image(
         octree         = octree,
     )  # list[T][1] of (R',) each
 
-    # default range window brackets the scene origin along the line of sight
+    # the range swath brackets the scene origin along the line of sight
     sensor_distance = torch.linalg.norm(sensor_positions, dim=-1).mean().item()
-    if range_near is None:
-        range_near = max(0.0, sensor_distance - region_radius)
-    if range_far is None:
-        range_far = sensor_distance + region_radius
-    assert range_far > range_near, 'range_far (%g) must exceed range_near (%g)' % (range_far, range_near)
+    assert 0 < image_range_swath / 2 <= sensor_distance, \
+        'image_range_swath %g must be positive and stay in front of the sensor at distance %g' % (image_range_swath, sensor_distance)
+    range_near = sensor_distance - image_range_swath / 2
+    range_far  = sensor_distance + image_range_swath / 2
 
     # one signal window shared by every ping, covering the rows plus a sample of margin
     window_center = torch.tensor([(range_near + range_far) / 2], device=device)  # (1,)
@@ -189,9 +185,7 @@ def render_forward_looking_sonar_image(
         image_azimuth_range = 50.0,
         num_pings = 128,
         num_range_values = 128,
-        range_near = None,
-        range_far = None,
-        region_radius = 1.7,
+        image_range_swath = 2.0,
 
         # ray fan and beam
         ray_fov_az = 60.0,
@@ -239,9 +233,8 @@ def render_forward_looking_sonar_image(
         suffix (str): name for the saved files, defaults to '<pose_num>_<obj_id>'
         override_obj_path (str): render this .obj instead of the selected object's mesh
         sensor_distance (float): overrides the pose's sensor range from the origin, keeping its
-            azimuth and elevation, to move the sensor back. Null range_near/range_far along with
-            it so the range window follows, and narrow the fovs to the smaller angle the car
-            subtends. None keeps the pose file's own distance
+            azimuth and elevation, to move the sensor back. The range swath follows it; narrow
+            the fovs to the smaller angle the car subtends. None keeps the pose file's own distance
         elevation_angle_deg (float): overrides the pose's elevation, keeping its azimuth and
             distance, so a sweep can reach elevations no pose file has: 0 puts the sensor on the
             seafloor, 90 straight overhead. The rgb beside the sonar stays the pose file's view.
@@ -329,9 +322,7 @@ def render_forward_looking_sonar_image(
         mesh, normals, material_properties,
         num_ray_width,
         num_ray_height,
-        range_near = range_near,
-        range_far = range_far,
-        region_radius = region_radius,
+        image_range_swath = image_range_swath,
         wavelength = wavelength,
         num_bounce = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,

@@ -75,12 +75,11 @@ def side_scan_sonar_image(
     material_properties,
     num_ray_width, # (azimuth direction)
     num_ray_height, # elevation direction
-    region_radius,
 
     image_width = 128,
     image_height = 128,
-    image_plane_width = 2,
-    image_plane_height = 2,
+    image_cross_range_swath = 2,
+    image_range_swath = 2,
 
     wavelength = None,
     num_bounce = 1,
@@ -177,7 +176,10 @@ def side_scan_sonar_image(
     # Centered on the target, so the object sits mid-window. The window can start inside
     # swath_near, which is correct: the object stands off the seafloor and returns before it.
     target_range  = torch.linalg.norm(mean_sensor_position)
+    assert 0 < image_range_swath / 2 <= float(target_range), \
+        'image_range_swath %g must be positive and stay in front of the sensor at distance %g' % (image_range_swath, float(target_range))
     window_center = target_range.reshape(1)  # (1,)
+    window_radius = image_range_swath / 2 + 1 / spatial_fs  # the image's rows plus a sample of margin
     signals = []
     sample_z = []
     for ranges_t, energies_t in zip(scatter_ranges, scatter_energies):
@@ -187,7 +189,7 @@ def side_scan_sonar_image(
             signal_p, sample_z_p = interpolate_signal(
                 scatter_range.unsqueeze(0) / 2,   # (1,R') round trip -> one-way range
                 scatter_energy.unsqueeze(0),      # (1,R')
-                region_radius,
+                window_radius,
                 window_center,
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
                 waveform = waveform,
@@ -229,7 +231,7 @@ def side_scan_sonar_image(
             track_suffix = '' if T == 1 else '_track%02d' % t
             maps_t = {(0, p): debugging_maps[(t, p)] for p in range(num_pings)}
             signal_gif(signals[t:t+1], sample_z[t:t+1], maps_t,
-                       [scatter_ranges[t]], [scatter_energies[t]], region_radius,
+                       [scatter_ranges[t]], [scatter_energies[t]], window_radius,
                        suffix = base_suffix + track_suffix)
 
     if use_sig_magnitude:
@@ -240,12 +242,11 @@ def side_scan_sonar_image(
     # (ping/along-track position). Unlike a ground plane projection this never resamples range
     # onto the seafloor, so the image shows slant range rather than ground range
     shared_sample_z = sample_z[:, 0, :]  # (T,Z) every ping shares the one range window
-    z_center = shared_sample_z[:, shared_sample_z.shape[1] // 2]  # (T,) ~ target range
 
     row_frac = torch.linspace(0.5, -0.5, image_height, device=signals.device, dtype=shared_sample_z.dtype)  # (H,) far to near
     col_frac = torch.linspace(-0.5, 0.5, image_width, device=signals.device, dtype=ping_offsets.dtype)      # (W,) low to high
-    row_coords = z_center.reshape(T, 1) + row_frac.reshape(1, image_height) * image_plane_height  # (T,H) far range first
-    col_coords = col_frac * image_plane_width  # (W,) low ping offset first
+    row_coords = target_range.reshape(1, 1).expand(T, 1) + row_frac.reshape(1, image_height) * image_range_swath  # (T,H) far range first
+    col_coords = col_frac * image_cross_range_swath  # (W,) low ping offset first
 
     # normalize the target coordinates into grid_sample's [-1,1] convention over the sampled
     # (P,Z) grid, so a target outside the sampled range/track window comes back zero
@@ -287,13 +288,12 @@ def render_side_scan_image(
         azimuth_beam_width_deg = 1.0,
         num_ray_width = 1,
         num_ray_height = 512,
-        region_radius = 1.0,
 
-        # image plane geometry
+        # image geometry
         image_width = 128,
         image_height = 128,
-        image_plane_width = 2.0,
-        image_plane_height = 2.0,
+        image_cross_range_swath = 2.0,
+        image_range_swath = 2.0,
 
         # signal / physics
         wavelength = None,
@@ -350,22 +350,19 @@ def render_side_scan_image(
             seafloor, 90 straight overhead. The rgb beside the sonar stays the pose file's view.
             None keeps the pose file's own elevation
         track_length (float): along-track extent the platform flies, centered on the pose
-            position. Keep it at least image_plane_width: a track shorter than the image is wide
+            position. Keep it at least image_cross_range_swath: a track shorter than the image is wide
             leaves the outer image columns with no ping abeam of them, and they come out zero
         num_pings (int): pings along the track, i.e. columns of the image
         elevation_fov_deg (float): vertical extent of the ray fan, about the boresight
         azimuth_beam_width_deg (float): FWHM of the along-track beam, which sets the along-track
             resolution; the ray fan spans 3x this
-        region_radius (float): half the range extent imaged, centered on the sensor->origin
-            distance so the target sits mid-window. Keep 2*region_radius at least
-            image_plane_height, or the image's near and far edges fall outside the window and
-            come out zero
         num_ray_width/num_ray_height (int): rays per ping across the fan. num_ray_width 1 is a
             single boresight ray, which leaves the azimuth beam nothing to spread
         image_width/image_height (int): pixels across and down the image
-        image_plane_width/image_plane_height (float): extent of the image in world units, along
-            the track (cross range) and out in slant range. Centered on the target range, so it
-            needs room for the object's own span plus the shadow it throws down range
+        image_cross_range_swath/image_range_swath (float): extent of the image in world units,
+            along the track (cross range) and out in slant range. The rows run from
+            sensor_distance - image_range_swath/2 to sensor_distance + image_range_swath/2, so
+            the swath needs room for the object's own span plus the shadow it throws down range
         spherical_spread (bool): True applies energy /= 4*pi * range**2 over the round trip;
             False turns the spreading loss off, which is useful for telling how much of the
             near-range dominance is spreading and how much is geometry
@@ -465,11 +462,10 @@ def render_side_scan_image(
         mesh, normals, material_properties,
         num_ray_width,
         num_ray_height,
-        region_radius,
         image_width = image_width,
         image_height = image_height,
-        image_plane_width = image_plane_width,
-        image_plane_height = image_plane_height,
+        image_cross_range_swath = image_cross_range_swath,
+        image_range_swath = image_range_swath,
         wavelength = wavelength,
         num_bounce = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
