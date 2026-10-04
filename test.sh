@@ -28,6 +28,6 @@ CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/py
     sss_paper_figures.py
 
 # FLS paper figures
-# CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
-#     fls_paper_figures.py
+CUDA_VISIBLE_DEVICES=$GPU_NUM /workspace/berian/miniconda3/envs/sarrender/bin/python3.8 \
+    fls_paper_figures.py
 

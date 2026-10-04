@@ -10,17 +10,17 @@
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
         "pose_num": "000043",
         "sensor_distance": 7.5,
-        "track_length": 1.1,
+        "track_length": 1,
         "num_pings": 128,
-        "elevation_fov_deg": 50,
+        "elevation_fov_deg": 20,
         "azimuth_beam_width_deg": 0.1,
         "num_ray_width": 1,
-        "num_ray_height": 700,
+        "num_ray_height": 500,
         "region_radius": 1.0,
         "image_width": 128,
         "image_height": 128,
-        "image_plane_width": 1.1,
-        "image_plane_height": 1.1,
+        "image_plane_width": 1,
+        "image_plane_height": 1,
         "wavelength": null,
         "num_bounce": 2,
         "spherical_spread": false,
@@ -80,8 +80,8 @@
         // the side scan baseline's car, from a 40.6 deg elevation pose that throws a shadow
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
         "pose_num": "000000",
-        // along the pose's direction, as the side scan's; null keeps the pose file's 1.3
-        "sensor_distance": 5,
+        // matches the side scan's, along the pose's direction; null keeps the pose file's 1.3
+        "sensor_distance": 7.5,
         // the rgb camera's 52 deg view from 1.3, seen from 10: 2*atan(1.3*64/131.25/10)
         // looking top down form a distance of 7.5 to get a swath of 1: 2*np.arctan(1/(2*7.5))*180/3.14159
         "image_azimuth_range": 7.6,
@@ -89,12 +89,13 @@
         "num_range_values": 128,
         // wider than image_azimuth_range, so the edge pings still have rays under their beam
         "ray_fov_az": 10.0,
-        "ray_fov_el": 10.0,
+        // matches the side scan's elevation_fov_deg
+        "ray_fov_el": 20.0,
         // ~1.75 ping spacings
         "azimuth_beam_width_deg": 0.1,
         "num_ray_width": 350,
-        // ring-free at bw 32 down to the 21 deg pose, where the seafloor rays are sparsest; 512 rings
-        "num_ray_height": 350,
+        // stripe-free over the 20 deg fan down to the 20 deg pose, where the seafloor rays are sparsest; 400 leaves faint arcs
+        "num_ray_height": 500,
         // one-way range of the bottom and top rows; null brackets the target at +/- region_radius
         "range_near": null,
         "range_far": null,

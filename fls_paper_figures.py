@@ -55,6 +55,17 @@ def _fls_experiments():
         custom_title_strings=['%d Az x %d El Rays' % (n, n) for n in num_rays_vals],
     )
 
+    # Elevation ray count sweep at 20 deg, the band's most grazing look and so its sparsest seafloor rays
+    num_ray_height_vals = list(range(100, 1100, 100))  # 100 .. 1000
+    num_ray_height = dict(
+        name='num_ray_height',
+        vary={'num_ray_height': num_ray_height_vals},
+        overrides={'elevation_angle_deg': 20.0, 'ray_fov_el': 20.0,
+                   'sensor_distance': 7.5},  # the side scan's distance
+        ncols=5,
+        custom_title_strings=['%d El Rays' % n for n in num_ray_height_vals],
+    )
+
     # Sensor distance x pose grid, a row per distance, the image spanning 1 across the origin in azimuth
     # 5 of the baseline car's 20 in-band poses, drawn at random: (azimuth, elevation) in deg
     random_poses = {'000025': (325.2, 23.4), '000037': (256.6, 33.8), '000028': (46.2, 37.7),
@@ -97,9 +108,10 @@ def _fls_experiments():
         # spatial_bw,
         # db_floor,
         # num_rays,
+        num_ray_height,
         # sensor_distance,
         # poses,
-        elevation_angle,
+        # elevation_angle,
     ]
 
 

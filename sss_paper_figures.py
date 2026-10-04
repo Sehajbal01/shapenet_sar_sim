@@ -90,11 +90,23 @@ def _sss_experiments():
 
     # Elevation FOV sweep -- how much of the seafloor the fan lights up around the target, from a
     # narrow beam on the object alone to a fan that fills the range window.
-    elevation_fov_vals = np.linspace(5, 50, 5).tolist()
+    elevation_fov_vals = np.linspace(5, 50, 10).tolist()
     elevation_fov = dict(
         name='elevation_fov',
         vary={'elevation_fov_deg': elevation_fov_vals},
-        custom_title_strings=['Elevation FOV: %.1f deg' % e for e in elevation_fov_vals],
+        overrides={'elevation_angle_deg': 60.0},  # top of the dataset's 20-60 deg band, where the near edge is hardest to reach
+        ncols=5,
+        custom_title_strings=['Elevation FOV: %.0f deg' % e for e in elevation_fov_vals],
+    )
+
+    # Elevation ray count sweep at 20 deg, the band's most grazing look and so its sparsest seafloor rays
+    num_ray_height_vals = list(range(100, 1100, 100))  # 100 .. 1000
+    num_ray_height = dict(
+        name='num_ray_height',
+        vary={'num_ray_height': num_ray_height_vals},
+        overrides={'elevation_angle_deg': 20.0, 'elevation_fov_deg': 20.0},
+        ncols=5,
+        custom_title_strings=['%d El Rays' % n for n in num_ray_height_vals],
     )
 
     # Spatial bandwidth sweep -- range resolution goes as 1/bw, so this is what turns the target
@@ -146,10 +158,11 @@ def _sss_experiments():
         # compression,
         # asinh_k,
         # elevation_fov,
+        num_ray_height,
         # spatial_bw,
         # waveform,
         # poses,
-        elevation_angle,
+        # elevation_angle,
     ]
 
 
