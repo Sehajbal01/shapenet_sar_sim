@@ -1,15 +1,14 @@
 
 === Paper Todo List ===
-- figure out format for mdpi
-- sehaj needs to get these plots under way
-- consolidate the imaging modalities section
 - modify figure 2 to do RGB, SAR, SSS
 - create appendix
     - put default config.json parameters in there
+    - put the imaging modalities in there
 - experiment comparing spotlight mode sar, strip map mode sar, sss, fls
 - add sss to the waveforms experiment
 - add sss to the fs bw ray density experiment
 
+- sehaj needs to get these plots under way
 
 
 
