@@ -23,7 +23,7 @@
 \DeclareMathOperator{\sinc}{sinc}
 
 %=================================================================
-\Title{Open-Source SAR Simulator in PyTorch Via Interposummation}
+\Title{Open-Source SAR and Sonar Simulator in PyTorch Via Interposummation}
 
 \Author{Alex Berian *, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac and Abhijit Mahalanobis}
 
@@ -34,9 +34,9 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR simulators. \emph{RaySAR} supports only stripmap-mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray. We present an \emph{open-source SAR simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, radar pulse bandwidth, and material properties. It simulates the recovered signal from a range of azimuth and elevation angles, supporting applications such as stripmap- and spotlight-mode imaging, radar cross section modeling, simulating different noise types, jamming, and imperfect sensor trajectories. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}. Interposummation accounts for the effective bandwidth and sample rate of the radar system. We test our simulator on ShapeNet car models with spotlight-mode imaging.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} supports only stripmap-mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders four imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{stripmap-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, jamming, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar, and validate the stripmap-mode reconstruction against spotlight mode.}
 
-\keyword{SAR; radar; ray tracing; simulator}
+\keyword{SAR; spotlight SAR; stripmap SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
 %=================================================================
 \begin{document}
@@ -44,12 +44,18 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 \section{Introduction}
 \label{sec:intro}
 
-SAR simulators are crucial for developing and validating radar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
+SAR and sonar simulators are crucial for developing and validating radar and sonar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility and rely on outdated software.
+Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility, rely on outdated software, are each tied to a single SAR imaging mode, and do not simulate sonar.
 
-To the best of our knowledge, we provide the first scalable PyTorch-based SAR simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the radar system's wavelength, bandwidth, and sample rate. We use two bounces from each ray. Given signals collected over a range of azimuth and elevation angles, imaging algorithms such as spotlight-mode \cite{spotlightmodesar} or stripmap-mode SAR can be used. Figure \ref{fig:modality-comparison} highlights this flexibility, rendering both a convolution backprojection (CBP) SAR image and a side scan sonar (SSS) image of four different ShapeNet car models with the same simulator.
+To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
+The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. Our main contributions are:
+\begin{itemize}
+    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor.
+    \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system.
+    \item \textbf{Four imaging modalities} from one simulator: spotlight-mode SAR \cite{spotlightmodesar}, stripmap-mode SAR, side-scan sonar (SSS), and forward-looking sonar (FLS). Every quantity in the simulator is expressed in spatial units, so radar and sonar share the same ray tracer, material model, and interposummation, and differ only in how rays are launched, how returns are weighted by the beam and the medium, and how the signals are formed into an image.
+\end{itemize}
+Figure \ref{fig:modality-comparison} highlights this flexibility, rendering both a convolution backprojection (CBP) SAR image and an SSS image of four different ShapeNet car models with the same simulator.
 
 Figure \ref{fig:main-fig} showcases an example of our simulator on a ShapeNet \cite{shapenet} car
 model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b with a mean azimuth
@@ -114,7 +120,10 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
 To the best of our knowledge, there are only two other publicly available SAR data simulators.
 RaySAR \cite{raysar} is a MATLAB repository for simulating stripmap-mode SAR images via ray
 tracing. CVDomes \cite{cvdomes} is a MATLAB repository that simulates spotlight-mode SAR images
-from a small set of CAD models.
+from a small set of CAD models. Each is limited to a single SAR imaging mode, neither simulates
+sonar, and neither lets the user choose the transmit waveform: RaySAR forms images directly from
+geometry without simulating a received signal, and CVDomes exports phase histories at a fixed band
+and center frequency.
 
 \subsection{CVDomes}
 \label{sec:cvdomes}
@@ -149,9 +158,11 @@ appear in SAR imagery rather than simulating raw signal acquisition.
 \section{Problem Statement}
 \label{sec:problem}
 A \texttt{.obj} file is a collection of $V$ vertices in 3D space and $F$ triangle faces. Our goal
-is to produce a SAR/SONAR image from $P$ pulses. A signal needs to be simulated for each pulse
-from a known azimuth angle $a$ and elevation angle $e$. From the simulated signals, we can do
-further processing to produce SAR images or other analyses.
+is to produce a SAR or sonar image of the mesh from $P$ pulses (pings, in sonar) of a sensor with a
+given transmit waveform, bandwidth, and sample rate. A signal needs to be simulated for each pulse
+from a known azimuth angle $a$ and elevation angle $e$. From the simulated signals, we form
+spotlight-mode SAR, stripmap-mode SAR, side-scan sonar, or forward-looking sonar images, or do
+other analyses.
 
 \section{Method}
 \label{sec:method}
@@ -358,9 +369,13 @@ function acts as both a low-pass interpolation filter and a summation over nearb
 energy-range scatter. We name the processing in (\ref{eq:interposummation}) \emph{interposummation}.
 
 
-\subsection{Simulating pulse compression waveforms}
+\subsection{Arbitrary Transmit Waveforms}
+\label{sec:waveforms}
 
-We can express a received continuous signal $r(z)$ from our scatters model in
+Interposummation as written in (\ref{eq:interposummation}) simulates an ideal band-limited pulse.
+Real radar and sonar systems instead transmit pulse-compression waveforms and match-filter the
+echoes, and the range sidelobes of the waveform shape the final image. We therefore generalize
+interposummation to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatters model in
 (\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
 \begin{equation}
     r(z) = x(z) * g(z)
@@ -390,11 +405,10 @@ $ is then given by
     ,
 \end{equation}
 where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. One may view the ideal band-limited digital signal in (\ref{eq:interposummation}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
-Appendix \ref{sec:modalities} describes the imaging algorithms applied to the simulated signals.
 
 Each transmit waveform therefore replaces the ideal sinc of interposummation with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
 
-In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because interposummation is agnostic to the choice of $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's pulse-compression waveform.
+In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because interposummation is agnostic to the choice of $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform. The waveform is not limited to these four: any transmit waveform $x(z)$ sampled on a fine range grid is supported, since its effective window is computed once as the autocorrelation of $x(z)$ and then linearly interpolated at the range offset of every return. The waveform therefore adds no ray tracing, and every return costs the same as with the ideal sinc. The effective window is shared by all four imaging modalities.
 
 \begin{figure}[H]
   \centering
@@ -403,10 +417,58 @@ In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc win
   \label{fig:effective-windows}
 \end{figure}
 
+\subsection{Imaging Modalities}
+\label{sec:modalities-overview}
+
+The simulated signals are independent of how they are imaged, and the simulator forms images in
+four modalities, summarized in Table \ref{tab:modalities} and detailed in Appendix
+\ref{sec:modalities}. All four share the ray tracer, the material model of
+(\ref{eq:returned-energy}), and interposummation with any effective window $w(z)$, so the range
+resolution of every modality is set by the spatial bandwidth $B_s$ of the transmit waveform. They
+differ in how the rays are launched, how the returns are weighted, and how the signals are formed
+into an image.
+
+\textbf{Spotlight-mode SAR} casts the parallel ray grid of Figure \ref{fig:sig-sim} from each
+position of a circular or linear trajectory, aimed at the scene origin, and forms the image by
+convolution backprojection \cite{spotlightmodesar}. \textbf{Stripmap-mode SAR} images the signals
+of a linear trajectory by filtered backprojection along the exact range from each sensor position
+to each pixel, with the ramp filter applied after demodulation so that it nulls the carrier rather
+than baseband. Both integrate the pulses coherently when a wavelength is given.
+
+The sonars replace the planar wavefront with a point source. Each ping casts a fan of rays from the
+sensor, every return is attenuated by spherical spreading, and the beam pattern of the sensor
+weights each return on both transmit and receive. \textbf{Side-scan sonar} transmits its pings
+along a straight track with a fixed beam, adds absorption in the water and a time-varying gain, and
+stacks the range profiles along the track. \textbf{Forward-looking sonar} transmits from a single
+position and steers its beam across the scene. Since the sensor does not move, the beam is applied
+after ray tracing, and all $P$ pings share a single ray trace.
+
+\begin{table}[H]
+\caption{The four imaging modalities of the simulator. All share the ray tracer, the material model,
+and interposummation with an arbitrary transmit waveform, so range resolution is set by $B_s$ in
+every modality.}
+\label{tab:modalities}
+\centering
+\small
+\begin{tabular}{*{5}{>{\raggedright\arraybackslash}p{2.3cm}}}
+\toprule
+\textbf{Modality} & \textbf{Rays} & \textbf{Sensor motion} & \textbf{Cross-range resolution} & \textbf{Image formation} \\
+\midrule
+Spotlight SAR & Parallel grid per pulse & Circular or linear, aimed at the scene & Synthetic aperture & Convolution backprojection \\
+Stripmap SAR & Parallel grid per pulse & Linear & Synthetic aperture & Filtered backprojection on exact range \\
+Side-scan sonar & Point-source fan per ping & Linear, fixed beam & Beam width & Range profiles stacked along track \\
+Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam & Beam width & Range profiles stacked in azimuth \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}. All results in this section are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. The first experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+
+\subsection{Spotlight-Mode SAR}
+
 In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
         
 \begin{figure}[H]
@@ -448,7 +510,9 @@ In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength 
 In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
 ideal sinc of interposummation with the effective window $w(z)$ of the
 corresponding pulse-compression matched filter as described in Section
-\ref{sec:method} and illustrated in Figure \ref{fig:effective-windows}. We
+\ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}.
+The ray trace is identical across the panels, and only the effective window
+changes. We
 compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
 code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
 and Barker-13 reconstructions share a comparable range resolution but are
@@ -495,7 +559,7 @@ There are two ways to mitigate this effect: increasing the number of rays $(R_h,
 
 \subsection{Sensor Trajectory}
 
-In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses.
+In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses. The linear trajectory is the collection geometry of stripmap-mode SAR. Both are imaged here by convolution backprojection, and Appendix \ref{sec:stripmap-sar} shows that the stripmap-mode reconstruction of the same linear-trajectory signals matches it to within $1$~dB of dynamic range.
 
 \begin{figure}[H]
   \centering
@@ -526,8 +590,10 @@ In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved 
 
 \subsection{Forward-Looking Sonar Beam Width}
 
-The remaining experiments test the sonar modalities of Appendix \ref{sec:modalities} on a second car
-from the ShapeNet cars dataset. The car scatters almost entirely into the directional lobe and the
+The remaining experiments test the two sonar modalities of Section \ref{sec:modalities-overview}
+(Appendices \ref{sec:forward-looking} and \ref{sec:side-scan}) on a second car from the ShapeNet
+cars dataset. They use the same ray tracer, material model, and interposummation as the SAR
+experiments above. The car scatters almost entirely into the directional lobe and the
 seafloor mostly diffusely, so the car appears dark against the seafloor, apart from glints where its
 surface faces the sensor.
 
@@ -678,24 +744,32 @@ breaks into dots and rings.
 
 \section{Conclusions}
 \label{sec:conclusion}
-In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch
-that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and configurable radar
-parameters such as wavelength, bandwidth, sample rate, and material properties. It addresses the
-limitations of existing open-source tools such as \emph{RaySAR} and \emph{CVDomes}, which are
-constrained in mode support and rely on outdated software such as MATLAB.
+In this paper, we presented an open-source, GPU-accelerated SAR and sonar simulator implemented
+in PyTorch that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and
+configurable sensor parameters such as wavelength, bandwidth, sample rate, transmit waveform, and
+material properties. From a single ray-traced signal model it renders four imaging modalities:
+spotlight-mode SAR, stripmap-mode SAR, side-scan sonar, and forward-looking sonar. It addresses the
+limitations of existing open-source tools such as \emph{RaySAR} and \emph{CVDomes}, which are each
+constrained to a single SAR mode, do not simulate sonar, and rely on outdated software such as
+MATLAB.
 
 The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
-summation and interpolation of ray returns, accounting for the radar system's bandwidth and
-sampling rate. This allows the simulator to generate physically meaningful signals without
-aliasing or distortion due to improper interpolation.
+summation and interpolation of ray returns, accounting for the sensor's bandwidth and sampling
+rate. This allows the simulator to generate physically meaningful signals without aliasing or
+distortion due to improper interpolation. Interposummation extends to arbitrary transmit waveforms
+by replacing its ideal sinc with the effective window of the waveform's matched filter, so sinc,
+Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
+the same cost, with the range sidelobes of a real pulse-compression system.
 
-We conducted a series of experiments using spotlight-mode SAR simulations over ShapeNet car models
-while varying key parameters such as radar bandwidth, wavelength, and sampling rate. These
-experiments demonstrate how system parameters influence image quality and signal fidelity. In
-particular, we observed that excessive oversampling of the energy-range scatter leads to poor
-signal quality and numerical artifacts. This can be mitigated either by reducing the effective
-bandwidth, which lowers the required sampling rate, or by increasing the ray density to maintain
-consistent energy coverage across the target surface.
+We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
+sonar, and forward-looking sonar, while varying key parameters such as aperture, transmit
+waveform, bandwidth, wavelength, sampling rate, sensor trajectory, and beam width, and validated
+the stripmap-mode reconstruction against spotlight mode. These experiments demonstrate how system
+parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
+sonar that excessive oversampling of the energy-range scatter leads to poor signal quality and
+numerical artifacts. This can be mitigated either by reducing the effective bandwidth, which lowers
+the required sampling rate, or by increasing the ray density to maintain consistent energy
+coverage across the target surface.
 Future work will extend the simulator to support arbitrary flight paths, synthetic aperture SONAR,
 and simulations that include jamming, broadening its applicability to a wider set of radar and
 sonar scenarios.
