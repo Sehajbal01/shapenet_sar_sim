@@ -318,6 +318,51 @@ def generate_linear_sar_comparison_figure(
     return output_path
 
 
+def generate_modality_comparison_figure(
+    num_examples=4,
+    output_path='figures/modality_comparison.png',
+    split='cars_train',
+    seed=8134,
+):
+    """Create a 4-row figure with RGB, CBP SAR, and side scan sonar panels, rendered as the dataset is."""
+    # lazy: generate_dataset imports this module
+    import generate_dataset as gd
+
+    modalities = ('cbp_sar', 'side_scan_sonar')
+    dataset_dir = srn_split_dir(split)
+    obj_ids = sorted(os.listdir(dataset_dir))
+    rng = np.random.RandomState(seed)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    fig, axes = plt.subplots(num_examples, 3, figsize=(9, 3.2 * num_examples), squeeze=False)
+
+    for row_idx in range(num_examples):
+        obj_id = obj_ids[rng.randint(0, len(obj_ids))]
+        object_dir = os.path.join(dataset_dir, obj_id)
+        mesh_path = os.path.join(SHAPENET_CARS_DIR, obj_id, 'models', 'model_normalized.obj')
+
+        # one random pose from the dataset's elevation band
+        pose_nums, poses, _, _ = gd.plan_object(obj_id, split, True, None, True,
+                                                (gd.MIN_ELEVATION_DEG, gd.MAX_ELEVATION_DEG), modalities)
+        pose_num = pose_nums[rng.randint(0, len(pose_nums))]
+        gd.render_poses(obj_id, object_dir, mesh_path, {pose_num: modalities}, 1, poses,
+                        'cuda', False, True, modalities, False)
+
+        rgb = np.array(PIL.Image.open(os.path.join(object_dir, 'rgb', f'{pose_num}.png')))[..., :3]
+        panels = [rgb] + [np.array(PIL.Image.open(gd.output_path(object_dir, obj_id, pose_num, m, True)))
+                          for m in modalities]
+        for col_idx, panel in enumerate(panels):
+            axes[row_idx, col_idx].imshow(panel, cmap='gray', vmin=0, vmax=255)
+            axes[row_idx, col_idx].axis('off')
+        print(f'row {row_idx}: {obj_id} pose {pose_num}, elevation {poses[pose_num][2]:.1f} deg')
+
+    fig.subplots_adjust(wspace=0.02, hspace=0.1)
+    fig.savefig(output_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print(f'Saved comparison figure to: {output_path}')
+    return output_path
+
+
 def run_sar_paper_experiments(experiments=SAR_PAPER_EXPERIMENTS, baseline=SAR_PAPER_BASELINE):
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}

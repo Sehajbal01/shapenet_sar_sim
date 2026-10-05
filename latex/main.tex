@@ -49,7 +49,7 @@ SAR simulators are crucial for developing and validating radar algorithms when r
 Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility and rely on outdated software.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the radar system's wavelength, bandwidth, and sample rate. We use two bounces from each ray. Given signals collected over a range of azimuth and elevation angles, imaging algorithms such as spotlight-mode \cite{spotlightmodesar} or stripmap-mode SAR can be used. Figure \ref{fig:linear-sar} highlights this flexibility, reconstructing both spotlight-mode and stripmap-mode SAR images from the same set of simulated signals for four different ShapeNet car models.
+The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the radar system's wavelength, bandwidth, and sample rate. We use two bounces from each ray. Given signals collected over a range of azimuth and elevation angles, imaging algorithms such as spotlight-mode \cite{spotlightmodesar} or stripmap-mode SAR can be used. Figure \ref{fig:modality-comparison} highlights this flexibility, rendering both a convolution backprojection (CBP) SAR image and a side scan sonar (SSS) image of four different ShapeNet car models with the same simulator.
 
 Figure \ref{fig:main-fig} showcases an example of our simulator on a ShapeNet \cite{shapenet} car
 model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b with a mean azimuth
@@ -90,15 +90,15 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.6\textwidth]{figs/linear_sar_comparison.png}
+    \includegraphics[width=0.6\textwidth]{figs/modality_comparison.png}
     \par\vspace{2pt}
     \makebox[0.6\textwidth]{%
         \makebox[0.19\textwidth]{(\textbf{a})}\hfill
         \makebox[0.19\textwidth]{(\textbf{b})}\hfill
         \makebox[0.19\textwidth]{(\textbf{c})}%
     }
-    \caption{Both spotlight-mode and stripmap-mode imaging from the same simulated signals for four ShapeNet \cite{shapenet} car models. (\textbf{a}) RGB image of each model, (\textbf{b}) spotlight-mode SAR image, and (\textbf{c}) stripmap-mode SAR image.}
-    \label{fig:linear-sar}
+    \caption{SAR and sonar imaging of four ShapeNet \cite{shapenet} car models with our simulator. (\textbf{a}) RGB image of each model, (\textbf{b}) CBP SAR image, and (\textbf{c}) side scan sonar image.}
+    \label{fig:modality-comparison}
 \end{figure}
 
 \begin{figure}[H]
