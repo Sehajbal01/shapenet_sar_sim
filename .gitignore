@@ -32,3 +32,7 @@ run_log.txt
 # Keep the MDPI template class files (logo PDFs) tracked
 !latex/Definitions/
 !latex/Definitions/**
+
+# Dataset generation logs and progress markers
+logs/
+latex/figs/*.log
