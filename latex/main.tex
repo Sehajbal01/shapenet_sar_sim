@@ -390,6 +390,7 @@ $ is then given by
     ,
 \end{equation}
 where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. One may view the ideal band-limited digital signal in (\ref{eq:interposummation}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
+Appendix \ref{sec:modalities} describes the imaging algorithms applied to the simulated signals.
 
 Each transmit waveform therefore replaces the ideal sinc of interposummation with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
 
@@ -403,6 +404,322 @@ In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc win
 \end{figure}
 
 
+\section{Experiments}
+\label{sec:experiments}
+We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}. All results in this section are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_az_spread.png}
+  \caption{Varying the azimuth spread in our simulation.}
+  \label{fig:az-spread}
+\end{figure}
+
+In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of transmitted pulses in our simulation. With a small number of pulses, the reconstructed image appears coarse and lacks definition. As the pulse count increases, the image quality improves noticeably, revealing sharper boundaries and more distinct structural features of the target.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_num_pulse.png}
+  \caption{Effect of varying the number of pulses in our simulation.}
+  \label{fig:num-pulse}
+\end{figure}
+
+In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (SNR) in decibels (dB) influences the quality of the simulated SAR image. In real SAR scenarios SNR decreases as range to the target increases. At low SNR values (around 0 dB), the image is dominated by noise, obscuring most structural details. As the SNR increases toward 22 dB, the object becomes clearly resolved, with well-defined features. SNR is calculated as an average over all signals used to generate the spotlight-mode SAR image.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_snrdb.png}
+  \caption{Varying the SNR in our simulation.}
+  \label{fig:snr}
+\end{figure}
+
+In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals in both spotlight-mode and stripmap-mode SAR. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
+  \caption{Varying the wavelength in our simulation with coherent integration.}
+  \label{fig:wavelength}
+\end{figure}
+
+\subsection{Transmit Waveform}
+
+In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
+ideal sinc of interposummation with the effective window $w(z)$ of the
+corresponding pulse-compression matched filter as described in Section
+\ref{sec:method} and illustrated in Figure \ref{fig:effective-windows}. We
+compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
+code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
+and Barker-13 reconstructions share a comparable range resolution but are
+accompanied by the range sidelobes characteristic of each waveform, which
+appear as faint replicas alongside the strong scatterers. The Gaussian pulse
+produces no range sidelobes, but it does a poor job of suppressing
+out-of-bandwidth frequencies, leaving much of its energy outside the allotted
+band $\pm B_s/2$. Its gradual roll-off also tapers the in-band response, which
+costs coherent gain and yields the visibly dimmer reconstruction in Figure
+\ref{fig:waveform}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_waveform.png}
+  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
+  \label{fig:waveform}
+\end{figure}
+
+\subsection{Bandwidth and Ray Density}
+
+In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. The images are shown in dB scale with a shared DC maximum. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation, and the reconstructed SAR image degrades.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_fsbw.png}
+  \caption{Varying the spatial sample rate and bandwidth in our simulation. Images are dB-scaled and share a common DC maximum.}
+  \label{fig:fsbw}
+\end{figure}
+
+We further look into this problem in Figure \ref{fig:signals-square}. The figure presents the energy-range scatter plot (Figure \ref{fig:signals-square}.a) together with the corresponding interposummed signals at different bandwidth/sample rates (Figure \ref{fig:signals-square}.b-d). The signal appears clean at $F_s = B_s = 128$, whereas increasing the sampling rate and bandwidth to $256$ and $512$ results in the emergence of distinct artifacts from the Dirac delta functions as described in (\ref{eq:returned-scatters}).
+\begin{figure}[H]
+    \centering
+    \subfloat[\centering\label{fig:scatters}]{\includegraphics[width=0.38\textwidth]{figs/scatters.png}}
+    \hfill
+    \subfloat[\centering\label{fig:signal-clean}]{\includegraphics[width=0.38\textwidth]{figs/signal_clean.png}}\\
+    \subfloat[\centering\label{fig:signal-dirty}]{\includegraphics[width=0.38\textwidth]{figs/signal_dirty.png}}
+    \hfill
+    \subfloat[\centering\label{fig:signal-nasty}]{\includegraphics[width=0.38\textwidth]{figs/signal_nasty.png}}
+    \caption{Comparison of the energy-range scatter (\textbf{a}), and the signal at an $F_s=B_s$ of 128 (\textbf{b}), 256 (\textbf{c}), and 512 (\textbf{d}). Oversampling the energy-range scatter results in a jagged signal.}
+    \label{fig:signals-square}
+\end{figure}
+
+There are two ways to mitigate this effect: increasing the number of rays $(R_h, R_w)$, and decreasing the spatial bandwidth $B_s$. A denser ray grid allows for more scatters near the center of the sinc pulses in interposummation, which reduces the variable sums between neighboring sincs. Decreasing the spatial bandwidth $B_s$ of the interposummation accomplishes the same goal, but by widening the sinc pulses to accumulate more scatters instead of adding more scatters. The trade-offs between the two solutions are that increasing the ray density increases the computational complexity, and decreasing the bandwidth reduces image quality.
+
+\subsection{Sensor Trajectory}
+
+In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.5\textwidth]{figs/sar_stitched_trajectory_type.png}
+  \caption{Comparison of circular and linear sensor trajectories in our simulation.}
+  \label{fig:trajectory-type}
+\end{figure}
+
+In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
+  \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
+  \label{fig:trajectory-noise}
+\end{figure}
+
+\subsection{Sphere Rendering}
+
+In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved scales ($1$, $1/2$, $1/4$, $1/8$, and $1/16$ of the mesh's native size), with the ground plane removed and the pulse count raised to $256$ to resolve the smaller targets. As the sphere shrinks, its return contracts toward the image center while preserving the curved signature of the illuminated surface. The curve of this signature tightens as the scale decreases, and at the smallest scales the return collapses toward a compact response resembling that of a point scatterer. The sidelobes of the response appear in all directions around the target: because the sphere backscatters equally from every observable angle, the sidelobe energy is distributed symmetrically, producing the concentric ring pattern visible around each target.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
+  \caption{SAR reconstruction of a sphere at decreasing scale, shown in dB, with the scale factor labeled above each subplot.}
+  \label{fig:sphere-size}
+\end{figure}
+
+\subsection{Forward-Looking Sonar Beam Width}
+
+The remaining experiments test the sonar modalities of Appendix \ref{sec:modalities} on a second car
+from the ShapeNet cars dataset. The car scatters almost entirely into the directional lobe and the
+seafloor mostly diffusely, so the car appears dark against the seafloor, apart from glints where its
+surface faces the sensor.
+
+In Figure \ref{fig:fls-beam-width}, we vary the azimuth beam width $\beta$ of the forward-looking
+sonar of Appendix \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$. The sensor
+sits at a range of $\lVert\vec{v}\rVert = 1.3$ and an elevation of $e = 40.6^\circ$, and steers
+$P = 128$ pings across $\Theta_p = 50^\circ$, one every $0.39^\circ$. Its fan of
+$R_h \times R_w = 1024 \times 1024$ rays spans $\Theta_h = 100^\circ$ in elevation and
+$\Theta_w = 60^\circ$ in azimuth. The $M = 128$ rows run from $\rho_{near} = 0.75$ to
+$\rho_{far} = 3$, the pulse is Gaussian with $B_s = 30$, and no wavelength is given. Each panel is
+shown in dB relative to its own peak, with a floor of $-60$~dB.
+
+At $0.1^\circ$, the car and its shadow form a sharp dark silhouette on the seafloor, crossed by
+bright glints. The $0.1^\circ$ and $0.32^\circ$ images are nearly identical, because both beams are
+narrower than the spacing of the pings, which then sets the azimuth resolution: the $10$--$90\%$
+width of the edge of the silhouette is $0.39^\circ$, a single ping, in both. From $1^\circ$ on, the
+beam sets the resolution, and the edge widens with it, to $0.79^\circ$ at $1^\circ$, $2.4^\circ$ at
+$3.16^\circ$, and $7.5^\circ$ at $10^\circ$, where the silhouette blurs into a dark smear and the
+glints into streaks of constant range. Range is unaffected, since it is resolved by $B_s$. The peak
+grows roughly in proportion to $\beta$, from $1.2\times10^{-7}$ at $0.1^\circ$ to
+$8.9\times10^{-6}$ at $10^\circ$. The fan is the same at every width, and the beam pattern peaks at
+$1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into each ping.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/fls_stitched_beam_width.png}
+  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
+  colorbar.}
+  \label{fig:fls-beam-width}
+\end{figure}
+
+\subsection{Forward-Looking Sonar Bandwidth}
+
+In Figure \ref{fig:fls-fsbw}, we vary the spatial bandwidth $B_s$ of the forward-looking sonar from
+$4$ to $512$ in powers of two, with $F_s = 2B_s$ and the other settings of Figure
+\ref{fig:fls-beam-width} at $\beta = 1^\circ$. The Gaussian pulse has an amplitude full width at
+half maximum of $0.62/B_s$, which spans $8.8$ rows at $B_s = 4$ and one row at $B_s \approx 35$.
+
+At $B_s = 4$, the silhouette of the car is smeared in range, and the bright returns at the near edge
+of the image spill into its bottom rows. Those rows lie nearer than the seafloor directly beneath
+the sensor, at a range of $0.85$, and go dark as the bandwidth grows. The car sharpens in range with
+the bandwidth, and by $B_s = 32$ its outline and glints are resolved. The peak lies at the near edge
+of the image in front of the car, and from $B_s = 16$ on it roughly halves with every doubling of
+$B_s$, from $2.0\times10^{-6}$ to $9.0\times10^{-8}$ at $B_s = 512$. This is the signature of returns
+spread continuously over range, of which a narrower pulse gathers fewer.
+
+From $B_s = 128$ on, concentric rings centered on boresight appear in the seafloor behind the car.
+This is the ray density effect of Figure \ref{fig:signals-square}. The pulse has become narrower
+than the range spacing between the seafloor returns of neighboring rays, which grows with range as
+the fan meets the seafloor at ever shallower angles, from $0.0026$ at the range of the car to
+$0.0073$ at a range of $2$. Each signal then resolves the returns of individual rays, and the dark
+rings trace the pixels whose ranges fall between them. Just behind the car, the standard deviation
+of the seafloor is about $3$~dB for $B_s \le 64$, but $12$~dB at $B_s = 256$ and $32$~dB at $512$,
+where the dark rings are nulls. As with SAR, a denser fan or a lower bandwidth removes the rings:
+raising $R_h$ from $1024$ to $4096$ at $B_s = 512$ is enough.
+
+\begin{figure}[H]
+  \begin{adjustwidth}{-\extralength}{0cm}
+  \centering
+  \includegraphics[width=\fulllength]{figs/fls_stitched_spatial_bw.png}
+  \end{adjustwidth}
+  \caption{Forward-looking sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
+  $F_s = 2B_s$. Each panel is in dB relative to its own peak, printed beneath its colorbar.}
+  \label{fig:fls-fsbw}
+\end{figure}
+
+\subsection{Side-Scan Sonar Beam Width}
+
+In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the side-scan sonar of
+Appendix \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$. The platform passes the
+car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
+$\lVert\bar{\vec{v}}\rVert = 10$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
+spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $S_\ell = S_\rho = 1.1$.
+Each ping casts a fan of $R_h \times R_w = 700 \times 250$ rays over $\Theta_h = 30^\circ$ in
+elevation and $\Theta_w = 3\beta$ in azimuth. The $250$ azimuth rays are enough for the image to
+converge even at $10^\circ$, where they are spread the most sparsely. The pulse is Gaussian with
+$B_s = 30$, the time-varying gain is $\eta = 10$, and no wavelength is given, so the returns add
+without their carrier phase.
+
+At the range of the car, $\rho \approx 10$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.017$ of
+the track, about two pixels, and the image resolves the outline of the car. The returns of the car
+lie at near range, and behind them the car casts an acoustic shadow in which the seafloor returns
+almost nothing. As the beam widens, each return is smeared along the track over $\rho\beta$ while
+its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.17$, and
+at $3.16^\circ$ the beam covers half of the image and the car stretches into streaks that span it.
+At $10^\circ$, $\rho\beta \approx 1.7$ exceeds the width of the image, so every ping hears nearly
+the whole car and each row is almost constant: the standard deviation of a row averages $3.5\%$ of
+its mean, against $44\%$ at $0.1^\circ$. The streaks stay at the same ranges as the car in the
+$0.1^\circ$ panel, since range resolution is set by $B_s$ rather than $\beta$. The shadow fills in
+as well, since a ping whose beam reaches past the ends of the car hears unshadowed seafloor at the
+ranges of the shadow. Its mean amplitude rises from $0.3\%$ of the seafloor's at $0.1^\circ$ to
+$71\%$ at $10^\circ$.
+
+Each panel is normalized to its own peak, printed beneath its colorbar. Unlike the fixed fan of
+Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same number of rays falls
+under the beam at every width. Widening the beam therefore averages the brightest returns of the car
+with their darker surroundings, and the peak falls from $7.6\times10^2$ at $0.1^\circ$ to
+$1.6\times10^2$ at $10^\circ$. The seafloor is uniform along the
+track, so the averaging leaves it unchanged, and its median amplitude agrees to within about $1\%$
+across the panels. Relative to the falling peak, it brightens into the gray background of the
+$10^\circ$ panel.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
+  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$. Along-track position runs horizontally and slant range vertically,
+  with near range at the bottom. Each panel is normalized to its own peak, printed beneath its
+  colorbar.}
+  \label{fig:ss-beam-width}
+\end{figure}
+
+\subsection{Side-Scan Sonar Bandwidth}
+
+In Figure \ref{fig:ss-fsbw}, we vary the spatial bandwidth $B_s$ of the side-scan sonar from $4$ to
+$512$ in powers of two, with $F_s = 2B_s$ and the geometry of Figure \ref{fig:ss-beam-width}. Each
+ping casts a single ray in azimuth, on boresight, so the beam does not blur the image along the
+track and only its range resolution changes. The pulse width of $0.62/B_s$ spans $18$ rows at
+$B_s = 4$ and one row at $B_s \approx 72$.
+
+At $B_s = 4$, the car is a blur, and the returns smeared into its shadow fill it to $90\%$ of the
+level of the seafloor. As the bandwidth grows the shadow empties, to $33\%$ at $B_s = 8$ and $7\%$
+at $16$, and by $B_s = 32$ the outline of the car, its shadow, and the edges of its body are sharp.
+The seafloor is a continuum of returns, so its amplitude halves with every doubling of $B_s$, from a
+median of $890$ at $B_s = 4$ to $27$ at $128$. The brightest returns of the car are compact in range
+and fall more slowly, so the ratio of the peak to the seafloor grows from $6$ to $34$ over the same
+span, and the seafloor darkens in the normalized panels.
+
+At $B_s = 256$ and $512$, the pulse is narrower than the $0.0044$ range spacing between the seafloor
+returns of neighboring rays near the car, and the rings of Figure \ref{fig:fls-fsbw} appear here as
+horizontal stripes. Every ping sees the same flat seafloor through the same fan, so the returns of
+every ping fall at the same ranges, and a row that falls between them is dim along the whole track.
+Across the rows of the far seafloor, the row mean varies by $3\%$, one standard deviation, for
+$16 \le B_s \le 64$, but by $42\%$ at $B_s = 256$ and $118\%$ at $512$. The curved body of the car
+breaks into dots and rings.
+
+\begin{figure}[H]
+  \begin{adjustwidth}{-\extralength}{0cm}
+  \centering
+  \includegraphics[width=\fulllength]{figs/side_scan_stitched_spatial_bw.png}
+  \end{adjustwidth}
+  \caption{Side-scan sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
+  $F_s = 2B_s$, laid out as in Figure \ref{fig:ss-beam-width}. Each panel is normalized to its own
+  peak, printed beneath its colorbar.}
+  \label{fig:ss-fsbw}
+\end{figure}
+
+\section{Conclusions}
+\label{sec:conclusion}
+In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch
+that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and configurable radar
+parameters such as wavelength, bandwidth, sample rate, and material properties. It addresses the
+limitations of existing open-source tools such as \emph{RaySAR} and \emph{CVDomes}, which are
+constrained in mode support and rely on outdated software such as MATLAB.
+
+The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
+summation and interpolation of ray returns, accounting for the radar system's bandwidth and
+sampling rate. This allows the simulator to generate physically meaningful signals without
+aliasing or distortion due to improper interpolation.
+
+We conducted a series of experiments using spotlight-mode SAR simulations over ShapeNet car models
+while varying key parameters such as radar bandwidth, wavelength, and sampling rate. These
+experiments demonstrate how system parameters influence image quality and signal fidelity. In
+particular, we observed that excessive oversampling of the energy-range scatter leads to poor
+signal quality and numerical artifacts. This can be mitigated either by reducing the effective
+bandwidth, which lowers the required sampling rate, or by increasing the ray density to maintain
+consistent energy coverage across the target surface.
+Future work will extend the simulator to support arbitrary flight paths, synthetic aperture SONAR,
+and simulations that include jamming, broadening its applicability to a wider set of radar and
+sonar scenarios.
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\vspace{6pt}
+
+%\authorcontributions{}
+
+\funding{This work was supported by STR (under a contract with DARPA) and Arete (with STTR research funding).}
+
+\dataavailability{The simulator source code is available at \url{https://github.com/alexberian/PyTorch-SAR-SONAR/}.}
+
+%\acknowledgments{}
+
+%\conflictsofinterest{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendixtitles{yes}
+\appendixstart
+\appendix
 \section{Imaging Modalities}
 \label{sec:modalities}
 
@@ -556,7 +873,10 @@ water,
     ,
     \label{eq:ss-energy}
 \end{equation}
-where $\kappa$ is the absorption coefficient in nepers per unit length. Their azimuths
+where $\kappa$ is the absorption coefficient in nepers per unit length. The spreading loss
+$4 \pi z_k^2$ can be disabled by setting \texttt{spherical\_spread} to False in the side-scan
+configuration, as in Table \ref{tab:sss-params}, which leaves only the normalization by the
+number of rays. Their azimuths
 $\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
 with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
 rather than always lying near $0$.
@@ -704,355 +1024,128 @@ same signals agree to within $1$~dB of dynamic range. The far-field approximatio
 for the exact range in (\ref{eq:naive-bp}) and (\ref{eq:filtered-bp}), and affects neither the
 pedestal nor the analysis above.
 
-
-\section{Experiments}
-\label{sec:experiments}
-We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params}. All results in this section are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+\section{Default Parameters}
+\label{app:params}
+Tables \ref{tab:params}, \ref{tab:sss-params} and \ref{tab:fls-params} list the default parameters of spotlight-mode SAR, side-scan sonar and forward-looking sonar. The sonar baselines image the car at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
 \begin{table}[H]
 \centering
-\caption{Default experiment parameters, matching the \texttt{SAR\_PAPER\_BASELINE} in \texttt{sar\_paper\_figures.py}.}
+\caption{Default SAR experiment parameters, matching \texttt{sar\_baseline} in \texttt{config.json}.}
 \label{tab:params}
 \begin{tabular}{lll}
 \toprule
 \textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
 \midrule
 $P$                       & num\_pulse             & $64$ \\
-$\Delta a$            & azimuth\_spread        & $90^\circ$ \\
-$B_s$                     & spatial\_bw            & $73$ \\
-$F_s$                     & spatial\_fs            & $73$ \\
+$\Delta a$                & azimuth\_spread        & $135^\circ$ \\
+$a$                       & azimuth\_deg           & $0^\circ$ \\
+$e$                       & elevation\_deg         & $33^\circ$ \\
+$B_s$                     & spatial\_bw            & $30$ \\
+$F_s$                     & spatial\_fs            & $60$ \\
 $\lambda$                 & wavelength             & $0.5$ \\
 SNR                       & snr\_db                & $50$~dB \\
 $\sigma^2$                & trajectory\_noise\_var & $0$ \\
-$R_w$                     & n\_ray\_width          & $128$ \\
-$R_h$                     & n\_ray\_height         & $128$ \\
+$R_w$                     & n\_ray\_width          & $208$ \\
+$R_h$                     & n\_ray\_height         & $208$ \\
 $W_g$                     & grid\_width            & $1.2$ \\
 $H_g$                     & grid\_height           & $1.2$ \\
-$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids            & $(0.8, 0.0, 0.9, 0.1, 0.2)$ \\
-$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids         & $(0.5, 0.0, 0.8, 0.2, 0.5)$ \\
+$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids            & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
+$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids         & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+\multicolumn{1}{c}{--} & waveform               & gaussian \\
 \multicolumn{1}{c}{--} & num\_bounce            & $2$ \\
 \multicolumn{1}{c}{--} & image\_width           & $128$ \\
 \multicolumn{1}{c}{--} & image\_height          & $128$ \\
-\multicolumn{1}{c}{--} & image\_plane\_width    & $1$ \\
-\multicolumn{1}{c}{--} & image\_plane\_height   & $1$ \\
-\multicolumn{1}{c}{--} & region\_radius         & $1.7$ \\
-\multicolumn{1}{c}{--} & trajectory\_type       & circular \\
+\multicolumn{1}{c}{--} & image\_plane\_width    & $1.2$ \\
+\multicolumn{1}{c}{--} & image\_plane\_height   & $1.2$ \\
+\multicolumn{1}{c}{--} & region\_radius         & $1.4$ \\
+\multicolumn{1}{c}{--} & trajectory\_type       & linear \\
 \multicolumn{1}{c}{--} & imaging\_algorithm     & cbp \\
 \multicolumn{1}{c}{--} & cbp\_batch\_size       & $4096$ \\
-\multicolumn{1}{c}{--} & use\_sig\_magnitude    & False \\
+\multicolumn{1}{c}{--} & signal\_interpolation  & bilinear \\
+\multicolumn{1}{c}{--} & use\_sig\_magnitude    & True \\
+\multicolumn{1}{c}{--} & compression            & linear \\
 \multicolumn{1}{c}{--} & object\_x\_flip        & False \\
 \multicolumn{1}{c}{--} & object\_rotate\_xyz    & $(90^\circ, 0^\circ, 0^\circ)$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_az_spread.png}
-  \caption{Varying the azimuth spread in our simulation.}
-  \label{fig:az-spread}
-\end{figure}
+\begin{table}[H]
+\centering
+\caption{Default side-scan sonar parameters, matching \texttt{side\_scan\_sonar\_baseline} in \texttt{config.json}.}
+\label{tab:sss-params}
+\begin{tabular}{lll}
+\toprule
+\textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
+\midrule
+$(a,e)$                    & pose\_num                & 000043 $(345.0^\circ, 59.3^\circ)$ \\
+$\lVert\bar{\vec{v}}\rVert$ & sensor\_distance         & $7.5$ \\
+$L$                        & track\_length            & $1.2$ \\
+$P$                        & num\_pings               & $128$ \\
+$\Theta_h$                 & elevation\_fov\_deg      & $23^\circ$ \\
+$\beta$                    & azimuth\_beam\_width\_deg & $0.1^\circ$ \\
+$R_w$                      & num\_ray\_width          & $1$ \\
+$R_h$                      & num\_ray\_height         & $550$ \\
+$W$                        & image\_width             & $128$ \\
+$H$                        & image\_height            & $128$ \\
+$S_\ell$                   & image\_cross\_range\_swath & $1.2$ \\
+$S_\rho$                   & image\_range\_swath      & $1.2$ \\
+$\lambda$                  & wavelength               & None \\
+$B_s$                      & spatial\_bw              & $30$ \\
+$F_s$                      & spatial\_fs              & $60$ \\
+$\kappa$                   & water\_absorption        & $0$ \\
+$\eta$                     & tvg\_exponent            & $0$ \\
+$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
+$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+\multicolumn{1}{c}{--}     & waveform                 & gaussian \\
+\multicolumn{1}{c}{--}     & spherical\_spread        & False \\
+\multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
+\multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
+\multicolumn{1}{c}{--}     & compression              & dB \\
+\multicolumn{1}{c}{--}     & db\_floor                & $-60$~dB \\
+\multicolumn{1}{c}{--}     & make\_ground             & True \\
+\multicolumn{1}{c}{--}     & level\_with\_ground      & True \\
+\multicolumn{1}{c}{--}     & object\_x\_flip          & False \\
+\multicolumn{1}{c}{--}     & object\_rotate\_xyz      & $(90^\circ, 0^\circ, 0^\circ)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of transmitted pulses in our simulation. With a small number of pulses, the reconstructed image appears coarse and lacks definition. As the pulse count increases, the image quality improves noticeably, revealing sharper boundaries and more distinct structural features of the target.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_num_pulse.png}
-  \caption{Effect of varying the number of pulses in our simulation.}
-  \label{fig:num-pulse}
-\end{figure}
-
-In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (SNR) in decibels (dB) influences the quality of the simulated SAR image. In real SAR scenarios SNR decreases as range to the target increases. At low SNR values (around 0 dB), the image is dominated by noise, obscuring most structural details. As the SNR increases toward 22 dB, the object becomes clearly resolved, with well-defined features. SNR is calculated as an average over all signals used to generate the spotlight-mode SAR image.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_snrdb.png}
-  \caption{Varying the SNR in our simulation.}
-  \label{fig:snr}
-\end{figure}
-
-In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals in both spotlight-mode and stripmap-mode SAR. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
-  \caption{Varying the wavelength in our simulation with coherent integration.}
-  \label{fig:wavelength}
-\end{figure}
-
-\subsection{Transmit Waveform}
-
-In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
-ideal sinc of interposummation with the effective window $w(z)$ of the
-corresponding pulse-compression matched filter as described in Section
-\ref{sec:method} and illustrated in Figure \ref{fig:effective-windows}. We
-compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
-code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
-and Barker-13 reconstructions share a comparable range resolution but are
-accompanied by the range sidelobes characteristic of each waveform, which
-appear as faint replicas alongside the strong scatterers. The Gaussian pulse
-produces no range sidelobes, but it does a poor job of suppressing
-out-of-bandwidth frequencies, leaving much of its energy outside the allotted
-band $\pm B_s/2$. Its gradual roll-off also tapers the in-band response, which
-costs coherent gain and yields the visibly dimmer reconstruction in Figure
-\ref{fig:waveform}.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_waveform.png}
-  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
-  \label{fig:waveform}
-\end{figure}
-
-\subsection{Bandwidth and Ray Density}
-
-In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. The images are shown in dB scale with a shared DC maximum. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation, and the reconstructed SAR image degrades.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_fsbw.png}
-  \caption{Varying the spatial sample rate and bandwidth in our simulation. Images are dB-scaled and share a common DC maximum.}
-  \label{fig:fsbw}
-\end{figure}
-
-We further look into this problem in Figure \ref{fig:signals-square}. The figure presents the energy-range scatter plot (Figure \ref{fig:signals-square}.a) together with the corresponding interposummed signals at different bandwidth/sample rates (Figure \ref{fig:signals-square}.b-d). The signal appears clean at $F_s = B_s = 128$, whereas increasing the sampling rate and bandwidth to $256$ and $512$ results in the emergence of distinct artifacts from the Dirac delta functions as described in (\ref{eq:returned-scatters}).
-\begin{figure}[H]
-    \centering
-    \subfloat[\centering\label{fig:scatters}]{\includegraphics[width=0.38\textwidth]{figs/scatters.png}}
-    \hfill
-    \subfloat[\centering\label{fig:signal-clean}]{\includegraphics[width=0.38\textwidth]{figs/signal_clean.png}}\\
-    \subfloat[\centering\label{fig:signal-dirty}]{\includegraphics[width=0.38\textwidth]{figs/signal_dirty.png}}
-    \hfill
-    \subfloat[\centering\label{fig:signal-nasty}]{\includegraphics[width=0.38\textwidth]{figs/signal_nasty.png}}
-    \caption{Comparison of the energy-range scatter (\textbf{a}), and the signal at an $F_s=B_s$ of 128 (\textbf{b}), 256 (\textbf{c}), and 512 (\textbf{d}). Oversampling the energy-range scatter results in a jagged signal.}
-    \label{fig:signals-square}
-\end{figure}
-
-There are two ways to mitigate this effect: increasing the number of rays $(R_h, R_w)$, and decreasing the spatial bandwidth $B_s$. A denser ray grid allows for more scatters near the center of the sinc pulses in interposummation, which reduces the variable sums between neighboring sincs. Decreasing the spatial bandwidth $B_s$ of the interposummation accomplishes the same goal, but by widening the sinc pulses to accumulate more scatters instead of adding more scatters. The trade-offs between the two solutions are that increasing the ray density increases the computational complexity, and decreasing the bandwidth reduces image quality.
-
-\subsection{Sensor Trajectory}
-
-In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.5\textwidth]{figs/sar_stitched_trajectory_type.png}
-  \caption{Comparison of circular and linear sensor trajectories in our simulation.}
-  \label{fig:trajectory-type}
-\end{figure}
-
-In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
-  \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
-  \label{fig:trajectory-noise}
-\end{figure}
-
-\subsection{Sphere Rendering}
-
-In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved scales ($1$, $1/2$, $1/4$, $1/8$, and $1/16$ of the mesh's native size), with the ground plane removed and the pulse count raised to $256$ to resolve the smaller targets. As the sphere shrinks, its return contracts toward the image center while preserving the curved signature of the illuminated surface. The curve of this signature tightens as the scale decreases, and at the smallest scales the return collapses toward a compact response resembling that of a point scatterer. The sidelobes of the response appear in all directions around the target: because the sphere backscatters equally from every observable angle, the sidelobe energy is distributed symmetrically, producing the concentric ring pattern visible around each target.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
-  \caption{SAR reconstruction of a sphere at decreasing scale, shown in dB, with the scale factor labeled above each subplot.}
-  \label{fig:sphere-size}
-\end{figure}
-
-\subsection{Forward-Looking Sonar Beam Width}
-
-The remaining experiments test the sonar modalities of Section \ref{sec:modalities} on a second car
-from the ShapeNet cars dataset. The car scatters almost entirely into the directional lobe and the
-seafloor mostly diffusely, so the car appears dark against the seafloor, apart from glints where its
-surface faces the sensor.
-
-In Figure \ref{fig:fls-beam-width}, we vary the azimuth beam width $\beta$ of the forward-looking
-sonar of Section \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$. The sensor
-sits at a range of $\lVert\vec{v}\rVert = 1.3$ and an elevation of $e = 40.6^\circ$, and steers
-$P = 128$ pings across $\Theta_p = 50^\circ$, one every $0.39^\circ$. Its fan of
-$R_h \times R_w = 1024 \times 1024$ rays spans $\Theta_h = 100^\circ$ in elevation and
-$\Theta_w = 60^\circ$ in azimuth. The $M = 128$ rows run from $\rho_{near} = 0.75$ to
-$\rho_{far} = 3$, the pulse is Gaussian with $B_s = 30$, and no wavelength is given. Each panel is
-shown in dB relative to its own peak, with a floor of $-60$~dB.
-
-At $0.1^\circ$, the car and its shadow form a sharp dark silhouette on the seafloor, crossed by
-bright glints. The $0.1^\circ$ and $0.32^\circ$ images are nearly identical, because both beams are
-narrower than the spacing of the pings, which then sets the azimuth resolution: the $10$--$90\%$
-width of the edge of the silhouette is $0.39^\circ$, a single ping, in both. From $1^\circ$ on, the
-beam sets the resolution, and the edge widens with it, to $0.79^\circ$ at $1^\circ$, $2.4^\circ$ at
-$3.16^\circ$, and $7.5^\circ$ at $10^\circ$, where the silhouette blurs into a dark smear and the
-glints into streaks of constant range. Range is unaffected, since it is resolved by $B_s$. The peak
-grows roughly in proportion to $\beta$, from $1.2\times10^{-7}$ at $0.1^\circ$ to
-$8.9\times10^{-6}$ at $10^\circ$. The fan is the same at every width, and the beam pattern peaks at
-$1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into each ping.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/fls_stitched_beam_width.png}
-  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
-  colorbar.}
-  \label{fig:fls-beam-width}
-\end{figure}
-
-\subsection{Forward-Looking Sonar Bandwidth}
-
-In Figure \ref{fig:fls-fsbw}, we vary the spatial bandwidth $B_s$ of the forward-looking sonar from
-$4$ to $512$ in powers of two, with $F_s = 2B_s$ and the other settings of Figure
-\ref{fig:fls-beam-width} at $\beta = 1^\circ$. The Gaussian pulse has an amplitude full width at
-half maximum of $0.62/B_s$, which spans $8.8$ rows at $B_s = 4$ and one row at $B_s \approx 35$.
-
-At $B_s = 4$, the silhouette of the car is smeared in range, and the bright returns at the near edge
-of the image spill into its bottom rows. Those rows lie nearer than the seafloor directly beneath
-the sensor, at a range of $0.85$, and go dark as the bandwidth grows. The car sharpens in range with
-the bandwidth, and by $B_s = 32$ its outline and glints are resolved. The peak lies at the near edge
-of the image in front of the car, and from $B_s = 16$ on it roughly halves with every doubling of
-$B_s$, from $2.0\times10^{-6}$ to $9.0\times10^{-8}$ at $B_s = 512$. This is the signature of returns
-spread continuously over range, of which a narrower pulse gathers fewer.
-
-From $B_s = 128$ on, concentric rings centered on boresight appear in the seafloor behind the car.
-This is the ray density effect of Figure \ref{fig:signals-square}. The pulse has become narrower
-than the range spacing between the seafloor returns of neighboring rays, which grows with range as
-the fan meets the seafloor at ever shallower angles, from $0.0026$ at the range of the car to
-$0.0073$ at a range of $2$. Each signal then resolves the returns of individual rays, and the dark
-rings trace the pixels whose ranges fall between them. Just behind the car, the standard deviation
-of the seafloor is about $3$~dB for $B_s \le 64$, but $12$~dB at $B_s = 256$ and $32$~dB at $512$,
-where the dark rings are nulls. As with SAR, a denser fan or a lower bandwidth removes the rings:
-raising $R_h$ from $1024$ to $4096$ at $B_s = 512$ is enough.
-
-\begin{figure}[H]
-  \begin{adjustwidth}{-\extralength}{0cm}
-  \centering
-  \includegraphics[width=\fulllength]{figs/fls_stitched_spatial_bw.png}
-  \end{adjustwidth}
-  \caption{Forward-looking sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
-  $F_s = 2B_s$. Each panel is in dB relative to its own peak, printed beneath its colorbar.}
-  \label{fig:fls-fsbw}
-\end{figure}
-
-\subsection{Side-Scan Sonar Beam Width}
-
-In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the side-scan sonar of
-Section \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$. The platform passes the
-car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
-$\lVert\bar{\vec{v}}\rVert = 10$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
-spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $S_\ell = S_\rho = 1.1$.
-Each ping casts a fan of $R_h \times R_w = 700 \times 250$ rays over $\Theta_h = 30^\circ$ in
-elevation and $\Theta_w = 3\beta$ in azimuth. The $250$ azimuth rays are enough for the image to
-converge even at $10^\circ$, where they are spread the most sparsely. The pulse is Gaussian with
-$B_s = 30$, the time-varying gain is $\eta = 10$, and no wavelength is given, so the returns add
-without their carrier phase.
-
-At the range of the car, $\rho \approx 10$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.017$ of
-the track, about two pixels, and the image resolves the outline of the car. The returns of the car
-lie at near range, and behind them the car casts an acoustic shadow in which the seafloor returns
-almost nothing. As the beam widens, each return is smeared along the track over $\rho\beta$ while
-its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.17$, and
-at $3.16^\circ$ the beam covers half of the image and the car stretches into streaks that span it.
-At $10^\circ$, $\rho\beta \approx 1.7$ exceeds the width of the image, so every ping hears nearly
-the whole car and each row is almost constant: the standard deviation of a row averages $3.5\%$ of
-its mean, against $44\%$ at $0.1^\circ$. The streaks stay at the same ranges as the car in the
-$0.1^\circ$ panel, since range resolution is set by $B_s$ rather than $\beta$. The shadow fills in
-as well, since a ping whose beam reaches past the ends of the car hears unshadowed seafloor at the
-ranges of the shadow. Its mean amplitude rises from $0.3\%$ of the seafloor's at $0.1^\circ$ to
-$71\%$ at $10^\circ$.
-
-Each panel is normalized to its own peak, printed beneath its colorbar. Unlike the fixed fan of
-Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same number of rays falls
-under the beam at every width. Widening the beam therefore averages the brightest returns of the car
-with their darker surroundings, and the peak falls from $7.6\times10^2$ at $0.1^\circ$ to
-$1.6\times10^2$ at $10^\circ$. The seafloor is uniform along the
-track, so the averaging leaves it unchanged, and its median amplitude agrees to within about $1\%$
-across the panels. Relative to the falling peak, it brightens into the gray background of the
-$10^\circ$ panel.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
-  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$. Along-track position runs horizontally and slant range vertically,
-  with near range at the bottom. Each panel is normalized to its own peak, printed beneath its
-  colorbar.}
-  \label{fig:ss-beam-width}
-\end{figure}
-
-\subsection{Side-Scan Sonar Bandwidth}
-
-In Figure \ref{fig:ss-fsbw}, we vary the spatial bandwidth $B_s$ of the side-scan sonar from $4$ to
-$512$ in powers of two, with $F_s = 2B_s$ and the geometry of Figure \ref{fig:ss-beam-width}. Each
-ping casts a single ray in azimuth, on boresight, so the beam does not blur the image along the
-track and only its range resolution changes. The pulse width of $0.62/B_s$ spans $18$ rows at
-$B_s = 4$ and one row at $B_s \approx 72$.
-
-At $B_s = 4$, the car is a blur, and the returns smeared into its shadow fill it to $90\%$ of the
-level of the seafloor. As the bandwidth grows the shadow empties, to $33\%$ at $B_s = 8$ and $7\%$
-at $16$, and by $B_s = 32$ the outline of the car, its shadow, and the edges of its body are sharp.
-The seafloor is a continuum of returns, so its amplitude halves with every doubling of $B_s$, from a
-median of $890$ at $B_s = 4$ to $27$ at $128$. The brightest returns of the car are compact in range
-and fall more slowly, so the ratio of the peak to the seafloor grows from $6$ to $34$ over the same
-span, and the seafloor darkens in the normalized panels.
-
-At $B_s = 256$ and $512$, the pulse is narrower than the $0.0044$ range spacing between the seafloor
-returns of neighboring rays near the car, and the rings of Figure \ref{fig:fls-fsbw} appear here as
-horizontal stripes. Every ping sees the same flat seafloor through the same fan, so the returns of
-every ping fall at the same ranges, and a row that falls between them is dim along the whole track.
-Across the rows of the far seafloor, the row mean varies by $3\%$, one standard deviation, for
-$16 \le B_s \le 64$, but by $42\%$ at $B_s = 256$ and $118\%$ at $512$. The curved body of the car
-breaks into dots and rings.
-
-\begin{figure}[H]
-  \begin{adjustwidth}{-\extralength}{0cm}
-  \centering
-  \includegraphics[width=\fulllength]{figs/side_scan_stitched_spatial_bw.png}
-  \end{adjustwidth}
-  \caption{Side-scan sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
-  $F_s = 2B_s$, laid out as in Figure \ref{fig:ss-beam-width}. Each panel is normalized to its own
-  peak, printed beneath its colorbar.}
-  \label{fig:ss-fsbw}
-\end{figure}
-
-\section{Conclusions}
-\label{sec:conclusion}
-In this paper, we presented an open-source, GPU-accelerated SAR simulator implemented in PyTorch
-that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tracing, and configurable radar
-parameters such as wavelength, bandwidth, sample rate, and material properties. It addresses the
-limitations of existing open-source tools such as \emph{RaySAR} and \emph{CVDomes}, which are
-constrained in mode support and rely on outdated software such as MATLAB.
-
-The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
-summation and interpolation of ray returns, accounting for the radar system's bandwidth and
-sampling rate. This allows the simulator to generate physically meaningful signals without
-aliasing or distortion due to improper interpolation.
-
-We conducted a series of experiments using spotlight-mode SAR simulations over ShapeNet car models
-while varying key parameters such as radar bandwidth, wavelength, and sampling rate. These
-experiments demonstrate how system parameters influence image quality and signal fidelity. In
-particular, we observed that excessive oversampling of the energy-range scatter leads to poor
-signal quality and numerical artifacts. This can be mitigated either by reducing the effective
-bandwidth, which lowers the required sampling rate, or by increasing the ray density to maintain
-consistent energy coverage across the target surface.
-Future work will extend the simulator to support arbitrary flight paths, synthetic aperture SONAR,
-and simulations that include jamming, broadening its applicability to a wider set of radar and
-sonar scenarios.
-
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\vspace{6pt}
-
-%\authorcontributions{}
-
-\funding{This work was supported by STR (under a contract with DARPA) and Arete (with STTR research funding).}
-
-\dataavailability{The simulator source code is available at \url{https://github.com/alexberian/PyTorch-SAR-SONAR/}.}
-
-%\acknowledgments{}
-
-%\conflictsofinterest{}
+\begin{table}[H]
+\centering
+\caption{Default forward-looking sonar parameters, matching \texttt{forward\_looking\_sonar\_baseline} in \texttt{config.json}.}
+\label{tab:fls-params}
+\begin{tabular}{lll}
+\toprule
+\textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
+\midrule
+$(a,e)$                    & pose\_num                & 000000 $(281.0^\circ, 40.6^\circ)$ \\
+$\lVert\vec{v}\rVert$      & sensor\_distance         & $7.5$ \\
+$P$                        & num\_pings               & $128$ \\
+$M$                        & num\_range\_values       & $128$ \\
+$\Theta_p$                 & image\_azimuth\_range    & $9.15^\circ$ \\
+$\Theta_w$                 & ray\_fov\_az             & $10^\circ$ \\
+$\Theta_h$                 & ray\_fov\_el             & $23^\circ$ \\
+$\beta$                    & azimuth\_beam\_width\_deg & $0.1^\circ$ \\
+$R_w$                      & num\_ray\_width          & $350$ \\
+$R_h$                      & num\_ray\_height         & $550$ \\
+$S_\rho$                   & image\_range\_swath      & $1.2$ \\
+$\lambda$                  & wavelength               & None \\
+$B_s$                      & spatial\_bw              & $32$ \\
+$F_s$                      & spatial\_fs              & $64$ \\
+$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
+$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+\multicolumn{1}{c}{--}     & waveform                 & gaussian \\
+\multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
+\multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
+\multicolumn{1}{c}{--}     & compression              & dB \\
+\multicolumn{1}{c}{--}     & db\_floor                & $-60$~dB \\
+\multicolumn{1}{c}{--}     & make\_ground             & True \\
+\multicolumn{1}{c}{--}     & level\_with\_ground      & True \\
+\multicolumn{1}{c}{--}     & object\_x\_flip          & False \\
+\multicolumn{1}{c}{--}     & object\_rotate\_xyz      & $(90^\circ, 0^\circ, 0^\circ)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{adjustwidth}{-\extralength}{0cm}
