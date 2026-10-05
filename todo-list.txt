@@ -1,6 +1,5 @@
 
 === Paper Todo List ===
-- modify figure 2 to do RGB, SAR, SSS
 - create appendix
     - put default config.json parameters in there
     - put the imaging modalities in there
