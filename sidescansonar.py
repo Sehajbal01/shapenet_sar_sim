@@ -2,7 +2,7 @@ import os
 import time
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the second to
-# initialize aborts with "OMP: Error #15". Allow the duplicate, as paper_figures.py does.
+# initialize aborts with "OMP: Error #15". Allow the duplicate, as sar_paper_figures.py does.
 # Must be set before numpy/torch import.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
@@ -12,12 +12,56 @@ import PIL
 from PIL import ImageDraw
 import torch
 
+from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import extract_pose_info
-from range_angle_images import beam_spread_weights
 from signal_simulation import interpolate_signal, load_mesh
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
 from signal_visualization import signal_gif, signal_column_image
-from display_compression import asinh_compress, to_asinh, compute_dataset_reference
+from imaging_algorithms import to_db_uint8, to_asinh, compute_dataset_reference
+
+
+# a Gaussian's full width at half maximum is 2*sqrt(2*ln2) standard deviations
+FWHM_PER_SIGMA = 2 * np.sqrt(2 * np.log(2))
+
+
+def beam_spread_weights(angle_difference_deg, beam_width_deg):
+    '''
+    Gaussian beam pattern: the weight a beam gives a scatter angle_difference_deg off its
+    boresight.
+
+    beam_width_deg is the full width at half maximum of the pattern, so a scatter sitting half a
+    beam width off boresight keeps half its energy. The pattern peaks at 1 rather than
+    integrating to 1: a scatter dead on boresight keeps its full energy.
+
+    inputs:
+        angle_difference_deg (...): scatter azimuth off the beam's boresight, in degrees
+        beam_width_deg (float): FWHM of the beam, in degrees
+    outputs:
+        weights (...): beam pattern value in (0, 1]
+    '''
+    sigma_deg = beam_width_deg / FWHM_PER_SIGMA
+    return torch.exp(-0.5 * (angle_difference_deg / sigma_deg) ** 2)
+
+
+def apply_beam_pattern(energy, tx_azimuth_deg, rx_azimuth_deg, beam_width_deg):
+    '''
+    Weight scatter energies by a two-way Gaussian beam: transmit at each scatter's launch azimuth,
+    receive at its arrival azimuth. Runs after accumulate_scatters, which never applies a beam.
+
+    Each one-way Gaussian is sqrt(2) wider than beam_width_deg, so on a first bounce, where the two
+    azimuths agree, the product is the two-way beam of FWHM beam_width_deg.
+
+    inputs:
+        energy (R,): scatter energies, real or complex
+        tx_azimuth_deg (R,): launch azimuth of the ray behind each scatter, off boresight, in degrees
+        rx_azimuth_deg (R,): arrival azimuth of each scatter, off the same boresight, in degrees
+        beam_width_deg (float): two-way FWHM of the beam, in degrees
+    outputs:
+        energy (R,): the weighted energies
+    '''
+    one_way_beam_width_deg = beam_width_deg * np.sqrt(2)
+    return (energy * beam_spread_weights(tx_azimuth_deg, one_way_beam_width_deg)
+                   * beam_spread_weights(rx_azimuth_deg, one_way_beam_width_deg))
 
 
 def side_scan_sonar_image(
@@ -31,12 +75,11 @@ def side_scan_sonar_image(
     material_properties,
     num_ray_width, # (azimuth direction)
     num_ray_height, # elevation direction
-    region_radius,
 
     image_width = 128,
     image_height = 128,
-    image_plane_width = 2,
-    image_plane_height = 2,
+    image_cross_range_swath = 2,
+    image_range_swath = 2,
 
     wavelength = None,
     num_bounce = 1,
@@ -46,7 +89,7 @@ def side_scan_sonar_image(
     tvg_exponent = 4.0,
     spatial_bw = 32,
     spatial_fs = 64,
-    window_func = 'sinc',
+    waveform = 'sinc',
     use_sig_magnitude = True,
     debug_gif = False,
     debug_columns = False,
@@ -57,6 +100,10 @@ def side_scan_sonar_image(
     db_floor = -60.0,
     asinh_k_ratio = 0.1,
 
+    # a previously built octree for this mesh, built inside the accumulator when None. Only
+    # the mesh decides it, so a caller rendering many poses of one object builds it once
+    octree = None,
+
         ):
 
     # figure out each sensor position. The track is a straight line through
@@ -66,8 +113,12 @@ def side_scan_sonar_image(
     device = mean_sensor_position.device
     line_of_sight   = torch.nn.functional.normalize(-mean_sensor_position, dim=-1)  # (3,) sensor -> origin
     world_up        = torch.tensor([0.0, 0.0, 1.0], device=device)                  # +z
-    track_direction = torch.nn.functional.normalize(
-        torch.linalg.cross(line_of_sight, world_up), dim=-1)                        # (3,) sensor's right
+    track_direction = torch.linalg.cross(line_of_sight, world_up)                   # (3,) sensor's right, unnormalized
+    if track_direction.norm() < 1e-6:
+        # a nadir look zeroes the cross product, so the right comes from the sensor's azimuth instead
+        azimuth = torch.atan2(mean_sensor_position[1], mean_sensor_position[0])
+        track_direction = torch.stack((-torch.sin(azimuth), torch.cos(azimuth), torch.zeros_like(azimuth)))
+    track_direction = torch.nn.functional.normalize(track_direction, dim=-1)        # (3,)
 
     # calculate trajectory of the sensor
     ping_offsets = centered_linspace(track_length, num_pings, device)               # (P,)
@@ -76,10 +127,10 @@ def side_scan_sonar_image(
 
     # figure out the camera matrix for each sensor position. Broadside: every ping shares the
     # single orientation built at the track center, so all the boresights are parallel and only
-    # the translation column changes down the track. That is what separates this from the
-    # spotlight geometry of range_angle_images, where each pose steers onto the origin and the
-    # object therefore never leaves azimuth 0; here the object drifts across the beam as the
-    # platform passes, and the azimuth weighting below has something to bite on.
+    # the translation column changes down the track. That is what separates this from a
+    # spotlight geometry, where each pose steers onto the origin and the object therefore never
+    # leaves azimuth 0; here the object drifts across the beam as the platform passes, and the
+    # azimuth weighting below has something to bite on.
     # Columns are (right, up, forward, center), the srn_cars layout of generate_pose_mat.
     up_vector = torch.linalg.cross(track_direction, line_of_sight)                  # (3,)
     mean_pose = torch.zeros(4, 4, device=device)                                    # (4,4)
@@ -98,7 +149,7 @@ def side_scan_sonar_image(
     fan_elevation_fov_deg = elevation_fov_deg
 
     # use accumulate_scatters to ray trace on the object for each camera matrix
-    scatter_ranges, scatter_energies, scatter_azimuths, debugging_maps = accumulate_scatters_side_scan(
+    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, debugging_maps = accumulate_scatters_side_scan(
         object_mesh, face_normals, material_properties,
         poses.unsqueeze(0),                      # (1,P,4,4), one scene
         wavelength     = wavelength,
@@ -111,20 +162,24 @@ def side_scan_sonar_image(
         spherical_spread = spherical_spread,
         water_absorption = water_absorption,
         debug_gif      = debug_gif,
+        octree         = octree,
     )  # list[T][P] of (R',) each
 
-    # weigh received scatters according to azimuth beam width with gaussian
+    # two-way beam pattern: transmit at the launch azimuth, receive at the arrival azimuth
     scatter_energies = [
-        [energy * beam_spread_weights(azimuth, azimuth_beam_width_deg)
-         for energy, azimuth in zip(energies_t, azimuths_t)]
-        for energies_t, azimuths_t in zip(scatter_energies, scatter_azimuths)
+        [apply_beam_pattern(energy, tx, rx, azimuth_beam_width_deg)
+         for energy, tx, rx in zip(energies_t, tx_t, rx_t)]
+        for energies_t, tx_t, rx_t in zip(scatter_energies, scatter_azimuths, scatter_arrival_azimuths)
     ]  # list[T][P] of (R',)
 
     # interpolate signal, on one range window shared by every ping so the columns line up.
     # Centered on the target, so the object sits mid-window. The window can start inside
     # swath_near, which is correct: the object stands off the seafloor and returns before it.
     target_range  = torch.linalg.norm(mean_sensor_position)
+    assert 0 < image_range_swath / 2 <= float(target_range), \
+        'image_range_swath %g must be positive and stay in front of the sensor at distance %g' % (image_range_swath, float(target_range))
     window_center = target_range.reshape(1)  # (1,)
+    window_radius = image_range_swath / 2 + 1 / spatial_fs  # the image's rows plus a sample of margin
     signals = []
     sample_z = []
     for ranges_t, energies_t in zip(scatter_ranges, scatter_energies):
@@ -134,10 +189,10 @@ def side_scan_sonar_image(
             signal_p, sample_z_p = interpolate_signal(
                 scatter_range.unsqueeze(0) / 2,   # (1,R') round trip -> one-way range
                 scatter_energy.unsqueeze(0),      # (1,R')
-                region_radius,
+                window_radius,
                 window_center,
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-                window_func = window_func,
+                waveform = waveform,
             )
             signals_t.append(signal_p.squeeze(0))      # (Z,)
             sample_z_t.append(sample_z_p.squeeze(0))   # (Z,)
@@ -150,7 +205,6 @@ def side_scan_sonar_image(
     # time varying gain: a receiver ramp of R^n against the seafloor's fall with range. Absolute
     # rather than referenced to a range, so it rescales the image as well as tilting it. n=0 turns it off.
     if tvg_exponent:
-        print('tvg_exponent: tvg_exponent')
         signals = signals * sample_z ** tvg_exponent  # (T,P,Z)
 
     # debug outputs, independently switched: debug_columns is one still (fast), debug_gif is a
@@ -177,7 +231,7 @@ def side_scan_sonar_image(
             track_suffix = '' if T == 1 else '_track%02d' % t
             maps_t = {(0, p): debugging_maps[(t, p)] for p in range(num_pings)}
             signal_gif(signals[t:t+1], sample_z[t:t+1], maps_t,
-                       [scatter_ranges[t]], [scatter_energies[t]], region_radius,
+                       [scatter_ranges[t]], [scatter_energies[t]], window_radius,
                        suffix = base_suffix + track_suffix)
 
     if use_sig_magnitude:
@@ -188,12 +242,11 @@ def side_scan_sonar_image(
     # (ping/along-track position). Unlike a ground plane projection this never resamples range
     # onto the seafloor, so the image shows slant range rather than ground range
     shared_sample_z = sample_z[:, 0, :]  # (T,Z) every ping shares the one range window
-    z_center = shared_sample_z[:, shared_sample_z.shape[1] // 2]  # (T,) ~ target range
 
     row_frac = torch.linspace(0.5, -0.5, image_height, device=signals.device, dtype=shared_sample_z.dtype)  # (H,) far to near
     col_frac = torch.linspace(-0.5, 0.5, image_width, device=signals.device, dtype=ping_offsets.dtype)      # (W,) low to high
-    row_coords = z_center.reshape(T, 1) + row_frac.reshape(1, image_height) * image_plane_height  # (T,H) far range first
-    col_coords = col_frac * image_plane_width  # (W,) low ping offset first
+    row_coords = target_range.reshape(1, 1).expand(T, 1) + row_frac.reshape(1, image_height) * image_range_swath  # (T,H) far range first
+    col_coords = col_frac * image_cross_range_swath  # (W,) low ping offset first
 
     # normalize the target coordinates into grid_sample's [-1,1] convention over the sampled
     # (P,Z) grid, so a target outside the sampled range/track window comes back zero
@@ -226,21 +279,21 @@ def render_side_scan_image(
 
         override_obj_path = None,
         sensor_distance = None,
+        elevation_angle_deg = None,
 
         # track geometry
         track_length = 2.0,
         num_pings = 128,
         elevation_fov_deg = 60.0,
         azimuth_beam_width_deg = 1.0,
-        num_ray_width = 64,
+        num_ray_width = 1,
         num_ray_height = 512,
-        region_radius = 1.0,
 
-        # image plane geometry
+        # image geometry
         image_width = 128,
         image_height = 128,
-        image_plane_width = 2.0,
-        image_plane_height = 2.0,
+        image_cross_range_swath = 2.0,
+        image_range_swath = 2.0,
 
         # signal / physics
         wavelength = None,
@@ -251,7 +304,7 @@ def render_side_scan_image(
         tvg_exponent = 4.0,
         spatial_bw = 64,
         spatial_fs = 64,
-        window_func = 'sinc',
+        waveform = 'sinc',
         use_sig_magnitude = True,
 
         # debug
@@ -292,22 +345,24 @@ def render_side_scan_image(
         sensor_distance (float): overrides the pose's sensor range from the origin, keeping its
             azimuth and elevation. The sensor position is normalized then scaled to this distance;
             None keeps the pose file's own distance
+        elevation_angle_deg (float): overrides the pose's elevation, keeping its azimuth and
+            distance, so a sweep can reach elevations no pose file has: 0 puts the sensor on the
+            seafloor, 90 straight overhead. The rgb beside the sonar stays the pose file's view.
+            None keeps the pose file's own elevation
         track_length (float): along-track extent the platform flies, centered on the pose
-            position. Keep it at least image_plane_width: a track shorter than the image is wide
+            position. Keep it at least image_cross_range_swath: a track shorter than the image is wide
             leaves the outer image columns with no ping abeam of them, and they come out zero
         num_pings (int): pings along the track, i.e. columns of the image
         elevation_fov_deg (float): vertical extent of the ray fan, about the boresight
         azimuth_beam_width_deg (float): FWHM of the along-track beam, which sets the along-track
             resolution; the ray fan spans 3x this
-        region_radius (float): half the range extent imaged, centered on the sensor->origin
-            distance so the target sits mid-window. Keep 2*region_radius at least
-            image_plane_height, or the image's near and far edges fall outside the window and
-            come out zero
-        num_ray_width/num_ray_height (int): rays per ping across the fan
+        num_ray_width/num_ray_height (int): rays per ping across the fan. num_ray_width 1 is a
+            single boresight ray, which leaves the azimuth beam nothing to spread
         image_width/image_height (int): pixels across and down the image
-        image_plane_width/image_plane_height (float): extent of the image in world units, along
-            the track (cross range) and out in slant range. Centered on the target range, so it
-            needs room for the object's own span plus the shadow it throws down range
+        image_cross_range_swath/image_range_swath (float): extent of the image in world units,
+            along the track (cross range) and out in slant range. The rows run from
+            sensor_distance - image_range_swath/2 to sensor_distance + image_range_swath/2, so
+            the swath needs room for the object's own span plus the shadow it throws down range
         spherical_spread (bool): True applies energy /= 4*pi * range**2 over the round trip;
             False turns the spreading loss off, which is useful for telling how much of the
             near-range dominance is spreading and how much is geometry
@@ -316,9 +371,9 @@ def render_side_scan_image(
             range sample against the seafloor's fall with range, referenced to the window
             center so the target's own level is unchanged. 0 = off
         compression (str): how the composite panel is displayed. 'db' (default here) shows dB
-            relative to the brightest pixel, floored at db_floor, as plot_range_angle_image does
-            -- a linear stretch is all seafloor and specular glint, since the returns span ~100
-            dB. 'linear' is that plain min-max stretch. 'asinh' arcsinh-compresses referenced to
+            relative to the brightest pixel, floored at db_floor -- a linear stretch is all
+            seafloor and specular glint, since the returns span ~100 dB. 'linear' is that plain
+            min-max stretch. 'asinh' arcsinh-compresses referenced to
             this image's own 99.9th percentile amplitude (see asinh_compress) -- stays linear
             near zero and logarithmic past asinh_k_ratio * that reference, so seafloor texture
             survives without dB's hard floor
@@ -337,9 +392,9 @@ def render_side_scan_image(
         col_coords (W,): cross range (along-track offset) of each column, low to high
     '''
 
-    # cluster dirs, same as render_images.render_random_image
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    # dataset locations from config.json, same as render_images.render_random_image
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     if obj_id is None:
         obj_id = np.random.choice(os.listdir(dataset_dir), 1)[0]
@@ -366,15 +421,22 @@ def render_side_scan_image(
 
     pose_info = extract_pose_info(poses)
     az, el = pose_info[6].item(), pose_info[5].item()
+    if elevation_angle_deg is not None:
+        el = float(elevation_angle_deg)
     print('Center azimuth (deg):   ', az)
     print('Center elevation (deg): ', el)
 
-    # the track runs along cross(line of sight, +z), which collapses for a nadir look, and the
-    # swath geometry needs the platform above the seafloor rather than below it
-    assert el < 85.0, 'pose elevation %.1f deg is too close to vertical for a side scan track' % el
-    assert el > 0.0,  'pose elevation %.1f deg puts the sensor below the seafloor' % el
+    # the swath geometry needs the platform on or above the seafloor; side_scan_sonar_image handles nadir
+    assert 0.0 <= el <= 90.0, 'elevation %.1f deg puts the sensor below the seafloor or past overhead' % el
 
     mean_sensor_position = pose_info[0].reshape(3)  # (3,) camera center of the rgb view
+    if elevation_angle_deg is not None:
+        # the pose's azimuth and distance at this elevation, in float64 so cos(90 deg) keeps the azimuth's sign
+        x, y, z = mean_sensor_position.tolist()
+        az_rad, el_rad = np.arctan2(y, x), np.radians(el)
+        mean_sensor_position = torch.tensor(np.sqrt(x * x + y * y + z * z) * np.array(
+            [np.cos(el_rad) * np.cos(az_rad), np.cos(el_rad) * np.sin(az_rad), np.sin(el_rad)]),
+            dtype=torch.float32, device=device)  # (3,)
     if sensor_distance is not None:
         # normalize then rescale so azimuth/elevation (a ratio of components) survive the change
         mean_sensor_position = torch.nn.functional.normalize(mean_sensor_position, dim=-1) * sensor_distance
@@ -400,11 +462,10 @@ def render_side_scan_image(
         mesh, normals, material_properties,
         num_ray_width,
         num_ray_height,
-        region_radius,
         image_width = image_width,
         image_height = image_height,
-        image_plane_width = image_plane_width,
-        image_plane_height = image_plane_height,
+        image_cross_range_swath = image_cross_range_swath,
+        image_range_swath = image_range_swath,
         wavelength = wavelength,
         num_bounce = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
@@ -413,7 +474,7 @@ def render_side_scan_image(
         tvg_exponent = tvg_exponent,
         spatial_bw = spatial_bw,
         spatial_fs = spatial_fs,
-        window_func = window_func,
+        waveform = waveform,
         use_sig_magnitude = use_sig_magnitude,
         debug_gif = debug_gif,
         debug_columns = debug_columns,
@@ -436,8 +497,7 @@ def render_side_scan_image(
         peak = sonar_amp.max()
         ref = float(np.percentile(sonar_amp, 99.9)) if peak > 0 else 0.0
         if compression == 'db' and peak > 0:
-            sonar = 20 * np.log10(np.clip(sonar_amp / peak, 10 ** (db_floor / 20), None))
-            sonar = ((sonar - db_floor) / -db_floor * 255.0).astype(np.uint8)
+            sonar = to_db_uint8(sonar_amp, peak, db_floor)
         elif compression == 'asinh' and ref > 0:
             # ref is this one image's own 99.9th percentile; compute_dataset_reference exists for
             # a real cross-dataset reference once there's a dataset of saved amplitudes to use

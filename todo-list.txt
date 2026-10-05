@@ -1,4 +1,32 @@
 
+=== Paper Todo List ===
+- figure out format for mdpi
+- sehaj needs to get these plots under way
+- consolidate the imaging modalities section
+- modify figure 2 to do RGB, SAR, SSS
+- create appendix
+    - put default config.json parameters in there
+- experiment comparing spotlight mode sar, strip map mode sar, sss, fls
+- add sss to the waveforms experiment
+- add sss to the fs bw ray density experiment
+
+
+
+
+
+
+
+- implement a "range binning" waveform option in interpolate signal
+    - it is theoretically equivalent to a waveform who's matched filter output is equal to a perfect rectangular pulse
+    - it operates as sum of energy of scatters whos range is within sample_z +- 1/(2*bw)
+    - note: bins will overlap unles sample rate <= bw
+
+
+
+        
+        
+        
+
 - make a "range angle profile vs range dataset" for the L3 harris project
     - ask professor for how the data is made again...
 
@@ -20,6 +48,7 @@
         - make the plots
     - convert paper to MDPI format
     - submit to MDPI
+
 
             
             

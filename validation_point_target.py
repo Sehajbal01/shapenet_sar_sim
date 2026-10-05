@@ -21,7 +21,7 @@ Run:
 """
 import os
 
-# see paper_figures.py -- MKL and torch each bring their own OpenMP runtime
+# see sar_paper_figures.py -- MKL and torch each bring their own OpenMP runtime
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
@@ -33,7 +33,7 @@ from signal_simulation import apply_snr, generate_trajectory, interpolate_signal
 from utils import extract_pose_info, generate_pose_mat, get_next_path, savefig
 
 
-# Baseline mirrors PAPER_BASELINE in paper_figures.py so the numbers reported here
+# Baseline mirrors SAR_PAPER_BASELINE in sar_paper_figures.py so the numbers reported here
 # describe the configuration the paper's figures were generated with.
 BASELINE = dict(
     target_xyz=(0.20, -0.15, 0.0),
@@ -46,7 +46,7 @@ BASELINE = dict(
     spatial_bw=3650 / 50,
     spatial_fs=3650 / 50,
     region_radius=1.7,
-    window_func='sinc',
+    waveform='sinc',
     amplitude=1.0,
     snr_db=None,
     trajectory_type='circular',
@@ -71,7 +71,7 @@ def simulate_point_target(
     spatial_bw=73.0,
     spatial_fs=73.0,
     region_radius=1.7,
-    window_func='sinc',
+    waveform='sinc',
     amplitude=1.0,
     snr_db=None,
     trajectory_type='circular',
@@ -141,7 +141,7 @@ def simulate_point_target(
         sensor_dist,                                             # (P,)
         spatial_bw=spatial_bw,
         spatial_fs=spatial_fs,
-        window_func=window_func,
+        waveform=waveform,
         batch_size=None,
     )  # (P,Z), (P,Z)
 
@@ -528,10 +528,11 @@ def reference_backprojection(
     Order matters for (2). Demodulating the *samples* shifts their spectrum by 2/lambda
     before reconstruction; with spatial_fs == spatial_bw there is no headroom for that
     shift, so the sinc interpolation can no longer represent the carrier. Demodulating
-    after interpolation, as strip_map_imaging does (imaging_algorithms.py:244-256),
-    avoids the problem.
+    after interpolation avoids the problem.
 
-    No ramp filter: coherent summation over the aperture needs no Radon inversion.
+    No ramp filter, which is what makes this a reference and not an imager: without the |k|
+    Jacobian the reconstruction is the laminogram, so expect a washed-out pedestal. Both
+    projected_CBP and strip_map_imaging do filter.
 
     `demod_first=True` reverts (2) to projected_CBP's ordering while keeping everything
     else identical, which isolates the ordering as a cause.
@@ -867,9 +868,9 @@ def _report(results):
     print('target %s   %d pulses over %g deg   el %g deg   dist %g'
           % (cfg['target_xyz'], cfg['num_pulses'], cfg['azimuth_spread'],
              cfg['elevation_deg'], cfg['sensor_distance']))
-    print('lambda %.4g   B_s %.4g   F_s %.4g   window %s'
+    print('lambda %.4g   B_s %.4g   F_s %.4g   waveform %s'
           % (cfg['wavelength'], cfg['spatial_bw'], cfg['spatial_fs'],
-             cfg['window_func']))
+             cfg['waveform']))
     print('slant range resolution 1/B_s          = %.5g' % (1 / cfg['spatial_bw']))
     print('ground range resolution 1/(B_s cos el) = %.5g'
           % (1 / (cfg['spatial_bw'] * np.cos(el))))

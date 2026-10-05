@@ -1,4 +1,4 @@
-"""Paper figure experiments. `main` runs the full suite via one call."""
+"""SAR paper figure experiments. `main` runs the full suite via one call."""
 import os
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the
@@ -12,41 +12,27 @@ import PIL
 import torch
 from matplotlib import pyplot as plt
 
-from render_images import multi_param_experiment, sar_render_image
+from config import CONFIG, SHAPENET_CARS_DIR, srn_split_dir
+from render_images import multi_param_sar_experiment, sar_render_image
 from utils import extract_pose_info, generate_pose_mat
 
 
-PAPER_BASELINE = dict(
-    azimuth_spread=90,
-    debug_gif=False,
-    num_pulse=64,
-    spatial_bw=3650 / 50, # the denominator is in mm
-    spatial_fs=3650 / 50, # the denominator is in mm
-    wavelength=0.5,
-    use_sig_magnitude=False,
-    snr_db=50,
-    image_width=128,
-    image_height=128,
-    image_plane_width=1,
-    image_plane_height=1,
-    grid_width=1.2,
-    grid_height=1.2,
-    n_ray_width=128,
-    n_ray_height=128,
-    region_radius=1.7,
-    obj_raids=(0.8, 0.0, 0.9, 0.1, 0.2),
-    ground_raids=(0.5, 0.0, 0.8, 0.2, 0.5),
-    imaging_algorithm='cbp',
-    cbp_batch_size=4096,
-    trajectory_type='circular',
-    trajectory_noise_var=0,
-    num_bounce=2,
-    object_x_flip=False,
-    object_rotate_xyz=(90.0, 0.0, 0.0),
-)
+# config.json's sar_baseline. Notes on its keys:
+#   obj_id/azimuth_deg/elevation_deg pin the object and the look: render_random_image renders the
+#     object's pose nearest that azimuth and elevation, e.g. one read off a generate_dataset.py
+#     test-run gif, and draws both at random when None. The object may be from any split
+#   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SSS_PAPER_BASELINE
+#   wavelength can't be None, unlike the side scan baseline's: strip_map_imaging always demodulates
+#     by wavelength, and az_spread_linear_stripmap below needs it
+#   waveform 'gaussian', since the default sinc rings; its side lobes streak off the car
+#   image_plane_width/height 1.1 frames an srn car the way the side scan images do
+#   compression/db_floor/asinh_k_ratio -- the one place these are decided;
+#     multi_param_sar_experiment reads these off the baseline (popping them before the rest is
+#     forwarded to render_random_image) unless an experiment's overrides set one instead
+SAR_PAPER_BASELINE = dict(CONFIG['sar_baseline'])
 
 
-def _paper_experiments():
+def _sar_experiments():
 
     # Synthetic aperture arc length sweep — how azimuth coverage shapes the image.
     az_vals = np.linspace(0, 360, 5).tolist()
@@ -57,20 +43,40 @@ def _paper_experiments():
     )
 
     # Pulse count sweep — how along-track sampling density affects the image.
-    pulse_vals = [2, 4, 8, 16, 32]
+    pulse_vals = [2 ** k for k in range(3, 11)]  # 8, 16, ..., 1024
     num_pulse = dict(
         name='num_pulse',
         vary={'num_pulse': pulse_vals},
         custom_title_strings=['Pulses: %d' % p for p in pulse_vals],
     )
 
-    # Spatial bandwidth / sample rate sweep — how BW=Fs affects range resolution.
+    # Ray count sweep — how densely the ray grid samples the scene, from half to five times the
+    # baseline's rays per side, linearly spaced. Width and height move together, as in the range
+    # angle suite's n_ray sweep.
+    base_n_ray = SAR_PAPER_BASELINE['n_ray_width']
+    n_ray_vals = np.linspace(base_n_ray / 2, 5 * base_n_ray, 5).round().astype(int).tolist()
+    n_ray = dict(
+        name='n_ray',
+        vary={'n_ray_width': n_ray_vals, 'n_ray_height': n_ray_vals},
+        custom_title_strings=['Rays: %d x %d' % (r, r) for r in n_ray_vals],
+    )
+
+    # Spatial bandwidth sweep — range resolution goes as 1/BW. Fs = 2*BW throughout, as in the
+    # baseline, so the panels differ by bandwidth alone and not by how finely each pulse is sampled.
     bwfs_vals = [4, 16, 64, 128, 512]
     fsbw = dict(
         name='fsbw',
-        vary={'spatial_bw': bwfs_vals, 'spatial_fs': bwfs_vals},
-        custom_title_strings=['BW = Fs: %d' % v for v in bwfs_vals],
-        plot_db_scale=True,
+        vary={'spatial_bw': bwfs_vals, 'spatial_fs': [2 * bw for bw in bwfs_vals]},
+        custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
+    )
+
+    # The same bandwidth sweep imaged with strip-map instead of the baseline's CBP. strip-map
+    # imaging needs a linear track, so the trajectory is pinned to linear here too.
+    fsbw_stripmap = dict(
+        name='fsbw_stripmap',
+        vary={'spatial_bw': bwfs_vals, 'spatial_fs': [2 * bw for bw in bwfs_vals]},
+        overrides={'trajectory_type': 'linear', 'imaging_algorithm': 'stripmap'},
+        custom_title_strings=['Strip-map, BW: %d, Fs: %d' % (bw, 2 * bw) for bw in bwfs_vals],
     )
 
     # SNR sweep — sensitivity of the reconstruction to additive receiver noise.
@@ -102,6 +108,18 @@ def _paper_experiments():
                               for t, a in zip(trajectory_types, trajectory_spreads)],
     )
 
+    # Azimuth spread sweep for strip-map imaging on a linear trajectory. Capped at 135 deg
+    # (not 180) since generate_trajectory asserts a linear spread strictly below 180 deg, where
+    # the track runs off to infinity.
+    az_spread_linear_vals = np.linspace(0, 135, 5).tolist()
+    az_spread_linear_stripmap = dict(
+        name='az_spread_linear_stripmap',
+        vary={'azimuth_spread': az_spread_linear_vals},
+        overrides={'trajectory_type': 'linear', 'imaging_algorithm': 'stripmap'},
+        custom_title_strings=['Linear strip-map, azimuth spread: %.1f deg' % a
+                              for a in az_spread_linear_vals],
+    )
+
     # Trajectory noise sweep — how sensor position error along the path degrades the image.
     noise_vals = [0] + (10 ** np.linspace(-4, -2, 4, endpoint=True)).tolist()
     trajectory_noise_var = dict(
@@ -111,21 +129,23 @@ def _paper_experiments():
     )
 
     # Transmit-waveform comparison — how the pulse / range-compression window shapes
-    # the image. window_func selects the effective range window used inside
+    # the image. waveform selects the effective range window used inside
     # interpolate_signal: an ideal sinc, a Gaussian pulse, and the matched-filter
-    # responses of an LFM chirp and a Barker-13 phase code. Those four are every window
-    # interpolate_signal implements, so the fifth panel is the chirp again at twice the
-    # bandwidth — the knob that actually sets range resolution once a waveform is chosen. Fs
-    # follows BW, since a wider pulse sampled at the old rate would just alias. Twice and not
-    # more: past that the range resolution outruns what 64 pulses of aperture resolve in cross
-    # range, and the panel turns into grating lobes rather than a sharper car.
-    base_bw = PAPER_BASELINE['spatial_bw']
+    # responses of an LFM chirp and a Barker-13 phase code. Those are four of the five waveforms
+    # interpolate_signal implements — the sonar suite's waveform figure covers the fifth, a Hamming
+    # window — so the last panel here is the chirp again at twice the bandwidth, the knob that
+    # actually sets range resolution once a waveform is chosen. Fs stays at 2*BW as in the
+    # baseline, so it follows the wider pulse instead of aliasing it. Twice and not more: past that
+    # the range resolution outruns what 64 pulses of aperture resolve in cross range, and the panel
+    # turns into grating lobes rather than a sharper car.
+    base_bw = SAR_PAPER_BASELINE['spatial_bw']
     waveform_vals = ['sinc', 'gaussian', 'lfm', 'barker13', 'lfm']
     waveform_bw_vals = [base_bw] * 4 + [2 * base_bw]
     waveform = dict(
         name='waveform',
-        vary={'window_func': waveform_vals,
-              'spatial_bw': waveform_bw_vals, 'spatial_fs': waveform_bw_vals},
+        vary={'waveform': waveform_vals,
+              'spatial_bw': waveform_bw_vals,
+              'spatial_fs': [2 * bw for bw in waveform_bw_vals]},
         custom_title_strings=['Sinc Interpolation', 'Gaussian Pulse', 'LFM Chirp', 'Barker 13',
                               'LFM Chirp, 2x BW'],
     )
@@ -141,23 +161,25 @@ def _paper_experiments():
                      'make_ground': False,
                     },
         custom_title_strings=['Scale: 1','Scale: 1/2','Scale: 1/4','Scale: 1/8','Scale: 1/16'],
-        plot_db_scale=True,
     )
 
     return [
-        az_spread,
-        num_pulse,
-        fsbw,
-        snrdb,
-        wavelength,
-        trajectory_type,
-        trajectory_noise_var,
-        waveform,
-        sphere,
+        # az_spread,
+        # num_pulse,
+        n_ray,
+        # fsbw,
+        # fsbw_stripmap,
+        # snrdb,
+        # wavelength,
+        # trajectory_type,
+        # az_spread_linear_stripmap,
+        # trajectory_noise_var,
+        # waveform,
+        # sphere,
     ]
 
 
-PAPER_EXPERIMENTS = _paper_experiments()
+SAR_PAPER_EXPERIMENTS = _sar_experiments()
 
 
 def _normalize_sar_for_display(sar_image, rgb_shape):
@@ -192,13 +214,13 @@ def _normalize_sar_for_display(sar_image, rgb_shape):
 def generate_linear_sar_comparison_figure(
     num_examples=4,
     output_path='figures/linear_sar_comparison.png',
-    baseline=PAPER_BASELINE,
+    baseline=SAR_PAPER_BASELINE,
     seed=8134,
     min_elevation_deg=20,
 ):
     """Create a 4-row figure with RGB, spotlight, and strip-map SAR panels."""
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    dataset_dir = srn_split_dir('cars_train')
+    models_dir = SHAPENET_CARS_DIR
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -235,11 +257,13 @@ def generate_linear_sar_comparison_figure(
         render_kwargs = {
             'spatial_bw': comparison_kwargs['spatial_bw'],
             'spatial_fs': comparison_kwargs['spatial_fs'],
+            'waveform': comparison_kwargs['waveform'],
             'snr_db': comparison_kwargs['snr_db'],
             'wavelength': comparison_kwargs['wavelength'],
             'use_sig_magnitude': comparison_kwargs['use_sig_magnitude'],
             'imaging_algorithm': 'cbp',
             'cbp_batch_size': comparison_kwargs['cbp_batch_size'],
+            'signal_interpolation': comparison_kwargs['signal_interpolation'],
             'trajectory_type': 'linear',
             'trajectory_noise_var': comparison_kwargs['trajectory_noise_var'],
             'num_bounce': comparison_kwargs['num_bounce'],
@@ -294,18 +318,17 @@ def generate_linear_sar_comparison_figure(
     return output_path
 
 
-def run_paper_experiments(experiments=PAPER_EXPERIMENTS, baseline=PAPER_BASELINE, plot_db_scale=False):
+def run_sar_paper_experiments(experiments=SAR_PAPER_EXPERIMENTS, baseline=SAR_PAPER_BASELINE):
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
-        multi_param_experiment(
+        multi_param_sar_experiment(
             exp['vary'],
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
-            plot_db_scale=exp.get('plot_db_scale', plot_db_scale),
         )
 
 
 if __name__ == '__main__':
-    run_paper_experiments(plot_db_scale=False)
+    run_sar_paper_experiments()
     # generate_linear_sar_comparison_figure()

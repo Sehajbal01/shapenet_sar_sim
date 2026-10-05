@@ -90,6 +90,9 @@ def generate_trajectory(pose, trajectory_type='linear', n_pulses=100, azimuth_sp
 # uniform sidelobes of magnitude 1 against a peak of 13 (-22.3 dB).
 BARKER13 = (+1, +1, +1, +1, +1, -1, -1, +1, +1, -1, +1, -1, +1)
 
+# Hamming taper H(f) = A0 + 2*A1*cos(2*pi*f/B) on the band, whose inverse FT is three shifted sincs
+HAMMING_A0, HAMMING_A1 = 0.54, 0.23
+
 
 def _matched_filter_window(x, dz, device, dtype):
     """
@@ -182,22 +185,22 @@ def make_barker13_window(spatial_bw, device, dtype, oversample=32):
     return _matched_filter_window(x, dz, device, dtype)
 
 
-def make_transmit_waveform(window_func, spatial_bw, oversample=32, time_bandwidth=100.0):
+def make_transmit_waveform(waveform, spatial_bw, oversample=32, time_bandwidth=100.0):
     """
-    Build the complex baseband transmit waveform x(z) for a given window, sampled on
+    Build the complex baseband transmit waveform x(z) for a given waveform name, sampled on
     a common fine range grid.  This exposes the pulse whose matched-filter
     autocorrelation is used as the window in interpolate_signal, so callers can
     characterize the transmitted pulse alongside its compressed matched-filter output.
 
     The 'lfm' and 'barker13' branches mirror the pulses built inside make_lfm_window
-    and make_barker13_window.  'sinc' and 'gaussian' have no separate transmit pulse
-    in the simulator (their windows are defined directly in the range domain), so the
-    window itself is returned as the waveform.  All four are placed on the same grid
-    z in [-T/2, T/2], dz = 1/(B*oversample), T = time_bandwidth/B, so their spectra
-    are directly comparable.
+    and make_barker13_window.  'sinc', 'hamming' and 'gaussian' have no separate
+    transmit pulse in the simulator (their windows are defined directly in the range
+    domain), so the window itself is returned as the waveform.  All five are placed
+    on the same grid z in [-T/2, T/2], dz = 1/(B*oversample), T = time_bandwidth/B,
+    so their spectra are directly comparable.
 
     Inputs:
-        window_func (str): 'sinc', 'gaussian', 'lfm' or 'barker13'
+        waveform (str): 'sinc', 'hamming', 'gaussian', 'lfm' or 'barker13'
         spatial_bw (float): waveform bandwidth B
         oversample (int): grid samples per resolution cell (1/B)
         time_bandwidth (float): time-bandwidth product B*T; sets the grid span T
@@ -212,21 +215,24 @@ def make_transmit_waveform(window_func, spatial_bw, oversample=32, time_bandwidt
     n = int(round(T / dz)) + 1
     z = (np.arange(n) - (n - 1) / 2.0) * dz  # centered support, length n
 
-    if window_func == "sinc":
+    if waveform == "sinc":
         x = np.sinc(B * z).astype(np.complex128)
-    elif window_func == "gaussian":
+    elif waveform == "hamming":
+        x = (HAMMING_A0 * np.sinc(B * z) + HAMMING_A1 * np.sinc(B * z - 1)
+             + HAMMING_A1 * np.sinc(B * z + 1)).astype(np.complex128) / HAMMING_A0
+    elif waveform == "gaussian":
         sigma_x = math.sqrt(math.log(2.0)) / (math.pi * B)
         x = np.exp(-0.5 * (z / sigma_x) ** 2).astype(np.complex128)
-    elif window_func == "lfm":
+    elif waveform == "lfm":
         K = B / T                            # chirp rate, B = K*T (see make_lfm_window)
         x = np.exp(1j * np.pi * K * z ** 2)  # inst. freq K*z spans [-B/2, B/2]
-    elif window_func == "barker13":
+    elif waveform == "barker13":
         chips = np.repeat(np.array(BARKER13, dtype=np.float64), oversample)  # 13/B wide
         x = np.zeros(n, dtype=np.complex128)
         start = (n - len(chips)) // 2        # center the 13-chip code in the grid
         x[start:start + len(chips)] = chips
     else:
-        raise ValueError("window_func should be 'sinc', 'gaussian', 'lfm' or 'barker13', but got %s" % window_func)
+        raise ValueError("waveform should be 'sinc', 'hamming', 'gaussian', 'lfm' or 'barker13', but got %s" % waveform)
 
     x = x / (np.max(np.abs(x)) + 1e-30)      # unit peak magnitude
     return x, z, dz
@@ -235,7 +241,7 @@ def make_transmit_waveform(window_func, spatial_bw, oversample=32, time_bandwidt
 def interpolate_signal(scatter_z, scatter_e,
         region_radius, sensor_distance,
         spatial_bw = 20, spatial_fs = 20,
-        batch_size = None, window_func = 'sinc',
+        batch_size = None, waveform = 'sinc',
 ):
     """
     Simulates the received signal for the SAR algorithm given energy-range scatter.
@@ -251,9 +257,15 @@ def interpolate_signal(scatter_z, scatter_e,
         spatial_bw (float): spatial bandwidth of the radar
         spatial_fs (float): spatial sampling frequency of the radar
         batch_size (int): number of signals to process in a batch, None means no batching
-        window_func (str): window function to use ('sinc', 'gaussian', 'lfm' or
-            'barker13'); 'lfm' and 'barker13' are pulse-compression matched-filter
-            windows (autocorrelation of the transmit waveform)
+        waveform (str): transmit waveform to use ('sinc', 'hamming', 'gaussian',
+            'lfm' or 'barker13'). 'sinc' is the brick-wall band and 'hamming' the same
+            band with a raised-cosine taper rolled onto its edges, which drops the
+            first range sidelobe from -13.3 dB to -41.4 dB and the far tail from 1/x
+            to ~1/x^3, at the cost of a 1.45x wider mainlobe; both occupy exactly
+            [-spatial_bw/2, spatial_bw/2], unlike 'gaussian', whose -3 dB bandwidth is
+            spatial_bw but whose skirts run well past it. 'lfm' and 'barker13' are
+            pulse-compression matched-filter windows (autocorrelation of the transmit
+            waveform)
 
 
     Returns:
@@ -269,10 +281,15 @@ def interpolate_signal(scatter_z, scatter_e,
     assert(len(scatter_z.shape) > 1), "scatter_z should have at least 2 dimensions, but got %d" % len(scatter_z.shape)
     assert(scatter_z.shape == scatter_e.shape), "scatter_z and scatter_e should have the same shape, but got %s and %s" % (scatter_z.shape, scatter_e.shape)
 
-    # make the window function
-    if window_func == "sinc":
+    # build the effective range window this waveform gives interpolate_signal
+    if waveform == "sinc":
         window = lambda x: torch.sinc(spatial_bw * x)
-    elif window_func == "gaussian":
+    elif waveform == "hamming":
+        # inverse FT of a Hamming-tapered [-bw/2, bw/2] band, scaled to unit peak
+        window = lambda x: (HAMMING_A0 * torch.sinc(spatial_bw * x)
+                            + HAMMING_A1 * torch.sinc(spatial_bw * x - 1)
+                            + HAMMING_A1 * torch.sinc(spatial_bw * x + 1)) / HAMMING_A0
+    elif waveform == "gaussian":
         # Gaussian pulse whose half-power (-3 dB) two-sided bandwidth equals
         # spatial_bw, matching the sinc window's occupied band [-bw/2, bw/2].
         # Frequency-domain std: |G(f)|^2 = 1/2 at f = bw/2  =>  sigma_f =
@@ -280,12 +297,12 @@ def interpolate_signal(scatter_z, scatter_e,
         # sigma_x = 1/(2*pi*sigma_f) = sqrt(ln2)/(pi*bw).
         sigma_x = math.sqrt(math.log(2.0)) / (math.pi * spatial_bw)
         window = lambda x: torch.exp(-0.5 * (x / sigma_x) ** 2)
-    elif window_func == "lfm":
+    elif waveform == "lfm":
         window = make_lfm_window(spatial_bw, device, scatter_z.dtype)
-    elif window_func == "barker13":
+    elif waveform == "barker13":
         window = make_barker13_window(spatial_bw, device, scatter_z.dtype)
     else:
-        raise ValueError("window_func should be 'sinc', 'gaussian', 'lfm' or 'barker13', but got %s" % window_func)
+        raise ValueError("waveform should be 'sinc', 'hamming', 'gaussian', 'lfm' or 'barker13', but got %s" % waveform)
 
 
     # calculate the center of each spatial sample

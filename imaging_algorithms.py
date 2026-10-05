@@ -4,6 +4,70 @@ import sys
 import warnings
 from utils import dot_product
 
+
+SIGNAL_INTERPOLATIONS = ('bilinear', 'sinc')
+
+
+def interpolate_samples(samples, sample_pos, query_pos, method = 'bilinear', interpolation_fs = None,
+                        batch_size = None):
+    '''
+    Interpolate each pulse's samples at arbitrary positions along that pulse.
+
+    'sinc' is the band-limited reconstruction sum_d samples_d * sinc(fs*(q - pos_d)), which builds an
+    (N,P,T,D) tensor and so is the expensive one. 'bilinear' blends the two samples on either side
+    of each query -- along a 1D signal that is plain linear interpolation -- and only needs
+    (N,P,T). It assumes sample_pos is uniformly spaced along the last dim, which every caller's
+    range samples are (signal_simulation lays them out with linspace). Queries outside the sampled
+    span read 0, which is what the sinc sum tends to far off the ends.
+
+    inputs:
+        samples: (N,P,D) - the signal samples, real or complex
+        sample_pos: (N,P,D) - the position of each sample, uniformly spaced along D
+        query_pos: (N,P,T) - where to read the signal
+        method: str - 'bilinear' or 'sinc'
+        interpolation_fs: float or tensor broadcastable to (N,P,1,1) - the sample rate; sinc only
+        batch_size: int or None - queries per pass, bounding sinc's (N,P,T,D) tensor; None does all
+            T at once. bilinear ignores it
+    outputs:
+        interpolated: (N,P,T) - the signal at query_pos
+    '''
+    N,P,D = samples.shape
+    T = query_pos.shape[-1]
+
+    if method == 'bilinear':
+        # fractional sample index of each query
+        start = sample_pos[..., :1]  # (N,P,1)
+        step = (sample_pos[..., -1:] - start) / (D - 1)  # (N,P,1)
+        idx = (query_pos - start) / step  # (N,P,T)
+        in_span = (idx >= 0) & (idx <= D - 1)  # (N,P,T)
+
+        # clamp the left neighbor to D-2 so the last sample is reached with frac = 1
+        i0 = torch.floor(idx).clamp(0, D - 2)  # (N,P,T)
+        frac = (idx - i0).to(samples.real.dtype)  # (N,P,T)
+        i0 = i0.long()
+        v0 = torch.gather(samples, -1, i0)  # (N,P,T)
+        v1 = torch.gather(samples, -1, i0 + 1)  # (N,P,T)
+        return (v0 * (1 - frac) + v1 * frac) * in_span  # (N,P,T)
+
+    if method != 'sinc':
+        raise ValueError('Invalid signal interpolation \'%s\', expected one of %s'
+                         % (method, SIGNAL_INTERPOLATIONS))
+
+    if batch_size is None:
+        batch_size = T
+    interpolated = torch.zeros(N, P, T, dtype=samples.dtype, device=samples.device)
+    for t_start in range(0, T, batch_size):
+        t_end = min(t_start + batch_size, T)
+        bT = t_end - t_start
+        query_batch = query_pos[:, :, t_start:t_end]  # (N,P,bT)
+        interpolated[:, :, t_start:t_end] = torch.sum(
+            samples.reshape(N,P,1,D) *
+            torch.sinc( interpolation_fs * (query_batch.reshape(N,P,bT,1) - sample_pos.reshape(N,P,1,D)) ), # (N,P,bT,D)
+            dim=-1
+        ) # (N,P,bT)
+    return interpolated
+
+
 def projected_CBP(
     signal,
     sample_z,
@@ -17,6 +81,7 @@ def projected_CBP(
     batch_size = None,
     coherent_integration = True,
     wavelength = None,
+    signal_interpolation = 'bilinear',
 ):
     '''
     does some projection then runs the 2D convolutional back projection algorithm
@@ -30,6 +95,7 @@ def projected_CBP(
         coherent_integration: bool - determines if phase correction is used on the samples.
             requires that the signal be complex values and wavelength is provided.
         wavelength: float or None - wavelength for coherent integration.
+        signal_interpolation: str - 'bilinear' or 'sinc', how each pulse is read at a pixel's range
     outputs:
         image: (T,H,W) - the computed image
     '''
@@ -77,6 +143,7 @@ def projected_CBP(
         image_plane_width        = image_plane_width,
         image_plane_height       = image_plane_height,
         batch_size               = batch_size,
+        signal_interpolation     = signal_interpolation,
     ) # (T,H,W)
     
     return sar_image
@@ -92,6 +159,7 @@ def CBP_2D( pf,
             image_plane_width = 1,
             image_plane_height = 1,
             batch_size = None,
+            signal_interpolation = 'bilinear',
     ):
     '''
     Convolutional back projection algorithm in 2D
@@ -102,6 +170,8 @@ def CBP_2D( pf,
         line_vector: (N,P,2) - the vector of the origin crossing line that each projection function corresponds to
         interpolation_fs: (N,P) - the spatial frequency sampling rate of the projection functions
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+        batch_size: int or None - pixels interpolated per pass under sinc interpolation
+        signal_interpolation: str - 'bilinear' or 'sinc', see interpolate_samples
 
     outputs:
         image: (N,H,W) - the computed image
@@ -143,23 +213,14 @@ def CBP_2D( pf,
     line_vector = torch.nn.functional.normalize(line_vector, dim=-1) # (N,P,2)
     r_coord = torch.sum(line_vector[...,:2].reshape(N,P,1,2) * coord_grid.reshape(N,1,T,2), dim=-1)  # (N,P,T)
 
-    if batch_size is None:
-        interpolated_r_points = torch.sum(
-            filtered_pf.reshape(N,P,1,R) *
-            torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord.reshape(N,P,T,1) - r.reshape(N,P,1,R)) ), # (N,P,T,R)
-            dim=-1
-        ) # (N,P,T)
-    else:
-        interpolated_r_points = torch.zeros(N, P, T, dtype=filtered_pf.dtype, device=device)
-        for t_start in range(0, T, batch_size):
-            t_end = min(t_start + batch_size, T)
-            bT = t_end - t_start
-            r_coord_batch = r_coord[:, :, t_start:t_end]  # (N,P,bT)
-            interpolated_r_points[:, :, t_start:t_end] = torch.sum(
-                filtered_pf.reshape(N,P,1,R) *
-                torch.sinc( interpolation_fs.reshape(N,P,1,1) * (r_coord_batch.reshape(N,P,bT,1) - r.reshape(N,P,1,R)) ), # (N,P,bT,R)
-                dim=-1
-            ) # (N,P,bT)
+    interpolated_r_points = interpolate_samples(
+        filtered_pf,
+        r,
+        r_coord,
+        method = signal_interpolation,
+        interpolation_fs = interpolation_fs.reshape(N,P,1,1),
+        batch_size = batch_size,
+    ) # (N,P,T)
     
     # integrate over theta (eqation 2.31)
     image = torch.sum(interpolated_r_points, dim=1) / (4*np.pi**2)  # (N,T)
@@ -181,14 +242,19 @@ def strip_map_imaging(  signal,
                         image_height = 64,
                         image_plane_width = 1,
                         image_plane_height = 1,
+                        batch_size = None,
+                        signal_interpolation = 'bilinear',
     ):
     '''
     Strip map imaging algorithm, we only render the ground 
     plane and assume the image plane is about the origin.
 
-    reflectivity at point x is given by 
-    avg_over_pulses{ signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) * exp(-j*4*pi/wavelength*distance_to_x) }
-    we need to interpolate the signal at distance_to_x for each pulse's signal
+    reflectivity at point x is given by
+    avg_over_pulses{ filtered_signal(pulse, distance_to_x) * exp(attenuation_coeff * 2 * distance_to_x) }
+    where filtered_signal is the pulse's samples demodulated by exp(-j*4*pi/wavelength*sample_dist)
+    and then multiplied by |k| in the frequency domain -- the same ramp CBP_2D applies. We interpolate
+    that at distance_to_x for each pulse's signal. Backprojecting unfiltered gives the laminogram
+    instead, which divides the image spectrum by |k| and washes the scene out.
 
     inputs:
         signal: (N,P,D) - the signal to be back projected
@@ -198,6 +264,8 @@ def strip_map_imaging(  signal,
         sample_dist: (N,P,D) - the distance samples
         interpolation_fs: float - the spatial frequency sampling rate
         image_plane_rotation_def: (N,) - the rotation angle of the image plane in degrees. 0 degrees means the top left of the image plane is aligned with the +y and -x axes
+        batch_size: int or None - pixels interpolated per pass, bounding the (N,P,T,D) sinc tensor; None does all T at once
+        signal_interpolation: str - 'bilinear' or 'sinc', see interpolate_samples
 
     outputs:
         image: (N,H,W) - the computed image
@@ -240,21 +308,105 @@ def strip_map_imaging(  signal,
     else:
         distance_to_pixel = torch.norm( trajectory.reshape(N,P,1,3) - coord_grid.reshape(N,1,T,3), dim=-1 )  # (N,P,T)
 
+    # demodulate the carrier off the samples, so the ramp below nulls at the k-space origin
+    signal = signal * torch.exp( -1j * 4 * np.pi * sample_dist / wavelength )  # (N,P,D)
+
+    # filter with |k| as CBP_2D does; sample_dist is linear in index so it stands in for frequency
+    radial_k = sample_dist - torch.norm(trajectory, dim=-1, keepdim=True)  # (N,P,D)
+    signal_freq = torch.fft.fftshift(torch.fft.fft(signal, dim=-1), dim=-1)  # (N,P,D)
+    signal = torch.fft.ifft(torch.fft.ifftshift(signal_freq * torch.abs(radial_k), dim=-1), dim=-1)  # (N,P,D)
+
     # interpolate signal at distance_to_pixel
-    signal_at_distance_to_pixel = torch.sum(  signal.reshape(N,P,1,D) * \
-                                    torch.sinc( interpolation_fs * ((distance_to_pixel.reshape(N,P,T,1) - sample_dist.reshape(N,P,1,D)) )), # (N,P,T,D)
-                                    dim=-1
-                                ) # (N,P,T)
+    signal_at_distance_to_pixel = interpolate_samples(
+        signal,
+        sample_dist,
+        distance_to_pixel,
+        method = signal_interpolation,
+        interpolation_fs = interpolation_fs,
+        batch_size = batch_size,
+    ) # (N,P,T)
     
-    # compute estimate of reflectivity
+    # compute estimate of reflectivity; the carrier came off the samples above
     reflectivity_estimate = torch.mean( signal_at_distance_to_pixel * \
                                         # distance_to_pixel**2 * \
-                                        torch.exp(
-                                            2*attenuation_coeff *distance_to_pixel - \
-                                            1j*4*3.14159265358979323846264338427950288*distance_to_pixel/wavelength
-                                        )
+                                        torch.exp( 2*attenuation_coeff * distance_to_pixel )
                                     , dim=1)  # (N,T)
 
     # reshape and convert to real-valued images
     image = reflectivity_estimate.reshape(N,image_height,image_width) # (N,H,W)
     return torch.sqrt(image.real**2 + image.imag**2)  # (N,H,W)
+
+
+# ---------------------------------------------------------------------------
+# Display compression: amplitude -> dB or asinh-compressed values for plotting.
+# Every place that turns a raw amplitude image into something imshow-able (SAR, side scan and
+# forward looking sonar paper figures, signal-column stills, the side scan composite PNG) shares
+# these two primitives rather than each re-deriving the same formulas.
+# ---------------------------------------------------------------------------
+
+def db_compress(amplitude, reference, db_floor=-60.0):
+    '''
+    Amplitude -> dB below reference, clipped to db_floor.
+
+    inputs:
+        amplitude (ndarray): raw amplitude, any shape
+        reference (float): amplitude that maps to 0 dB -- an image's own peak, or, to keep panels
+            of a sweep comparable, the peak shared across the whole sweep
+        db_floor (float): black point of the dB display; reference <= 0 (an all-dark image) maps
+            to an array of db_floor everywhere
+    outputs:
+        db (ndarray): amplitude in dB, clipped to [db_floor, 0]
+    '''
+    amplitude = np.asarray(amplitude, dtype=np.float32)
+    if reference <= 0.0:
+        return np.full_like(amplitude, db_floor)
+    floor_linear = 10.0 ** (db_floor / 20.0)
+    db = 20.0 * np.log10(np.clip(amplitude / reference, floor_linear, None))
+    return np.clip(db, db_floor, 0.0)
+
+
+def to_db_uint8(amplitude, reference, db_floor=-60.0):
+    '''db_compress, rescaled to uint8 [0,255] for compositing into an 8-bit image.'''
+    db = db_compress(amplitude, reference, db_floor)
+    return ((db - db_floor) / -db_floor * 255.0).astype(np.uint8)
+
+
+def asinh_compress(amplitude, k, ref):
+    '''
+    Core of asinh display compression: linear near zero, ~logarithmic once amplitude passes k,
+    so faint texture stays visible without dB's hard floor clipping it to black.
+
+    inputs:
+        amplitude (ndarray): raw amplitude
+        k (float): softening scale -- arcsinh(x/k) is ~linear for x << k, ~logarithmic for x >> k
+        ref (float): amplitude that maps to output 1.0
+    outputs:
+        compressed (ndarray): compressed amplitude in [0,1]
+    '''
+    amplitude = np.asarray(amplitude, dtype=np.float32)
+    compressed = np.arcsinh(amplitude / k) / np.arcsinh(ref / k)
+    return np.clip(compressed, 0.0, 1.0)
+
+
+def to_asinh(img, k, ref):
+    '''asinh_compress, rescaled to uint8 [0,255] for compositing into an 8-bit image.'''
+    return (asinh_compress(img, k, ref) * 255).astype(np.uint8)
+
+
+def compute_dataset_reference(input_dir):
+    '''
+    Dataset-wide asinh reference: median, over every saved raw-amplitude .npy in input_dir, of
+    that image's 99.9th percentile pixel. Not wired in yet -- every asinh call site in this
+    codebase computes ref from just the one image being displayed; this is here for when a real
+    cross-dataset reference is wanted instead.
+
+    inputs:
+        input_dir (Path): directory of saved raw-amplitude .npy arrays
+    outputs:
+        ref (float): dataset reference level, feeds to_asinh/asinh_compress's ref argument
+    '''
+    refs = []
+    for f in input_dir.glob('*.npy'):
+        img = np.load(f)
+        refs.append(np.percentile(img, 99.9))
+    return np.median(refs)

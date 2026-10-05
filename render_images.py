@@ -5,6 +5,7 @@ from PIL import ImageDraw
 import imageio
 import cv2
 import os
+from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import get_next_path, generate_pose_mat, savefig, extract_pose_info, plot_image
 import torch
 import numpy as np
@@ -17,14 +18,14 @@ from imaging_algorithms import projected_CBP, strip_map_imaging
 
 from signal_visualization import signal_gif
 
-from paper_figure_layout import stitch_panels
+from paper_figure_layout import panel_display, stitch_panels
 
 
 
 def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         spatial_bw = 64,
                         spatial_fs = 64,
-                        window_func = 'sinc',
+                        waveform = 'sinc',
                         debug_gif = False,
                         debug_gif_suffix = None,
                         snr_db = None,
@@ -33,6 +34,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         verbose = False,
                         imaging_algorithm = 'cbp',
                         cbp_batch_size = None,
+                        signal_interpolation = 'bilinear',
                         trajectory_type = 'circular',
                         trajectory_noise_var = 0,
                         mesh_scale = None,
@@ -59,7 +61,30 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         # material properties
                         obj_raids =    (1.0, 1.0, 100.0, 0.1, 0.9),
                         ground_raids = (1.0, 1.0,   1.0, 0.9, 0.1),
+
+                        # already-built scene, for a caller rendering many poses of one object
+                        preloaded_mesh = None,
+                        octree = None,
     ):
+    '''
+    Render the SAR image(s) of one mesh from a batch of poses.
+
+    inputs:
+        imaging_algorithm (str or sequence[str]): 'cbp' or 'stripmap'. Given a sequence, every
+            named algorithm is run on the *same* ray trace and signal -- which is everything up
+            to the imaging step, and the bulk of the cost -- and a dict keyed by algorithm name
+            is returned instead of a single image
+        preloaded_mesh (tuple): (mesh, normals, material_properties) as load_mesh returns them,
+            used instead of loading file_name. A caller rendering many poses of one object loads
+            it once; mesh_scale/make_ground/object_x_flip/object_rotate_xyz/*_raids are then that
+            caller's business, since the mesh is already built
+        octree (Octree): a previously built octree for the mesh, built in the accumulator when
+            None. Depends only on the mesh, so it is built once alongside preloaded_mesh
+        remaining arguments: as documented on render_random_image
+
+    outputs:
+        sar_image (T,H,W), or {algorithm: (T,H,W)} when imaging_algorithm is a sequence
+    '''
 
     # set device
     device = poses.device
@@ -70,15 +95,18 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         file_name = override_obj_path
 
     # load the mesh and hardcode the material properties
-    mesh, normals, material_properties = load_mesh( file_name,
-                                                    device=device,
-                                                    make_ground=make_ground,
-                                                    scale=mesh_scale,
-                                                    obj_raids = obj_raids,
-                                                    ground_raids = ground_raids,
-                                                    x_flip = object_x_flip,
-                                                    rotate_xyz = object_rotate_xyz,
-                                                )
+    if preloaded_mesh is None:
+        mesh, normals, material_properties = load_mesh( file_name,
+                                                        device=device,
+                                                        make_ground=make_ground,
+                                                        scale=mesh_scale,
+                                                        obj_raids = obj_raids,
+                                                        ground_raids = ground_raids,
+                                                        x_flip = object_x_flip,
+                                                        rotate_xyz = object_rotate_xyz,
+                                                    )
+    else:
+        mesh, normals, material_properties = preloaded_mesh
 
     # generate the sensor trajectory for each pose
     # (T,P,3)        (T,P,3)              (T,P)
@@ -108,6 +136,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
         num_bounce = num_bounce,
         second_bounce_batch_size = 2**9,
+        octree = octree,
     )
     if verbose:
         print('done.')
@@ -129,7 +158,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                 region_radius,
                 torch.linalg.norm(true_trajectory[t, p], dim=-1).reshape(1),  # (1,)
                 spatial_bw = spatial_bw, spatial_fs = spatial_fs,
-                window_func = window_func,
+                waveform = waveform,
                 batch_size = None,
             )
             signals_list[t].append(sig_tp.squeeze(0))    # (Z,)
@@ -149,42 +178,50 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if use_sig_magnitude:
         signals = signals.abs()
 
-    # Compute sar image
-    if verbose:
-        print('Computing SAR image...')
-    if imaging_algorithm == 'cbp':
-        sar_image = projected_CBP(
-            signals,
-            sample_z,
-            perceived_trajectory,
-            spatial_fs,
-            image_plane_rotation_deg = cam_azimuth_deg+90,
-            image_width = image_width,
-            image_height = image_height,
-            image_plane_width = image_plane_width,
-            image_plane_height = image_plane_height,
-            batch_size = cbp_batch_size,
-            coherent_integration = not use_sig_magnitude,
-            wavelength = wavelength,
-        )
-    elif imaging_algorithm == 'stripmap':
-        sar_image = strip_map_imaging(
-            complex_signals,
-            wavelength,
-            perceived_trajectory,
-            sample_z,
-            spatial_fs,
-            planar_wave = True,
-            image_plane_rotation_deg = cam_azimuth_deg+90,
-            image_width = image_width,
-            image_height = image_height,
-            image_plane_width = image_plane_width,
-            image_plane_height = image_plane_height,
-        )
-    else:
-        raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%imaging_algorithm)
-    if verbose:
-        print('done.')
+    # Compute sar image. Every algorithm images the one signal built above, so asking for
+    # several costs only the imaging steps and not another ray trace
+    one_algorithm = isinstance(imaging_algorithm, str)
+    algorithms = (imaging_algorithm,) if one_algorithm else tuple(imaging_algorithm)
+    sar_images = {}
+    for algorithm in algorithms:
+        if verbose:
+            print('Computing SAR image (%s)...'%algorithm)
+        if algorithm == 'cbp':
+            sar_images[algorithm] = projected_CBP(
+                signals,
+                sample_z,
+                perceived_trajectory,
+                spatial_fs,
+                image_plane_rotation_deg = cam_azimuth_deg+90,
+                image_width = image_width,
+                image_height = image_height,
+                image_plane_width = image_plane_width,
+                image_plane_height = image_plane_height,
+                batch_size = cbp_batch_size,
+                signal_interpolation = signal_interpolation,
+                coherent_integration = not use_sig_magnitude,
+                wavelength = wavelength,
+            )
+        elif algorithm == 'stripmap':
+            sar_images[algorithm] = strip_map_imaging(
+                complex_signals,
+                wavelength,
+                perceived_trajectory,
+                sample_z,
+                spatial_fs,
+                planar_wave = True,
+                image_plane_rotation_deg = cam_azimuth_deg+90,
+                image_width = image_width,
+                image_height = image_height,
+                image_plane_width = image_plane_width,
+                image_plane_height = image_plane_height,
+                batch_size = cbp_batch_size,
+                signal_interpolation = signal_interpolation,
+            )
+        else:
+            raise ValueError('Invalid imaging algorithm \'%s\', expected \'cbp\' or \'stripmap\''%algorithm)
+        if verbose:
+            print('done.')
 
     # # save the sar image with colorbar for qualitative analysis
     # plot_image(sar_image, title="SAR", cmap='inferno', db=True)
@@ -194,24 +231,64 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if debug_gif:
         signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=debug_gif_suffix)
 
-    return sar_image
+    # a caller that named one algorithm as a string gets that one image back, as before
+    return sar_images[imaging_algorithm] if one_algorithm else sar_images
 
 
+
+
+def _find_split_dir(obj_id):
+    '''The srn_cars split directory holding obj_id, so an object from any split can be named.'''
+    for split in ('cars_train', 'cars_val', 'cars_test'):
+        if os.path.isdir(os.path.join(srn_split_dir(split), obj_id)):
+            return srn_split_dir(split)
+    raise FileNotFoundError('object %s is in none of the srn_cars splits' % obj_id)
+
+
+def _nearest_pose_num(dataset_dir, obj_id, azimuth_deg, elevation_deg):
+    '''
+    The pose of obj_id whose look direction is closest to (azimuth_deg, elevation_deg), so an image
+    can be pinned by the az/el that generate_dataset.py's gifs stamp on their frames, and still be
+    rendered from the pose file itself -- the same pose, and the same rgb, the dataset used.
+
+    outputs:
+        pose_num (str), and that pose's azimuth and elevation in deg
+    '''
+    def look(az, el):
+        az, el = np.deg2rad(az), np.deg2rad(el)
+        return np.array([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)])
+
+    target = look(azimuth_deg, elevation_deg)
+    pose_dir = os.path.join(dataset_dir, obj_id, 'pose')
+    best = None
+    for f in sorted(os.listdir(pose_dir)):
+        pose = np.loadtxt(os.path.join(pose_dir, f)).reshape(1, 4, 4).astype(np.float32)
+        pose_info = extract_pose_info(torch.from_numpy(pose))
+        az, el = pose_info[6].item(), pose_info[5].item()
+        cos_angle = float(np.dot(look(az, el), target))
+        if best is None or cos_angle > best[0]:
+            best = (cos_angle, os.path.splitext(f)[0], az, el)
+    return best[1:]
 
 
 def render_random_image(
+        obj_id = None,
+        pose_num = None,
+        azimuth_deg = None,
+        elevation_deg = None,
         debug_gif = False, 
         num_pulse = 120,
         azimuth_spread = 180,
         spatial_fs = 64,
         spatial_bw = 64,
-        window_func = 'sinc',
+        waveform = 'sinc',
         snr_db = None,
         wavelength = None,
         use_sig_magnitude=True,
         suffix = None,
         imaging_algorithm = 'cbp',
         cbp_batch_size = None,
+        signal_interpolation = 'bilinear',
         trajectory_type = 'circular',
         trajectory_noise_var = 0,
         mesh_scale = None,
@@ -241,33 +318,48 @@ def render_random_image(
         log_scale = False,
     ):
     """
-    Renders a random image from the ShapeNet dataset using SAR simulation.
+    Renders an image from the ShapeNet dataset using SAR simulation.
+
+    inputs:
+        obj_id (str): srn_cars object id, from any split; a random cars_train one is drawn when None
+        pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
+        azimuth_deg, elevation_deg (float): instead of pose_num, pick the object's pose nearest
+            this look direction. Both or neither, and not together with pose_num
+        remaining arguments: as in sar_render_image
     """
 
-    # cluster dirs
-    dataset_dir = '/workspace/data/srncars/cars_train/'
-    models_dir = '/workspace/data/srncars/02958343'
+    # dataset locations come from config.json. A named object is looked up in whichever split has
+    # it, since generate_dataset.py's test run renders cars_test
+    dataset_dir = srn_split_dir('cars_train') if obj_id is None else _find_split_dir(obj_id)
+    models_dir = SHAPENET_CARS_DIR
 
-    # # lab pc dirs
-    # dataset_dir = '/home/berian/Documents/shapenet/cars_train/'
-    # models_dir  = '/home/berian/Documents/shapenet/object-models/02958343/'
+    if (azimuth_deg is None) != (elevation_deg is None):
+        raise ValueError('give both azimuth_deg and elevation_deg, or neither')
+    if azimuth_deg is not None and pose_num is not None:
+        raise ValueError('give pose_num or azimuth_deg/elevation_deg, not both')
 
-    all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
-    obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
+    # left None, both are drawn at random in this order, so a caller that seeds np.random still
+    # gets the pick it used to
+    if obj_id is None:
+        all_obj_id = os.listdir(dataset_dir)  # list all object IDs in the dataset
+        obj_id     = np.random.choice(all_obj_id, 1)[0]  # randomly select an object ID from the dataset
     print('Selected object ID: ', obj_id)
 
-    all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
-    all_pose_nums  = os.listdir(all_pose_paths)
-    pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
+    if azimuth_deg is not None:
+        pose_num, az, el = _nearest_pose_num(dataset_dir, obj_id, azimuth_deg, elevation_deg)
+        print('Nearest pose to az %.1f el %.1f: %s (az %.1f el %.1f)'
+              % (azimuth_deg, elevation_deg, pose_num, az, el))
+
+    if pose_num is None:
+        all_pose_paths = os.path.join(dataset_dir,obj_id,'pose')
+        all_pose_nums  = os.listdir(all_pose_paths)
+        pose_num       = np.random.choice(all_pose_nums, 1)[0].split('.')[0]
     print('Selected pose number: ', pose_num)
 
     if suffix is None:
         suffix = '%s_%s'%(pose_num, obj_id)
 
     # load image, pose, and mesh
-    # rgb_path  = '/workspace/data/srncars/cars_train/%s/rgb/%s.png' % (obj_id, pose_num)
-    # pose_path = '/workspace/data/srncars/cars_train/%s/pose/%s.txt' % (obj_id, pose_num)
-    # mesh_path = '/workspace/data/srncars/02958343/%s/models/model_normalized.obj' % obj_id
     rgb_path  = os.path.join(dataset_dir, obj_id, 'rgb', '%s.png'%pose_num)
     pose_path = os.path.join(dataset_dir, obj_id, 'pose', '%s.txt'%pose_num)
     mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')
@@ -292,7 +384,7 @@ def render_random_image(
 
                             spatial_bw = spatial_bw,
                             spatial_fs = spatial_fs,
-                            window_func = window_func,
+                            waveform = waveform,
                             snr_db = snr_db,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
@@ -304,6 +396,7 @@ def render_random_image(
 
                             imaging_algorithm=imaging_algorithm,
                             cbp_batch_size = cbp_batch_size,
+                            signal_interpolation = signal_interpolation,
                             trajectory_type=trajectory_type,
                             trajectory_noise_var = trajectory_noise_var,
                             mesh_scale = mesh_scale,
@@ -364,49 +457,34 @@ def render_random_image(
 
 
 
-def _prepare_stitched_plot_arrays(sar_arrays, plot_db_scale=False, db_floor=-60.0):
-    """
-    Convert raw SAR amplitudes into the plotting data for stitched figures.
-
-    The dB path still references every panel to the brightest panel's peak, so the numbers on the
-    panels' colorbars stay comparable across the figure even though each panel is now stretched
-    over its own range. Only the 'vmin' of the returned range is used by the stitched figure -- its
-    'vmax' is the shared peak, which multi_param_experiment replaces with each panel's own.
-    """
-    if not plot_db_scale:
-        return sar_arrays, dict(vmin=0.0, vmax=float(max(a.max() for a in sar_arrays)))
-
-    reference = float(max(a.max() for a in sar_arrays))
-    if reference <= 0.0:
-        plot_arrays = [np.zeros_like(a, dtype=np.float32) for a in sar_arrays]
-        return plot_arrays, dict(vmin=db_floor, vmax=0.0)
-
-    plot_arrays = []
-    for arr in sar_arrays:
-        amplitude = np.asarray(arr, dtype=np.float32)
-        db_values = 20.0 * np.log10(np.clip(amplitude / reference, 1e-12, None))
-        plot_arrays.append(db_values)
-    return plot_arrays, dict(vmin=db_floor, vmax=0.0)
-
-
-def multi_param_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134, custom_title_strings = None, plot_db_scale=False, db_floor=-60.0):
+def multi_param_sar_experiment(param_dict, default_kwargs, experiment_name="experiment", seed=8134,
+                               custom_title_strings=None):
     """
     A modular function to run experiments by varying multiple parameters together
-    
+
     Args:
         param_dict (dict): Dictionary where each key is a parameter name and value is a list/array of values.
                           All lists/arrays must have the same length.
-        default_kwargs (dict): Default arguments for render_random_image
+        default_kwargs (dict): Default arguments for render_random_image. Its
+            'compression'/'db_floor'/'asinh_k_ratio' entries decide the stitched figure's display
+            instead of being forwarded to render_random_image, and every panel is referenced to
+            its own peak rather than to the sweep's brightest panel -- see
+            paper_figure_layout.panel_display, which the side scan suite shares.
         experiment_name (str): Name of the experiment for saving files
         seed (int): Random seed for reproducibility
-        plot_db_scale (bool): If True, render the stitched plots in dB relative to a shared max.
     """
     # Verify all parameter arrays have the same length
     lengths = [len(vals) for vals in param_dict.values()]
     if not all(l == lengths[0] for l in lengths):
         raise ValueError("All parameter arrays must have the same length")
     n_experiments = lengths[0]
-    
+
+    # display settings are decided by default_kwargs, not forwarded to render_random_image
+    default_kwargs = default_kwargs.copy()
+    compression = default_kwargs.pop('compression', 'linear')
+    db_floor = default_kwargs.pop('db_floor', -60.0)
+    asinh_k_ratio = default_kwargs.pop('asinh_k_ratio', 0.1)
+
     # Create parameter names string for labeling
     param_names = "_".join(param_dict.keys())
 
@@ -468,29 +546,30 @@ def multi_param_experiment(param_dict, default_kwargs, experiment_name="experime
     # Sort files by the figure ID
     sorted_npy = [f for _, f in sorted(zip(npy_ids, npy_files))]
 
-    # Load raw SAR amplitude arrays
+    # Each panel gets its own colorbar in its own display units, referenced to its own peak as
+    # the side scan figures are: a sweep like Fs or sphere size moves the level by orders of
+    # magnitude, and referencing the dim panels to the brightest one left them nearly black. The
+    # level is not lost, since each colorbar's label names that panel's own raw peak.
     sar_arrays = [np.load(os.path.join('figures', f)) for f in sorted_npy]
-    plot_arrays, plot_range = _prepare_stitched_plot_arrays(
-        sar_arrays,
-        plot_db_scale=plot_db_scale,
-        db_floor=db_floor,
-    )
+    plot_arrays, vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], [], []
+    for arr in sar_arrays:
+        panel, vmin, vmax, cbar_label, tick_fmt = panel_display(
+            arr, compression=compression, db_floor=db_floor, asinh_k_ratio=asinh_k_ratio)
+        plot_arrays.append(panel)
+        vmins.append(vmin)
+        vmaxs.append(vmax)
+        cbar_labels.append(cbar_label)
+        tick_fmts.append(tick_fmt)
 
-    # Each panel gets its own colorbar, so each is stretched over its own range rather than over a
-    # scale shared with the rest of the figure: a sweep like Fs or sphere size moves the level by
-    # orders of magnitude, which used to leave most panels black. The level is not lost -- the
-    # colorbars read out in absolute amplitude, or in dB against the brightest panel, so panels are
-    # still compared by their numbers.
     path = f'figures/sar_stitched_{experiment_name}.png'
     stitch_panels(
         plot_arrays,
         experiment_strings,
         path,
         cmap='gray',
-        vmin=plot_range['vmin'],
-        vmax=None,
-        min_span=6.0 if plot_db_scale else None,
-        cbar_label='dB re brightest panel' if plot_db_scale else 'amplitude',
-        cbar_tick_fmt='%.0f dB' if plot_db_scale else '%.2g',
+        vmin=vmins,
+        vmax=vmaxs,
+        cbar_label=cbar_labels,
+        cbar_tick_fmt=tick_fmts,
     )
 

@@ -8,65 +8,26 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 
+from config import CONFIG
 from sidescansonar import render_side_scan_image
-from display_compression import asinh_compress
-from paper_figure_layout import stitch_panels
+from paper_figure_layout import panel_display, stitch_panels
 
 
-SONAR_PAPER_BASELINE = dict(
-    # pin the object and the pose. render_side_scan_image draws both at random, and a sweep only
-    # reads as a sweep when the geometry is the one thing that does not change between panels.
-    obj_id = '100715345ee54d7ae38b52b4ee9d36a3',
-    # pose_num = '000000',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    pose_num = '000043',  # 40.6 deg elevation, a grazing angle that throws a visible shadow
-    sensor_distance = 10,  # None keeps the pose file's own range; set to override it
-
-    # track geometry
-    track_length = 2.0,
-    num_pings = 128,
-    elevation_fov_deg = 30.0,
-    azimuth_beam_width_deg = 0.1,
-    num_ray_width = 3,
-    num_ray_height = 256,
-    region_radius = 2.0,
-
-    # image plane geometry
-    image_width  = 128,
-    image_height = 128,
-    image_plane_width  = 2,
-    image_plane_height = 2,
-
-    # signal / physics
-    wavelength = None,
-    num_bounce = 1,
-    spherical_spread = True,
-    water_absorption = 0.00,
-    tvg_exponent = 10,
-    spatial_bw = 128,
-    spatial_fs = 256,
-    window_func = 'sinc',
-    use_sig_magnitude = True,
-
-    # display -- the one place compression/db_floor/asinh_k_ratio are decided; both the paper
-    # sweeps' stitched figures and debug_side_scan.py's render_side_scan_image call read these
-    # off the baseline
-    compression = 'asinh',  # 'linear' | 'db' | 'asinh'
-    db_floor = -60.0,
-    asinh_k_ratio = 0.005,  # k = asinh_k_ratio * ref; ref is each image's own 99.9th-percentile amplitude
-
-    # mesh
-    make_ground = True,
-    level_with_ground = True,
-    object_x_flip = False,
-    object_rotate_xyz = (90.0, 0.0, 0.0),
-
-    # material properties
-    obj_raids    = (1.0, 1.0, 100.0, 0.1, 0.9),
-    ground_raids = (1.0, 1.0,   1.0,   5, 0.1),
-)
+# config.json's side_scan_sonar_baseline. Notes on its keys:
+#   obj_id/pose_num pin the object and the pose. render_side_scan_image draws both at random, and a
+#     sweep only reads as a sweep when the geometry is the one thing that does not change between
+#     panels. 000000 is 40.6 deg elevation, a grazing angle that throws a visible shadow
+#   sensor_distance None keeps the pose file's own range; set to override it
+#   num_ray_width 1 is one boresight ray: no azimuth beam spreading outside the beam_width sweep
+#   waveform 'gaussian', since the sinc pulse shows heavy side lobes. it may be a bug
+#   compression/db_floor/asinh_k_ratio -- the one place these are decided; both the paper sweeps'
+#     stitched figures and debug_side_scan.py's render_side_scan_image call read these off the
+#     baseline. compression is 'linear' | 'db' | 'asinh'; k = asinh_k_ratio * ref, where ref is
+#     each image's own 99.9th-percentile amplitude
+SSS_PAPER_BASELINE = dict(CONFIG['side_scan_sonar_baseline'])
 
 
-def _sonar_experiments():
+def _sss_experiments():
 
     # Azimuth beam width sweep -- the beam is what resolves along track, so this is the knob that
     # takes the target from a smear to a shape. Logarithmic, since a degree is a big step at 0.1
@@ -75,7 +36,19 @@ def _sonar_experiments():
     beam_width = dict(
         name='beam_width',
         vary={'azimuth_beam_width_deg': beam_width_vals},
+        overrides={'num_ray_width': 250},  # the baseline's one ray leaves the beam nothing to weight
         custom_title_strings=['Beam Width: %.2f deg' % b for b in beam_width_vals],
+    )
+
+    # Azimuth ray count sweep at a fixed 10 deg beam, to test whether beam width is ray-starved
+    ray_width_beam_deg = 10.0
+    ray_width_vals = [3 ** p for p in range(1, 7)]  # 3 .. 729, odd so one ray stays on boresight
+    num_ray_width = dict(
+        name='num_ray_width',
+        vary={'num_ray_width': ray_width_vals},
+        overrides={'azimuth_beam_width_deg': ray_width_beam_deg},
+        custom_title_strings=['%d Az Rays, %.0f deg Beam' % (n, ray_width_beam_deg)
+                              for n in ray_width_vals],
     )
 
     # Time varying gain sweep -- how hard the receiver ramp lifts far range against the
@@ -92,7 +65,7 @@ def _sonar_experiments():
     # regime (dB-like, texture-heavy); k near 1 keeps most of the image linear, close to the
     # 'linear' panel. Logarithmic spacing for the same reason as beam width. The raw amplitude
     # this sweep renders is identical panel to panel -- only display changes -- but it still goes
-    # through render_side_scan_image so this sweep reuses multi_param_sonar_experiment like the
+    # through render_side_scan_image so this sweep reuses multi_param_sss_experiment like the
     # others instead of a one-off display-only path.
     asinh_k_vals = np.logspace(-3, 0, 5).tolist()
     asinh_k = dict(
@@ -102,13 +75,38 @@ def _sonar_experiments():
         custom_title_strings=['asinh k/ref: %.2g' % k for k in asinh_k_vals],
     )
 
+    # Display compression comparison -- one amplitude four ways: linear, dB, the baseline's asinh,
+    # and a larger asinh k at the near-linear end of the family.
+    compression_k = SSS_PAPER_BASELINE['asinh_k_ratio']
+    compression = dict(
+        name='compression',
+        vary={'compression': ['linear', 'db', 'asinh', 'asinh'],
+              'asinh_k_ratio': [compression_k, compression_k, compression_k, 0.1]},
+        custom_title_strings=['Linear Amplitude',
+                              'dB, %.0f dB Floor' % SSS_PAPER_BASELINE['db_floor'],
+                              'asinh, k/ref %.3g' % compression_k,
+                              'asinh, k/ref 0.1'],
+    )
+
     # Elevation FOV sweep -- how much of the seafloor the fan lights up around the target, from a
     # narrow beam on the object alone to a fan that fills the range window.
-    elevation_fov_vals = np.linspace(5, 50, 5).tolist()
+    elevation_fov_vals = np.linspace(5, 50, 10).tolist()
     elevation_fov = dict(
         name='elevation_fov',
         vary={'elevation_fov_deg': elevation_fov_vals},
-        custom_title_strings=['Elevation FOV: %.1f deg' % e for e in elevation_fov_vals],
+        overrides={'elevation_angle_deg': 60.0},  # top of the dataset's 20-60 deg band, where the near edge is hardest to reach
+        ncols=5,
+        custom_title_strings=['Elevation FOV: %.0f deg' % e for e in elevation_fov_vals],
+    )
+
+    # Elevation ray count sweep at 20 deg, the band's most grazing look and so its sparsest seafloor rays
+    num_ray_height_vals = list(range(100, 1100, 100))  # 100 .. 1000
+    num_ray_height = dict(
+        name='num_ray_height',
+        vary={'num_ray_height': num_ray_height_vals},
+        overrides={'elevation_angle_deg': 20.0, 'elevation_fov_deg': 20.0},
+        ncols=5,
+        custom_title_strings=['%d El Rays' % n for n in num_ray_height_vals],
     )
 
     # Spatial bandwidth sweep -- range resolution goes as 1/bw, so this is what turns the target
@@ -122,76 +120,75 @@ def _sonar_experiments():
         custom_title_strings=['BW: %d, Fs: %d' % (bw, 2 * bw) for bw in spatial_bw_vals],
     )
 
+    # Transmit waveform comparison -- every waveform interpolate_signal implements, at the
+    # baseline bandwidth so only the pulse changes. All five have a ~1/bw mainlobe, so what
+    # separates the panels is range side lobe level, which is what the baseline's waveform
+    # was chosen on.
+    waveform_vals = ['sinc', 'hamming', 'gaussian', 'lfm', 'barker13']
+    waveform = dict(
+        name='waveform',
+        vary={'waveform': waveform_vals},
+        custom_title_strings=['Sinc Interpolation', 'Hamming Window', 'Gaussian Pulse',
+                              'LFM Chirp', 'Barker 13'],
+    )
+
+    # The baseline at fls_paper_figures' 5 random in-band poses of the same car, so the two figures
+    # show the same views: (azimuth, elevation) in deg
+    random_poses = {'000025': (325.2, 23.4), '000037': (256.6, 33.8), '000028': (46.2, 37.7),
+                    '000029': (286.2, 37.8), '000023': (8.5, 42.1)}
+    poses = dict(
+        name='random_poses',
+        vary={'pose_num': list(random_poses)},
+        custom_title_strings=['Az %.1f, El %.1f deg' % random_poses[pose] for pose in random_poses],
+    )
+
+    # Elevation sweep from the seafloor to overhead, at the baseline pose's azimuth, in a 4x4 grid
+    elevation_vals = np.linspace(0, 90, 16).tolist()
+    elevation_angle = dict(
+        name='elevation_angle',
+        vary={'elevation_angle_deg': elevation_vals},
+        ncols=4,
+        custom_title_strings=['Elevation: %.0f deg' % e for e in elevation_vals],
+    )
+
     return [
         # beam_width,
-        tvg,
+        # num_ray_width,
+        # tvg,
+        # compression,
         # asinh_k,
-        elevation_fov,
-        spatial_bw,
+        # elevation_fov,
+        num_ray_height,
+        # spatial_bw,
+        # waveform,
+        # poses,
+        # elevation_angle,
     ]
 
 
-SONAR_PAPER_EXPERIMENTS = _sonar_experiments()
+SSS_PAPER_EXPERIMENTS = _sss_experiments()
 
 
-def _panel(amplitude, compression='linear', db_floor=-60.0, asinh_k_ratio=0.1):
-    '''
-    One panel normalized to its own peak, as linear amplitude, in dB, or asinh-compressed.
-
-    Each panel is normalized to itself rather than to a scale shared across the figure, because
-    both sweeps move the absolute level by orders of magnitude and neither one means anything.
-    The beam width sweep narrows the ray fan with the beam while the energy divisor stays at the
-    transmitted ray count, and the gain sweep multiplies the whole image by R^n. Against a shared
-    scale most panels would come out black, so the figures compare shape and not level.
-
-    inputs:
-        amplitude (H,W): raw side scan amplitude, as saved by render_side_scan_image
-        compression (str): 'linear' peak-normalizes. 'db' shows dB below the panel's own peak --
-            the returns span ~100 dB, so linear is all specular glint and near range, and dB is
-            what shows the seafloor and the shadow. 'asinh' arcsinh-compresses (asinh_compress)
-            referenced to the panel's own 99.9th percentile amplitude -- stays linear near zero
-            and logarithmic past asinh_k_ratio * that reference, so it shows seafloor texture
-            like dB does but without a hard floor clipping the faint end to black
-        db_floor (float): black point of the dB display, ignored unless compression == 'db'
-        asinh_k_ratio (float): asinh softening scale as a fraction of the panel's own reference
-            level, ignored unless compression == 'asinh'
-    outputs:
-        panel (H,W): amplitude in [0,1] for 'linear'/'asinh', or dB below the panel's own peak
-            clipped to [db_floor,0] for 'db'
-    '''
-    amplitude = np.asarray(amplitude, dtype=np.float32)
-    peak = float(amplitude.max())
-    if peak <= 0.0:  # an all-dark panel has no peak to normalize against
-        return np.full_like(amplitude, db_floor if compression == 'db' else 0.0)
-    if compression == 'db':
-        return np.clip(20.0 * np.log10(np.clip(amplitude / peak, 1e-12, None)), db_floor, 0.0)
-    if compression == 'asinh':
-        ref = float(np.percentile(amplitude, 99.9))
-        if ref <= 0.0:  # nearly all-dark panel: 99.9th percentile can round to 0 even with peak > 0
-            return np.zeros_like(amplitude)
-        return asinh_compress(amplitude, asinh_k_ratio * ref, ref)
-    return amplitude / peak
-
-
-def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='experiment',
-                                 custom_title_strings=None):
+def multi_param_sss_experiment(param_dict, default_kwargs, experiment_name='experiment',
+                               custom_title_strings=None, ncols=None):
     '''
     Run one side scan sweep and stitch its panels into a single figure.
 
-    The side scan analogue of render_images.multi_param_experiment: render_side_scan_image writes
-    the raw amplitude of each run to figures/side_scan_amp_<suffix>.npy, and those are read back
-    here so the panels share one display treatment instead of each run's own saved png.
+    The side scan analogue of render_images.multi_param_sar_experiment: render_side_scan_image
+    writes the raw amplitude of each run to figures/side_scan_amp_<suffix>.npy, and those are read
+    back here so the panels share one display treatment instead of each run's own saved png.
 
     inputs:
         param_dict (dict): parameter name -> list of values, one entry per panel. Every list must
             be the same length
         default_kwargs (dict): the baseline passed to render_side_scan_image. Its
             'compression'/'db_floor'/'asinh_k_ratio' entries also set the stitched figure's
-            display, so SONAR_PAPER_BASELINE is the one place that decides all three -- unless
+            display, so SSS_PAPER_BASELINE is the one place that decides all three -- unless
             param_dict itself varies one of those three (e.g. an asinh_k_ratio sweep), in which
             case each panel is displayed with its own swept value instead of the baseline's
         experiment_name (str): names the saved files, and picks out this sweep's .npy files
         custom_title_strings (list[str]): panel titles, built from the varied values when None
+        ncols (int): panels per row of the stitched figure, all in one row when None
     outputs:
         path (str): the stitched figure written
     '''
@@ -258,35 +255,18 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
     npy_ids = [int(f.split(experiment_name + '_')[1][:3]) for f in npy_files]
     sorted_ids, sorted_npy = zip(*sorted(zip(npy_ids, npy_files)))
 
+    # One colorbar per panel, in that panel's own display units. panel_display normalizes every
+    # panel to its own peak, so what the bar carries that a shared one could not is the per-panel
+    # setting the normalization hides -- that panel's raw peak, and its asinh k.
     raw_amplitudes = [np.load(os.path.join('figures', f)) for f in sorted_npy]
-    panels = [_panel(amplitude, **panel_display_kwargs[idx])
-              for idx, amplitude in zip(sorted_ids, raw_amplitudes)]
-
-    # One colorbar per panel, in that panel's own display units. _panel normalizes every panel to
-    # its own peak, so the bar itself always runs over the same range; what it carries that a
-    # single shared bar could not is the per-panel setting the normalization hides -- the raw peak
-    # the panel was divided by, and, on an asinh sweep, the k that panel was compressed with. The
-    # peaks are there to say what level a panel sits at, not to be compared: see _panel on why the
-    # sweeps move the absolute level by orders of magnitude for reasons that are not the scene.
-    vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], []
+    panels, vmins, vmaxs, cbar_labels, tick_fmts = [], [], [], [], []
     for idx, amplitude in zip(sorted_ids, raw_amplitudes):
-        panel_kwargs = panel_display_kwargs[idx]
-        peak = float(np.asarray(amplitude, dtype=np.float32).max())
-        if panel_kwargs['compression'] == 'db':
-            vmins.append(panel_kwargs['db_floor'])
-            vmaxs.append(0.0)
-            cbar_labels.append('dB re peak %.2g' % peak)
-            tick_fmts.append('%.0f dB')
-        elif panel_kwargs['compression'] == 'asinh':
-            vmins.append(0.0)
-            vmaxs.append(1.0)
-            cbar_labels.append('asinh, k/ref %.2g, peak %.2g' % (panel_kwargs['asinh_k_ratio'], peak))
-            tick_fmts.append('%.2g')
-        else:
-            vmins.append(0.0)
-            vmaxs.append(1.0)
-            cbar_labels.append('amp / peak %.2g' % peak)
-            tick_fmts.append('%.2g')
+        panel, vmin, vmax, cbar_label, tick_fmt = panel_display(amplitude, **panel_display_kwargs[idx])
+        panels.append(panel)
+        vmins.append(vmin)
+        vmaxs.append(vmax)
+        cbar_labels.append(cbar_label)
+        tick_fmts.append(tick_fmt)
 
     path = 'figures/side_scan_stitched_%s.png' % experiment_name
     return stitch_panels(
@@ -298,22 +278,23 @@ def multi_param_sonar_experiment(param_dict, default_kwargs, experiment_name='ex
         vmax=vmaxs,
         cbar_label=cbar_labels,
         cbar_tick_fmt=tick_fmts,
+        ncols=ncols,
     )
 
 
-def run_sonar_paper_experiments(experiments=SONAR_PAPER_EXPERIMENTS,
-                                baseline=SONAR_PAPER_BASELINE):
+def run_sss_paper_experiments(experiments=SSS_PAPER_EXPERIMENTS, baseline=SSS_PAPER_BASELINE):
     paths = []
     for exp in experiments:
         kwargs = {**baseline, **exp.get('overrides', {})}
-        paths.append(multi_param_sonar_experiment(
+        paths.append(multi_param_sss_experiment(
             exp['vary'],
             kwargs,
             exp['name'],
             custom_title_strings=exp.get('custom_title_strings'),
+            ncols=exp.get('ncols'),
         ))
     return paths
 
 
 if __name__ == '__main__':
-    run_sonar_paper_experiments()
+    run_sss_paper_experiments()

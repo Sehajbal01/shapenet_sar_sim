@@ -440,12 +440,269 @@ In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc win
 
 
 
+\subsection{Stripmap-mode imaging}
+\label{sec:stripmap}
+
+Any imaging algorithm may be applied to the simulated signals. We describe the stripmap-mode
+reconstruction used in this work, and in particular the filtering step it requires. When a carrier
+wavelength $\lambda$ is specified, each return carries the round-trip phase of its own path, and
+the energy-range scatter of (\ref{eq:returned-scatters}) becomes complex,
+\begin{equation}
+    g(z) = \sum_{k=1}^{N}E_ke^{j 2 \pi z_k / \lambda}\delta(z-z_k)
+    .
+    \label{eq:coherent-scatters}
+\end{equation}
+Interposummation is unchanged by this, so the digital signal of the $i^{th}$ pulse, sampled on the
+one-way range axis, is
+\begin{equation}
+    s_i(z_o) = \sum_{k=1}^{N}E_ke^{j 4 \pi \zeta_k / \lambda}w\big(z_o-\zeta_k\big)
+    ,
+    \label{eq:coherent-signal}
+\end{equation}
+where $\zeta_k = z_k/2$ is the one-way range of the $k^{th}$ return.
+
+Let $\vec{v}_i$ be the sensor position on pulse $i$, and let $\rho_i(\vec{x}) =
+\lVert\vec{v}_i-\vec{x}\rVert$ be the one-way range from that position to a ground point
+$\vec{x}$. A direct estimate of the ground reflectivity $\gamma$ evaluates every pulse at the
+range of $\vec{x}$, counter-rotates the carrier phase of that range, and averages,
+\begin{equation}
+    \hat{\gamma}(\vec{x}) = \frac{1}{P}\sum_{i=1}^{P}s_i\big(\rho_i(\vec{x})\big)e^{-j 4 \pi \rho_i(\vec{x}) / \lambda}
+    ,
+    \label{eq:naive-bp}
+\end{equation}
+where $s_i$ is evaluated between its samples by band-limited interpolation,
+\begin{equation}
+    s_i(\rho) = \sum_{n}s_i[n]\sinc\big(F_s(\rho-z_{i,n})\big)
+    ,
+    \label{eq:bp-interp}
+\end{equation}
+and $z_{i,n}$ is the range of the $n^{th}$ sample of pulse $i$.
+
+Equation (\ref{eq:naive-bp}) is unfiltered backprojection, and it does not recover $\gamma$. Each
+pulse spreads its range profile uniformly along its iso-range contours, which are straight lines
+across the scene. A line is constant in the cross-range direction, so it deposits all of its
+energy at the origin of the image's two-dimensional spatial-frequency plane, and averaging $P$
+pulses stacks $P$ such contributions there. The reconstruction is then the laminogram familiar
+from tomography: the true reflectivity convolved with $1/\lVert\vec{x}\rVert$, whose transfer
+function is the reciprocal of the radial spatial frequency. Low spatial frequencies are amplified
+without bound, and the scene is buried under a smooth pedestal.
+
+Filtered backprojection suppresses the pedestal by weighting each pulse's spectrum with the
+Jacobian of the polar-to-Cartesian change of variables, $dZ_xdZ_y = |Z|dZda$, which is the same
+ramp filter used by the spotlight-mode convolution backprojection of \cite{spotlightmodesar}. What
+is specific to the coherent stripmap case is where the null of that ramp belongs. The phasor in
+(\ref{eq:coherent-signal}) shifts the reflectivity spectrum up by $2/\lambda$, so the origin of
+the image's spectrum lies at the carrier $Z = 2/\lambda$ rather than at $Z=0$, and nulling
+baseband instead leaves most of the pile-up in place. We therefore demodulate each pulse before
+filtering, which slides the carrier onto $Z=0$,
+\begin{equation}
+    \tilde{s}_i(z) = s_i(z)e^{-j 4 \pi z / \lambda}
+    ,
+    \label{eq:demod}
+\end{equation}
+weight the spectrum $\tilde{S}_i(Z)$ of $\tilde{s}_i(z)$ by $|Z|$,
+\begin{equation}
+    \check{s}_i(z) = \int_{-\infty}^{\infty}|Z|\tilde{S}_i(Z)e^{j 2 \pi z Z}dZ
+    ,
+    \label{eq:ramp}
+\end{equation}
+and backproject the filtered pulses,
+\begin{equation}
+    \hat{\gamma}(\vec{x}) = \frac{1}{P}\sum_{i=1}^{P}\check{s}_i\big(\rho_i(\vec{x})\big)
+    .
+    \label{eq:filtered-bp}
+\end{equation}
+The counter-rotation of (\ref{eq:naive-bp}) does not reappear in (\ref{eq:filtered-bp}), because
+(\ref{eq:demod}) has already removed the carrier. Weighting the undemodulated spectrum by
+$|Z-2/\lambda|$ is equivalent. The displayed image is $|\hat{\gamma}(\vec{x})|$.
+
+Over a linear trajectory with the azimuth spread swept from $0^\circ$ to $135^\circ$, replacing
+(\ref{eq:naive-bp}) with (\ref{eq:filtered-bp}) raises the dynamic range of the reconstruction
+from 18--29~dB to 59--93~dB and lowers its median-to-peak amplitude ratio from $0.12$--$0.29$ to
+$0.02$--$0.04$. The filtered stripmap reconstruction and the spotlight-mode reconstruction of the
+same signals agree to within $1$~dB of dynamic range. The far-field approximation $\rho_i(\vec{x})
+\approx \lVert\vec{v}_i\rVert - \vec{x}\cdot\vec{v}_i/\lVert\vec{v}_i\rVert$ may be substituted
+for the exact range in (\ref{eq:naive-bp}) and (\ref{eq:filtered-bp}), and affects neither the
+pedestal nor the analysis above.
+
+
+\section{Imaging Modalities}
+\label{sec:modalities}
+
+\subsection{Forward-Looking Sonar}
+\label{sec:forward-looking}
+
+A forward-looking sonar image is formed from $P$ pings, the sonar term for pulses, all transmitted
+from a single position with the beam steered to a different azimuth for each. The sensor sits at
+$\vec{v}$, given by an azimuth $a$ and elevation $e$ as in Section \ref{sec:problem}, and its
+boresight points at the scene origin. Range is measured from the delay of each return, and azimuth
+is measured by steering the beam pattern of the sensor. Because every quantity in our simulator is
+expressed in spatial units, the same model applies to sonar and radar alike.
+
+Since the sensor is a point rather than a plane, the parallel $W_g \times H_g$ ray grid of the
+signal simulation is replaced by a fan of $R_h \times R_w$ rays that all leave $\vec{v}$. Let
+$\vec{u}_f = -\vec{v}/\lVert\vec{v}\rVert$ be the boresight direction, and let $\vec{u}_h$ and
+$\vec{u}_v$ be the horizontal and vertical axes of the sensor. A ray launched at an azimuth
+offset $\phi$ and an elevation offset $\psi$ from boresight has direction
+\begin{equation}
+    \vec{d}(\phi,\psi) = \cos(\psi)\cos(\phi)\,\vec{u}_f + \cos(\psi)\sin(\phi)\,\vec{u}_h + \sin(\psi)\,\vec{u}_v
+    ,
+    \label{eq:ray-fan}
+\end{equation}
+where $R_w$ values of $\phi$ are spaced uniformly over $[-\Theta_w/2,\Theta_w/2]$ and $R_h$ values
+of $\psi$ over $[-\Theta_h/2,\Theta_h/2]$, and $\Theta_w \times \Theta_h$ is the angular field of
+view of the fan. Parameterizing the fan by angle rather than by a flat image plane keeps the
+angular sampling uniform, which matters because the beam pattern is applied in angle.
+
+Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
+true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
+expanding sphere, which a planar wavefront does not, so each return is attenuated by the spreading
+loss over its round-trip range and normalized by the number of transmitted rays. With the carrier
+phase of (\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
+\begin{equation}
+    \tilde{E}_k = \frac{E_k}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    ,
+    \label{eq:sonar-energy}
+\end{equation}
+and the phasor is omitted when no wavelength is given.
+
+Each return also carries two azimuths off boresight. Its transmit azimuth $\phi^{tx}_k$ is the
+launch azimuth $\phi$ of the ray that produced it. Its receive azimuth $\phi^{rx}_k$ is the
+azimuth of the point $\vec{p}_k$ that scattered it back to the sensor,
+\begin{equation}
+    \phi^{rx}_k = \operatorname{atan2}\big(\vec{u}_h\cdot(\vec{p}_k-\vec{v}),\,\vec{u}_f\cdot(\vec{p}_k-\vec{v})\big)
+    .
+    \label{eq:rx-azimuth}
+\end{equation}
+The two are equal for a first-bounce return. For a second-bounce return, $\phi^{tx}_k$ is the
+direction of the ray's first path, while $\phi^{rx}_k$ is the direction of its second point of
+contact, which is where a real receiver hears the energy arrive from.
+
+The sensor cannot resolve the bearing of a single return, so each return is weighted by the beam
+pattern on both transmit and receive. We model the one-way beam as a Gaussian with full width at
+half maximum $\sqrt{2}\beta$,
+\begin{equation}
+    b(\phi) = \exp\bigg(-\frac{\phi^2}{2\sigma_\beta^2}\bigg)
+    , \quad
+    \sigma_\beta = \frac{\sqrt{2}\beta}{2\sqrt{2\ln 2}}
+    ,
+    \label{eq:beam-pattern}
+\end{equation}
+and weight the $k^{th}$ return by $b(\phi^{tx}_k)\,b(\phi^{rx}_k)$. For a first-bounce return this
+product is a Gaussian with full width at half maximum $\beta$, the two-way beam width. The pattern
+peaks at $1$ rather than integrating to $1$, so a return on boresight keeps its full energy, and
+widening the beam spreads a return over more pings without dividing its energy among them.
+
+Ping $i$ steers both beams to an azimuth $\phi_i$, where the $P$ values of $\phi_i$ are spaced
+uniformly over $[-\Theta_p/2,\Theta_p/2]$. Steering shifts both patterns by $\phi_i$, and the
+digital signal of the $i^{th}$ ping is the interposummation of the weighted returns,
+\begin{equation}
+    s_i(z_o) = \sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k-\phi_i\big)\,b\big(\phi^{rx}_k-\phi_i\big)\,w\big(z_o-\zeta_k\big)
+    ,
+    \label{eq:fls-signal}
+\end{equation}
+where $\zeta_k = z_k/2$ is the one-way range of the $k^{th}$ return. The beam is applied after ray
+tracing rather than during it, and the sensor does not move between pings, so every ping shares
+the same returns and differs only in their weights. The fan is therefore ray traced once, and the
+$P$ signals cost $P$ interposummations but a single ray trace.
+
+The image has $M$ rows at one-way ranges $\rho_m$, spaced uniformly from $\rho_{near}$ in the
+bottom row to $\rho_{far}$ in the top row, and one column per ping, with $\phi_i$ increasing from
+left to right. The pixel at range $\rho_m$ and azimuth $\phi_i$ is
+\begin{equation}
+    I(\rho_m,\phi_i) = \big|s_i(\rho_m)\big|
+    ,
+    \label{eq:fls-image}
+\end{equation}
+where $|s_i|$ is evaluated between its samples by linear interpolation, and every signal is
+sampled over a window that covers $[\rho_{near},\rho_{far}]$. The rows span a range swath
+$S_\rho$ that brackets the scene origin along the line of sight, $\rho_{near} =
+\lVert\vec{v}\rVert - S_\rho/2$ and $\rho_{far} = \lVert\vec{v}\rVert + S_\rho/2$, so the window
+follows the sensor when it is moved away from the scene.
+
+In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
+as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
+rather than by a synthetic aperture, and the pings sample it every $\Theta_p/(P-1)$. The azimuth
+span of the image $\Theta_p$ is separate from the field of view $\Theta_w$ of the fan, and should
+be narrower than it by about $3\beta$. The two-way beam falls to about $0.002$ at $1.5\beta$ off
+its axis, so this margin puts rays under the whole beam of every ping, including the pings at the
+edges of the image. A fan narrower than that leaves the outer pings with part of their beam unlit,
+and the edges of the image darken. When $\lambda$ is given, the returns sum coherently within each
+ping, so interference between nearby rays appears as speckle.
+
+\subsection{Side-Scan Sonar}
+\label{sec:side-scan}
+
+A side-scan sonar image is formed from $P$ pings transmitted along a straight track, with a beam
+that is never steered. The platform flies through a mean position $\bar{\vec{v}}$, given by $a$
+and $e$ as in Section \ref{sec:problem}, and every ping looks in the same direction, the boresight
+$\vec{u}_f = -\bar{\vec{v}}/\lVert\bar{\vec{v}}\rVert$ at the center of the track. The track runs
+along the horizontal axis of the sensor, $\vec{u}_h = (\vec{u}_f \times \vec{u}_z)/\lVert\vec{u}_f
+\times \vec{u}_z\rVert$, where $\vec{u}_z$ is the unit vector along the $z$ axis, so the scene
+stays off to one side of the platform the whole way. Ping $i$ is transmitted from
+\begin{equation}
+    \vec{v}_i = \bar{\vec{v}} + \ell_i\vec{u}_h
+    ,
+    \label{eq:ss-track}
+\end{equation}
+where the $P$ offsets $\ell_i$ are spaced uniformly over $[-L/2,L/2]$ for a track of length $L$.
+Where a forward-looking sonar sweeps its beam across the target from one position, a side-scan
+sonar holds its beam fixed, and the target drifts across the beam as the platform passes.
+
+Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan shares the axes
+$\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan spans $\Theta_w =
+3\beta$ in azimuth, since the two-way beam has fallen to about $0.002$ at its edges, and
+$\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The returns take the
+energy of (\ref{eq:sonar-energy}) with an added absorption loss over their round trip through the
+water,
+\begin{equation}
+    \tilde{E}_k = \frac{E_k e^{-\kappa z_k}}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    ,
+    \label{eq:ss-energy}
+\end{equation}
+where $\kappa$ is the absorption coefficient in nepers per unit length. Their azimuths
+$\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
+with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
+rather than always lying near $0$.
+
+The beam pattern (\ref{eq:beam-pattern}) is applied as in forward-looking sonar, but without
+steering, and the digital signal of the $i^{th}$ ping is
+\begin{equation}
+    s_i(z_o) = z_o^{\eta}\sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k\big)\,b\big(\phi^{rx}_k\big)\,w\big(z_o-\zeta_k\big)
+    ,
+    \label{eq:ss-signal}
+\end{equation}
+where the sum runs over the returns of that ping. The factor $z_o^{\eta}$ is a time-varying gain, a
+receiver ramp against the fall of the seafloor return with range, and $\eta = 0$ disables it.
+Every ping is sampled over the same window, which covers the range swath of the image, so the
+samples of all pings line up in range.
+
+Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\ell_i$
+and slant range $z_o$. The image interpolates them bilinearly onto an $H \times W$ pixel grid that
+spans a cross-range swath $S_\ell$ along the track and a range swath $S_\rho$ in slant range,
+centered on $\ell = 0$ and on the target range $\lVert\bar{\vec{v}}\rVert$, with near range in the
+bottom row. Pixels outside the sampled track are zero, so the track length $L$ should be at least
+$S_\ell$. The rows are in slant range, since no projection onto the ground plane is applied.
+
+Along the track, the resolution is set by the beam: at slant range $\rho$ the beam covers about
+$\rho\beta$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
+range, it is set by $B_s$ as before. The seafloor is seen at a grazing angle, so an object standing
+off it occludes the ground down range and casts an acoustic shadow, and the top of the object
+returns before the seafloor beneath it because it is closer to the sensor.
+
+\subsection{Convolution Back-Projection SAR}
+\label{sec:cbp-sar}
+
+\subsection{Stripmap SAR}
+\label{sec:stripmap-sar}
+
+
 \section{Experiments}
 \label{sec:experiments}
 We test our signal simulation with spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, all experiments use the default parameters shown in Table \ref{tab:params}. All results in this section are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 \begin{table}[h!]
 \centering
-\caption{Default experiment parameters, matching the \texttt{PAPER\_BASELINE} in \texttt{paper\_figures.py}.}
+\caption{Default experiment parameters, matching the \texttt{SAR\_PAPER\_BASELINE} in \texttt{sar\_paper\_figures.py}.}
 \label{tab:params}
 \begin{tabular}{lll}
 \toprule
@@ -623,6 +880,154 @@ In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved 
   \caption{SAR reconstruction of a sphere at decreasing scale, shown in dB, with the scale factor labeled above each subplot.}
   \label{fig:sphere-size}
 \end{figure}
+
+\subsection{Forward-Looking Sonar Beam Width}
+
+The remaining experiments test the sonar modalities of Section \ref{sec:modalities} on a second car
+from the ShapeNet cars dataset. The car scatters almost entirely into the directional lobe and the
+seafloor mostly diffusely, so the car appears dark against the seafloor, apart from glints where its
+surface faces the sensor.
+
+In Figure \ref{fig:fls-beam-width}, we vary the azimuth beam width $\beta$ of the forward-looking
+sonar of Section \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$. The sensor
+sits at a range of $\lVert\vec{v}\rVert = 1.3$ and an elevation of $e = 40.6^\circ$, and steers
+$P = 128$ pings across $\Theta_p = 50^\circ$, one every $0.39^\circ$. Its fan of
+$R_h \times R_w = 1024 \times 1024$ rays spans $\Theta_h = 100^\circ$ in elevation and
+$\Theta_w = 60^\circ$ in azimuth. The $M = 128$ rows run from $\rho_{near} = 0.75$ to
+$\rho_{far} = 3$, the pulse is Gaussian with $B_s = 30$, and no wavelength is given. Each panel is
+shown in dB relative to its own peak, with a floor of $-60$~dB.
+
+At $0.1^\circ$, the car and its shadow form a sharp dark silhouette on the seafloor, crossed by
+bright glints. The $0.1^\circ$ and $0.32^\circ$ images are nearly identical, because both beams are
+narrower than the spacing of the pings, which then sets the azimuth resolution: the $10$--$90\%$
+width of the edge of the silhouette is $0.39^\circ$, a single ping, in both. From $1^\circ$ on, the
+beam sets the resolution, and the edge widens with it, to $0.79^\circ$ at $1^\circ$, $2.4^\circ$ at
+$3.16^\circ$, and $7.5^\circ$ at $10^\circ$, where the silhouette blurs into a dark smear and the
+glints into streaks of constant range. Range is unaffected, since it is resolved by $B_s$. The peak
+grows roughly in proportion to $\beta$, from $1.2\times10^{-7}$ at $0.1^\circ$ to
+$8.9\times10^{-6}$ at $10^\circ$. The fan is the same at every width, and the beam pattern peaks at
+$1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into each ping.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/fls_stitched_beam_width.png}
+  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
+  colorbar.}
+  \label{fig:fls-beam-width}
+\end{figure}
+
+\subsection{Forward-Looking Sonar Bandwidth}
+
+In Figure \ref{fig:fls-fsbw}, we vary the spatial bandwidth $B_s$ of the forward-looking sonar from
+$4$ to $512$ in powers of two, with $F_s = 2B_s$ and the other settings of Figure
+\ref{fig:fls-beam-width} at $\beta = 1^\circ$. The Gaussian pulse has an amplitude full width at
+half maximum of $0.62/B_s$, which spans $8.8$ rows at $B_s = 4$ and one row at $B_s \approx 35$.
+
+At $B_s = 4$, the silhouette of the car is smeared in range, and the bright returns at the near edge
+of the image spill into its bottom rows. Those rows lie nearer than the seafloor directly beneath
+the sensor, at a range of $0.85$, and go dark as the bandwidth grows. The car sharpens in range with
+the bandwidth, and by $B_s = 32$ its outline and glints are resolved. The peak lies at the near edge
+of the image in front of the car, and from $B_s = 16$ on it roughly halves with every doubling of
+$B_s$, from $2.0\times10^{-6}$ to $9.0\times10^{-8}$ at $B_s = 512$. This is the signature of returns
+spread continuously over range, of which a narrower pulse gathers fewer.
+
+From $B_s = 128$ on, concentric rings centered on boresight appear in the seafloor behind the car.
+This is the ray density effect of Figure \ref{fig:signals-square}. The pulse has become narrower
+than the range spacing between the seafloor returns of neighboring rays, which grows with range as
+the fan meets the seafloor at ever shallower angles, from $0.0026$ at the range of the car to
+$0.0073$ at a range of $2$. Each signal then resolves the returns of individual rays, and the dark
+rings trace the pixels whose ranges fall between them. Just behind the car, the standard deviation
+of the seafloor is about $3$~dB for $B_s \le 64$, but $12$~dB at $B_s = 256$ and $32$~dB at $512$,
+where the dark rings are nulls. As with SAR, a denser fan or a lower bandwidth removes the rings:
+raising $R_h$ from $1024$ to $4096$ at $B_s = 512$ is enough.
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=\textwidth]{figs/fls_stitched_spatial_bw.png}
+  \caption{Forward-looking sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
+  $F_s = 2B_s$. Each panel is in dB relative to its own peak, printed beneath its colorbar.}
+  \label{fig:fls-fsbw}
+\end{figure*}
+
+\subsection{Side-Scan Sonar Beam Width}
+
+In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the side-scan sonar of
+Section \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$. The platform passes the
+car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
+$\lVert\bar{\vec{v}}\rVert = 10$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
+spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $S_\ell = S_\rho = 1.1$.
+Each ping casts a fan of $R_h \times R_w = 700 \times 250$ rays over $\Theta_h = 30^\circ$ in
+elevation and $\Theta_w = 3\beta$ in azimuth. The $250$ azimuth rays are enough for the image to
+converge even at $10^\circ$, where they are spread the most sparsely. The pulse is Gaussian with
+$B_s = 30$, the time-varying gain is $\eta = 10$, and no wavelength is given, so the returns add
+without their carrier phase.
+
+At the range of the car, $\rho \approx 10$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.017$ of
+the track, about two pixels, and the image resolves the outline of the car. The returns of the car
+lie at near range, and behind them the car casts an acoustic shadow in which the seafloor returns
+almost nothing. As the beam widens, each return is smeared along the track over $\rho\beta$ while
+its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.17$, and
+at $3.16^\circ$ the beam covers half of the image and the car stretches into streaks that span it.
+At $10^\circ$, $\rho\beta \approx 1.7$ exceeds the width of the image, so every ping hears nearly
+the whole car and each row is almost constant: the standard deviation of a row averages $3.5\%$ of
+its mean, against $44\%$ at $0.1^\circ$. The streaks stay at the same ranges as the car in the
+$0.1^\circ$ panel, since range resolution is set by $B_s$ rather than $\beta$. The shadow fills in
+as well, since a ping whose beam reaches past the ends of the car hears unshadowed seafloor at the
+ranges of the shadow. Its mean amplitude rises from $0.3\%$ of the seafloor's at $0.1^\circ$ to
+$71\%$ at $10^\circ$.
+
+Each panel is normalized to its own peak, printed beneath its colorbar. Unlike the fixed fan of
+Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same number of rays falls
+under the beam at every width. Widening the beam therefore averages the brightest returns of the car
+with their darker surroundings, and the peak falls from $7.6\times10^2$ at $0.1^\circ$ to
+$1.6\times10^2$ at $10^\circ$. The seafloor is uniform along the
+track, so the averaging leaves it unchanged, and its median amplitude agrees to within about $1\%$
+across the panels. Relative to the falling peak, it brightens into the gray background of the
+$10^\circ$ panel.
+
+\begin{figure}
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.48\textwidth]{figs/side_scan_stitched_beam_width.png}
+  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$. Along-track position runs horizontally and slant range vertically,
+  with near range at the bottom. Each panel is normalized to its own peak, printed beneath its
+  colorbar.}
+  \label{fig:ss-beam-width}
+\end{figure}
+
+\subsection{Side-Scan Sonar Bandwidth}
+
+In Figure \ref{fig:ss-fsbw}, we vary the spatial bandwidth $B_s$ of the side-scan sonar from $4$ to
+$512$ in powers of two, with $F_s = 2B_s$ and the geometry of Figure \ref{fig:ss-beam-width}. Each
+ping casts a single ray in azimuth, on boresight, so the beam does not blur the image along the
+track and only its range resolution changes. The pulse width of $0.62/B_s$ spans $18$ rows at
+$B_s = 4$ and one row at $B_s \approx 72$.
+
+At $B_s = 4$, the car is a blur, and the returns smeared into its shadow fill it to $90\%$ of the
+level of the seafloor. As the bandwidth grows the shadow empties, to $33\%$ at $B_s = 8$ and $7\%$
+at $16$, and by $B_s = 32$ the outline of the car, its shadow, and the edges of its body are sharp.
+The seafloor is a continuum of returns, so its amplitude halves with every doubling of $B_s$, from a
+median of $890$ at $B_s = 4$ to $27$ at $128$. The brightest returns of the car are compact in range
+and fall more slowly, so the ratio of the peak to the seafloor grows from $6$ to $34$ over the same
+span, and the seafloor darkens in the normalized panels.
+
+At $B_s = 256$ and $512$, the pulse is narrower than the $0.0044$ range spacing between the seafloor
+returns of neighboring rays near the car, and the rings of Figure \ref{fig:fls-fsbw} appear here as
+horizontal stripes. Every ping sees the same flat seafloor through the same fan, so the returns of
+every ping fall at the same ranges, and a row that falls between them is dim along the whole track.
+Across the rows of the far seafloor, the row mean varies by $3\%$, one standard deviation, for
+$16 \le B_s \le 64$, but by $42\%$ at $B_s = 256$ and $118\%$ at $512$. The curved body of the car
+breaks into dots and rings.
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=\textwidth]{figs/side_scan_stitched_spatial_bw.png}
+  \caption{Side-scan sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
+  $F_s = 2B_s$, laid out as in Figure \ref{fig:ss-beam-width}. Each panel is normalized to its own
+  peak, printed beneath its colorbar.}
+  \label{fig:ss-fsbw}
+\end{figure*}
 
 \section{Conclusion}
 \label{sec:conclusion}

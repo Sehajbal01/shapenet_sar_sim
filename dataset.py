@@ -1,5 +1,7 @@
 import os
 
+from config import srn_split_dir
+
 # This is where we’ll build the new dataset structure
 target_base = '/workspace/sehajdeepbal/create_dataset'
 
@@ -10,7 +12,7 @@ for split in ['cars_train', 'cars_val', 'cars_test']:
 # Looping through just the dataset we care about (cars_train)
 for subdataset in ['cars_train']:
     # Define where the source data is and where we’re writing new output
-    source_base = os.path.join('/workspace/data/srncars', subdataset)
+    source_base = srn_split_dir(subdataset)
     target_split_path = os.path.join(target_base, subdataset)
 
     # Grab all the object IDs (each is a folder)

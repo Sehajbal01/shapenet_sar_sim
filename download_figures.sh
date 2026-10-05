@@ -1,37 +1,33 @@
 #!/bin/bash
+set -euo pipefail
+
 REMOTE_HOST="engr-mahala01s.engr.arizona.edu"
 REMOTE_USER="berian"
-REMOTE_BASE="/workspace/berian/shapenet_sar_sim"
 
-UPLOAD=0
-while getopts "u" opt; do
-    case "$opt" in
-        u) UPLOAD=1 ;;
-        *) echo "Usage: $0 [-u] [filter]" >&2; exit 1 ;;
-    esac
-done
-shift $((OPTIND - 1))
-
-# Each entry is "remote_subdir:local_path"
-FOLDERS=(
-    "figures:/home/berian/Documents/remote-figures"
-    "latex:/home/berian/Documents/remote-paper"
+# "<remote path>|<local path>"
+REMOTE_LOCAL_PAIRS=(
+    # "/workspace/berian/sony-proposal/OurGeNVS/figures|$HOME/Documents/remote-figures/sony-proposal"
+    # "/workspace/berian/realsimir/figures|$HOME/Documents/remote-figures/realsimir"
+    "/workspace/berian/sar-sim/shapenet_sar_sim/figures|$HOME/Documents/remote-figures/sarsim"
 )
 
-RSYNC_ARGS=(-avz --progress)
-if [ -n "$1" ]; then
-    RSYNC_ARGS+=(--include="*$1*" --exclude="*")
-fi
+# optional filename substring, e.g. "./download_figures.sh stitched" gets only *stitched* files
+substr="${1:-}"
 
-for entry in "${FOLDERS[@]}"; do
-    REMOTE_SUBDIR="${entry%%:*}"
-    LOCAL_PATH="${entry#*:}"
-    REMOTE="$REMOTE_USER@$REMOTE_HOST:$REMOTE_BASE/$REMOTE_SUBDIR/"
-    if [ "$UPLOAD" -eq 1 ]; then
-        rsync "${RSYNC_ARGS[@]}" "$LOCAL_PATH/" "$REMOTE"
-    else
-        rm -rf "$LOCAL_PATH"/*
-        mkdir -p "$LOCAL_PATH"
-        rsync "${RSYNC_ARGS[@]}" "$REMOTE" "$LOCAL_PATH/"
+for pair in "${REMOTE_LOCAL_PAIRS[@]}"; do
+    remote_dir="${pair%%|*}"
+    local_dir="${pair#*|}"
+
+    # delete each local folder, even for a filtered download
+    if [[ -d "$local_dir" ]]; then
+        echo "Removing $local_dir"
+        rm -rf "$local_dir"
     fi
+    mkdir -p "$local_dir"
+
+    # rsync remote to local; recurse into dirs, keep files matching *substr*, prune empty dirs
+    echo "Downloading $remote_dir/*$substr* -> $local_dir"
+    rsync -rvm --include='*/' --include="*$substr*" --exclude='*' "$REMOTE_USER@$REMOTE_HOST:$remote_dir/" "$local_dir/"
 done
+
+echo "Done."
