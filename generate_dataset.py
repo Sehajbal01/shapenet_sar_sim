@@ -11,12 +11,13 @@ meshes' shapenet_cars_dir are read from config.json. 128x128 8-bit gray PNGs
 named after the pose, so every rgb frame has one image per modality, as check_sonar_exists.py
 and check_raysar_exists.py assert of the existing modalities.
 
-The physics comes from the paper figure baselines rather than being restated here, so the
-dataset tracks whatever those figures show: sss_paper_figures.SSS_PAPER_BASELINE for the
-side scan, sar_paper_figures.SAR_PAPER_BASELINE for the CBP SAR image, with the trajectory forced
-linear at AZIMUTH_SPREAD_DEG, the sar_baseline azimuth_spread in config.json (135 deg below) --
-which is what the directory suffix records -- and fls_paper_figures.FLS_PAPER_BASELINE for the
-forward looking sonar image, beam-steered pings from the pose's own camera position.
+The physics and each modality's 8-bit display compression come from the paper figure baselines
+rather than being restated here, so the dataset tracks whatever those figures show:
+sss_paper_figures.SSS_PAPER_BASELINE for the side scan, sar_paper_figures.SAR_PAPER_BASELINE for
+the CBP SAR image, with the trajectory forced linear at AZIMUTH_SPREAD_DEG, the sar_baseline
+azimuth_spread in config.json (135 deg below) -- which is what the directory suffix records -- and
+fls_paper_figures.FLS_PAPER_BASELINE for the forward looking sonar image, beam-steered pings from
+the pose's own camera position.
 
 Each object is loaded and octree-built once and then imaged from all of its poses, and each
 pose is ray traced once per modality: the SAR from a distant plane along its aperture, the side
@@ -103,15 +104,13 @@ DIR_SUFFIX = '_%dazspread' % AZIMUTH_SPREAD_DEG
 FIGURES_DIR = 'figures'
 
 
-# how a raw amplitude becomes an 8-bit pixel. The amplitudes span orders of magnitude, so a
-# linear stretch is a few specular returns over a near-black field (measured: mean 20/255 for
-# the SAR modalities, 7/255 for the side scan). 'asinh' stays linear near zero and goes
-# logarithmic past ASINH_K_RATIO * the image's own 99.9th percentile, which is what the paper
-# figures display with. 'linear' is the plain min-max stretch, 'db' is dB below the peak.
-# Referenced per image, as every asinh call site in this codebase is
-COMPRESSION   = 'asinh'   # 'linear' | 'db' | 'asinh'
-ASINH_K_RATIO = 0.1
-DB_FLOOR      = -60.0
+# how each modality's raw amplitude becomes an 8-bit pixel, from its own config.json baseline
+DISPLAY_KEYS = ('compression', 'db_floor', 'asinh_k_ratio')
+DISPLAY = {'side_scan_sonar':       {k: SSS_PAPER_BASELINE[k] for k in DISPLAY_KEYS},
+           'cbp_sar':               {k: SAR_PAPER_BASELINE[k] for k in DISPLAY_KEYS},
+           'forward_looking_sonar': {k: FLS_PAPER_BASELINE[k] for k in DISPLAY_KEYS}}
+assert all(d['compression'] in ('linear', 'db', 'asinh') for d in DISPLAY.values()), \
+    "config.json compression must be 'linear', 'db' or 'asinh', got %r" % DISPLAY
 
 # srn_cars poses spiral from 0 to 90 deg of elevation. Only the poses inside this band are
 # rendered, overridable with -elevation_range; the rest are skipped rather than re-aimed, so every
@@ -221,29 +220,33 @@ def save_gif(png_paths, angles, path):
                    loop=0, optimize=False)
 
 
-def save_gray_png(amplitude, path):
+def save_gray_png(amplitude, path, compression, db_floor, asinh_k_ratio):
     '''
-    Write one raw amplitude image as a 128x128 8-bit gray PNG, compressed by COMPRESSION and
-    referenced to this one image, the same three-way branch sidescansonar.render_side_scan_image
-    saves its composite with. Per image, so the level between views is not kept.
+    Write one raw amplitude image as a 128x128 8-bit gray PNG, compressed and referenced to this
+    one image, the same three-way branch sidescansonar.render_side_scan_image saves its composite
+    with. Per image, so the level between views is not kept.
 
     inputs:
         amplitude (H,W): raw amplitude, numpy or torch
         path (str): png to write
+        compression (str): 'linear' min-max stretch | 'db' below the peak | 'asinh' referenced to
+            the image's own 99.9th percentile
+        db_floor (float): black point of 'db', in dB
+        asinh_k_ratio (float): softening scale of 'asinh', as a fraction of that percentile
     '''
     amplitude = np.asarray(amplitude, dtype=np.float32)
     amplitude = np.nan_to_num(amplitude, nan=0.0, posinf=0.0, neginf=0.0)
     peak = float(amplitude.max())
 
-    if COMPRESSION == 'db' and peak > 0.0:
-        image = to_db_uint8(amplitude, peak, DB_FLOOR)  # (H,W)
-    elif COMPRESSION == 'asinh':
+    if compression == 'db' and peak > 0.0:
+        image = to_db_uint8(amplitude, peak, db_floor)  # (H,W)
+    elif compression == 'asinh':
         # ref is this image's own 99.9th percentile, as panel_display references its asinh
         # panels. It can round to 0 on a nearly all-dark image even when the peak is positive,
         # which would make k 0 and arcsinh divide by it
         ref = float(np.percentile(amplitude, 99.9))
         if ref > 0.0:
-            image = to_asinh(amplitude, ASINH_K_RATIO * ref, ref)  # (H,W)
+            image = to_asinh(amplitude, asinh_k_ratio * ref, ref)  # (H,W)
         else:
             image = np.zeros(amplitude.shape, dtype=np.uint8)
     else:
@@ -424,7 +427,8 @@ def render_poses(obj_id, object_dir, mesh_path, todo, n_poses, poses, device, ve
 
     def save(modality, pose_num, amplitude):
         save_gray_png(amplitude.detach().cpu().numpy(),
-                      output_path(object_dir, obj_id, pose_num, modality, test_run))
+                      output_path(object_dir, obj_id, pose_num, modality, test_run),
+                      **DISPLAY[modality])
         bars[modality].update()
 
     try:
@@ -604,10 +608,13 @@ def main():
               % ', '.join('%s%s/' % (m, DIR_SUFFIX) for m in modalities))
     print('elevation: rendering poses in %g..%g deg, skipping the rest%s'
           % (min_elevation_deg, max_elevation_deg, '; writing a gif per modality' if args.gif else ''))
-    print('display: %s compression%s' % (
-        COMPRESSION,
-        ', k/ref %g' % ASINH_K_RATIO if COMPRESSION == 'asinh' else
-        ', floor %g dB' % DB_FLOOR if COMPRESSION == 'db' else ''))
+    displays = []
+    for m in modalities:
+        d = DISPLAY[m]
+        displays.append('%s %s%s' % (m, d['compression'],
+                                     ' (k/ref %g)' % d['asinh_k_ratio'] if d['compression'] == 'asinh' else
+                                     ' (floor %g dB)' % d['db_floor'] if d['compression'] == 'db' else ''))
+    print('display: %s' % ', '.join(displays))
 
     # the one line printed per object, once it is done: which chunk, how far through it, and the
     # object's own outcome
