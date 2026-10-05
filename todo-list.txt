@@ -1,11 +1,14 @@
 
 === Paper Todo List ===
-- create appendix
-    - put default config.json parameters in there
-    - put the imaging modalities in there
+- read over the rest of the paper and fix anything that might need fixing
+- create outline for experiment section
 - experiment comparing spotlight mode sar, strip map mode sar, sss, fls
 - add sss to the waveforms experiment
 - add sss to the fs bw ray density experiment
+- talk about the peculiarities of sonar in regards to
+    - elevation fov
+    - ray density
+    - more rays hit close by than far away
 
 - sehaj needs to get these plots under way
 
