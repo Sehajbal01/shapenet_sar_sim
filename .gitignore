@@ -28,3 +28,7 @@ run_log.txt
 # Keep the LaTeX paper's figures tracked despite the extension rules above
 !latex/figs/
 !latex/figs/**
+
+# Keep the MDPI template class files (logo PDFs) tracked
+!latex/Definitions/
+!latex/Definitions/**
