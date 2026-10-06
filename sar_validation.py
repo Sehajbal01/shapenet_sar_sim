@@ -131,6 +131,15 @@ def _peak_offset(cut, idx):
     return float(np.clip(0.5 * (a - c) / denom, -1, 1)) if abs(denom) > 1e-30 else 0.0
 
 
+def run_single_target(pixels=1201, device='cuda'):
+    """One point target at the scene origin, imaged over the default image plane."""
+    plane = SAR['image_plane_width']
+    sim = simulate_point_target((0.0, 0.0, 0.0), device=device, **POINT)
+    image = image_cbp(sim['signals'], sim, plane, pixels, SAR['signal_interpolation'])
+    metrics = impulse_response_metrics(image, sim, plane, plane)
+    return dict(image=metrics['image'], plane=plane, metrics=metrics)
+
+
 def run_peak_grid(n_side=5, pixels=1201, device='cuda'):
     """Image a grid of point targets in one scene and measure each peak against its true position."""
     plane = SAR['image_plane_width']
@@ -195,29 +204,31 @@ def _db(a):
     return 20 * np.log10(np.clip(a / a.max(), 1e-12, None))
 
 
-def plot_validation(grid, glint, out_path):
-    fig, ax = plt.subplots(1, 2, figsize=(11, 4.6))
+def plot_validation(single, grid, glint, out_path):
+    fig, ax = plt.subplots(1, 3, figsize=(16, 4.6))
 
-    # (a) grid of point targets
-    h = grid['plane'] / 2
-    im = ax[0].imshow(_db(grid['image']), cmap='gray', vmin=-40, vmax=0, extent=(-h, h, -h, h))
-    ax[0].set_title('(a) 5x5 point targets')
-    ax[0].set_xlabel('cross-range')
-    ax[0].set_ylabel('range')
-    fig.colorbar(im, ax=ax[0], label='dB')
+    # (a) one point target, (b) grid of point targets
+    for a, d, title in ((ax[0], single, '(a) single point target'),
+                        (ax[1], grid, '(b) 5x5 point targets')):
+        h = d['plane'] / 2
+        im = a.imshow(_db(d['image']), cmap='gray', vmin=-40, vmax=0, extent=(-h, h, -h, h))
+        a.set_title(title)
+        a.set_xlabel('cross-range')
+        a.set_ylabel('range')
+        fig.colorbar(im, ax=a, label='dB')
 
-    # (b) plate glint pattern vs physical optics
+    # (c) plate glint pattern vs physical optics
     for i, c in enumerate(glint['curves']):
         lab = r'$\lambda$ = %.3g' % c['wavelength']
-        ax[1].plot(c['phi_deg'], _db(c['sigma']) / 2, 'C%d-' % i, lw=1.5, label=lab + ', simulator')
-        ax[1].plot(c['phi_deg'], _db(c['po']) / 2, 'k--', lw=0.9,
+        ax[2].plot(c['phi_deg'], _db(c['sigma']) / 2, 'C%d-' % i, lw=1.5, label=lab + ', simulator')
+        ax[2].plot(c['phi_deg'], _db(c['po']) / 2, 'k--', lw=0.9,
                    label='physical optics' if i == 0 else None)
-    ax[1].set_ylim(-45, 2)
-    ax[1].set_xlabel('aspect off normal (deg)')
-    ax[1].set_ylabel('normalized RCS (dB)')
-    ax[1].set_title('(b) flat plate, L = %.2f' % glint['side'])
-    ax[1].legend(fontsize=8)
-    ax[1].grid(alpha=0.3)
+    ax[2].set_ylim(-45, 2)
+    ax[2].set_xlabel('aspect off normal (deg)')
+    ax[2].set_ylabel('normalized RCS (dB)')
+    ax[2].set_title('(c) flat plate, L = %.2f' % glint['side'])
+    ax[2].legend(fontsize=8)
+    ax[2].grid(alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
@@ -243,6 +254,13 @@ def main():
     print('phase history vs exp(j 4 pi R / lambda), sinc waveform, target (0.2, -0.15)')
     print('  RMS residual %.3e deg   max %.3e deg   amplitude ripple %.3e dB'
           % (phase['rms_phase_err_deg'], phase['max_phase_err_deg'], phase['mag_ripple_db']))
+
+    single = run_single_target(device=device)
+    m = single['metrics']
+    print('single target at the origin, %s readout: -3 dB width range %.5f  cross-range %.5f   '
+          'PSLR range %.2f dB  cross-range %.2f dB   peak error %.5f'
+          % (SAR['signal_interpolation'], m['range_res'], m['crossrange_res'],
+             m['range_pslr_db'], m['crossrange_pslr_db'], m['peak_err_scene']))
 
     grid = run_peak_grid(device=device)
     e = grid['errors']
@@ -292,7 +310,7 @@ def main():
         print('%10.5f %12.2f %10.2f' % (r['wavelength'], r['rays_per_cycle'], r['error_db']))
 
     out = get_next_path('figures/sar_validation.png')
-    plot_validation(grid, glint, out)
+    plot_validation(single, grid, glint, out)
     print('\nfigure written to %s' % out)
 
 

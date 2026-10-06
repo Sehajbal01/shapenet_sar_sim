@@ -475,10 +475,13 @@ We test our signal simulation in the imaging modalities of Section \ref{sec:moda
 We first image $25$ ideal point scatterers on a $5 \times 5$ grid spanning $\pm 0.4$ in
 spotlight-mode SAR at the default parameters of Table \ref{tab:params}. Each scatterer is injected
 directly into interposummation (\ref{eq:interposummation}) at its true range with the phase
-$e^{j4\pi R/\lambda}$, bypassing the ray tracer (Figure \ref{fig:validation}a). Every target is
+$e^{j4\pi R/\lambda}$, bypassing the ray tracer (Figure \ref{fig:validation}b). Every target is
 imaged as a compact peak within $0.0025$ of its true position, $0.27$ of a pixel of the default
 $128 \times 128$ image, and the phase of each return matches $e^{j4\pi R/\lambda}$ across the
-aperture to $1.7\times10^{-6}$ degrees RMS. Along range, each return takes the shape of the
+aperture to $1.7\times10^{-6}$ degrees RMS. A single scatterer at the scene origin
+(Figure \ref{fig:validation}a) is imaged as a peak $0.013$ wide at $-3$~dB in both range and
+cross-range, with sidelobes that form an X along the wavefronts of the first and last pulses, where
+the $135^\circ$ aperture ends. Along range, each return takes the shape of the
 effective window $w(z)$ of Figure \ref{fig:effective-windows}, so the range resolution and
 sidelobes are those of the transmit waveform. In the image, the magnitude of the signal aliases at
 the default $F_s = 2B_s$, which narrows the impulse response by up to $42\%$ relative to an analytic
@@ -487,8 +490,8 @@ backprojection; at $F_s \ge 8B_s$ the two agree within $4\%$.
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{figs/sar_validation.png}
-  \caption{(\textbf{a}) A $5\times5$ grid of point scatterers imaged in spotlight-mode SAR at the
-  default parameters, in dB. (\textbf{b}) Glint pattern of a ray-traced flat plate against
+  \caption{(\textbf{a}) A single point scatterer and (\textbf{b}) a $5\times5$ grid of point
+  scatterers imaged in spotlight-mode SAR at the default parameters, in dB. (\textbf{c}) Glint pattern of a ray-traced flat plate against
   physical optics (\ref{eq:plate-rcs}) at two wavelengths.}
   \label{fig:validation}
 \end{figure}
@@ -518,7 +521,7 @@ $\big|\sum_k E_k e^{j2\pi z_k/\lambda}\big|^2$, with the physical-optics radar c
     \label{eq:plate-rcs}
 \end{equation}
 The simulated glint pattern overlays (\ref{eq:plate-rcs}) at both wavelengths
-(Figure \ref{fig:validation}b), with $-3$~dB widths of $3.170^\circ$ and $1.588^\circ$ against
+(Figure \ref{fig:validation}c), with $-3$~dB widths of $3.170^\circ$ and $1.588^\circ$ against
 $3.171^\circ$ and $1.586^\circ$ and peak sidelobes of $-13.42$ and $-13.30$~dB against $-13.30$ and
 $-13.27$~dB, and at normal incidence the simulated $\sigma$ grows as $A^{1.98}$ against $A^2$. The
 match holds as long as the ray spacing $\Delta$ samples the phase across the plate,
