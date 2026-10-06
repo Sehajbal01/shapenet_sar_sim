@@ -1,5 +1,6 @@
 """SAR paper figure experiments. `main` runs the full suite via one call."""
 import os
+import zlib
 
 # MKL (libiomp5) and PyTorch (libomp) each link their own OpenMP runtime; the
 # second to initialize aborts with "OMP: Error #15". Allow the duplicate.
@@ -324,17 +325,19 @@ def generate_modality_comparison_figure(
     split='cars_train',
     seed=8134,
 ):
-    """Create a 4-row figure with RGB, CBP SAR, and side scan sonar panels, rendered as the dataset is."""
+    """Create a 4-row figure with RGB, CBP SAR, stripmap SAR, side scan and forward looking sonar panels, rendered as the dataset is."""
     # lazy: generate_dataset imports this module
     import generate_dataset as gd
 
-    modalities = ('cbp_sar', 'side_scan_sonar')
+    modalities = ('cbp_sar', 'side_scan_sonar', 'forward_looking_sonar')
+    columns = ('cbp_sar', 'stripmap_sar', 'side_scan_sonar', 'forward_looking_sonar')
     dataset_dir = srn_split_dir(split)
     obj_ids = sorted(os.listdir(dataset_dir))
     rng = np.random.RandomState(seed)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    fig, axes = plt.subplots(num_examples, 3, figsize=(9, 3.2 * num_examples), squeeze=False)
+    fig, axes = plt.subplots(num_examples, 1 + len(columns), figsize=(15, 3.2 * num_examples),
+                             squeeze=False)
 
     for row_idx in range(num_examples):
         obj_id = obj_ids[rng.randint(0, len(obj_ids))]
@@ -348,9 +351,24 @@ def generate_modality_comparison_figure(
         gd.render_poses(obj_id, object_dir, mesh_path, {pose_num: modalities}, 1, poses,
                         'cuda', False, True, modalities, False)
 
+        # stripmap is not a dataset modality: image the cbp panel's aperture and noise seed with it
+        seed_pose = zlib.crc32(('%s/%s' % (obj_id, pose_num)).encode())
+        np.random.seed(seed_pose)
+        torch.manual_seed(seed_pose)
+        stripmap = gd._quiet(sar_render_image, mesh_path,
+                             gd.SAR_PAPER_BASELINE['num_pulse'],
+                             torch.tensor(poses[pose_num][0], device='cuda'),
+                             gd.AZIMUTH_SPREAD_DEG,
+                             imaging_algorithm = 'stripmap',
+                             trajectory_type   = gd.TRAJECTORY_TYPE,
+                             **{k: gd.SAR_PAPER_BASELINE[k] for k in gd.SAR_KEYS})  # (1,H,W)
+        gd.save_gray_png(stripmap[0].detach().cpu().numpy(),
+                         gd.output_path(object_dir, obj_id, pose_num, 'stripmap_sar', True),
+                         **gd.DISPLAY['cbp_sar'])
+
         rgb = np.array(PIL.Image.open(os.path.join(object_dir, 'rgb', f'{pose_num}.png')))[..., :3]
         panels = [rgb] + [np.array(PIL.Image.open(gd.output_path(object_dir, obj_id, pose_num, m, True)))
-                          for m in modalities]
+                          for m in columns]
         for col_idx, panel in enumerate(panels):
             axes[row_idx, col_idx].imshow(panel, cmap='gray', vmin=0, vmax=255)
             axes[row_idx, col_idx].axis('off')
