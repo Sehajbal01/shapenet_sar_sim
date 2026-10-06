@@ -1,0 +1,151 @@
+=== LLM Review of latex/main.tex (2026-10-05) ===
+
+Five problems a reviewer would likely reject the paper over; most repeat the previous round.
+
+
+1. PREVIOUS REVIEWER CONCERNS STILL OPEN
+----------------------------------------
+
+- No validation against ground truth (point target, flat plate, trihedral; resolution, peak, sidelobe numbers) [R1, R2, R4]
+    OPEN. The sphere experiment (main.tex:582) only describes how the images look.
+    The repo already has validation_point_target.py and validation_plate.py (compares against the
+    closed-form flat-plate radar cross section). Neither appears in the paper. Adding them is the
+    most effective fix available.
+
+- No side-by-side comparison with RaySAR or CVDomes [R1, R2]
+    OPEN. "Write comparative analysis section" is still on the to-do list; render_cvdomes.py exists
+    but isn't used in the paper.
+
+- Complex-valued (phase-preserving) imaging works poorly [R2, R3]
+    OPEN, and now easy to miss.
+    - Default use_sig_magnitude=True, so every SAR figure except the wavelength sweep keeps only the
+      signal magnitude and drops phase. Contradicts main.tex:438 ("Both integrate the pulses
+      coherently when a wavelength is given").
+    - The wavelength figure shows the image falling apart at lambda = 0.01-0.02 and only one edge of
+      the car at the default lambda = 0.5.
+    - main.tex:501 says images are clearest when lambda is "matched to the range resolution"; in real
+      SAR lambda is ~100x smaller than the resolution. Reads as an admission that coherent imaging
+      fails at realistic wavelengths.
+    - Likely cause: ray spacing (1.2/208 ~ 0.006) does not sample the phase finely enough at short
+      lambda. Needs an analysis like the one done for ray density.
+
+- Interposummation looks like standard sinc / matched-filter range compression [R2]
+    OPEN, and now weaker. The new waveform section (main.tex:380-409) derives it as w(z)*g(z), which
+    makes the reviewer's argument for them. Still listed as contribution #1.
+    Reposition as: evaluating the band-limited, range-compressed signal directly from the ray returns
+    at the sample points, with no fine-grid accumulation. Cite standard SBR / range-profile synthesis.
+
+- Units and material parameters unclear [R1]
+    WORSE. See section 2.
+
+- No timing or performance results [R4]
+    OPEN. Paper says "GPU-accelerated", "efficient", "scalable" but gives no runtimes. Needs a table
+    of time vs rays, pulses, GPU.
+
+- Figure 1(c,d) have no colorbars [R2]
+    OPEN. depth-map.png still has no colorbar or units.
+
+- Detailed per-face materials are impractical [R4]
+    NOT ADDRESSED. The paper never says that in practice there are only two materials (object and
+    ground).
+
+- License, example scripts, reproducibility section [R1]
+    PARTLY DONE. Repo URL and parameter appendix exist, but no license is mentioned and there is no
+    "how to reproduce figure X" section.
+
+
+2. NEW SERIOUS PROBLEMS
+-----------------------
+
+- Material tables contradict the equations.
+    obj_raids = (1.0, 1.0, 100, 0.1, 0.9) breaks both stated constraints: R+S+A = 1 (here 2.9) and
+    I+D = 1 (here 100.1). The code (utils.py:30, correct_material_properties) silently normalizes.
+    After normalizing, the car has S ~ 0.31 and the ground S ~ 0.05, contradicting main.tex:186-188
+    (metal has low scattering, ground clutter high). The exponent alpha is in no table.
+    This is exactly R1's reproducibility complaint: show normalized values plus alpha.
+
+- "Stripmap-mode SAR" isn't really stripmap.
+    Table 1 and Appendix A.4 describe the same parallel rays aimed at the scene origin over a linear
+    path as spotlight mode; only image formation differs. Appendix A.4 even checks it against
+    spotlight on "the same signals". Stripmap is defined by acquisition (fixed antenna pointing, a
+    footprint that sweeps across the scene), not by backprojection; a SAR reviewer will call it
+    mislabeled. Also a mismatch: signals simulated with a far-field planar wavefront but imaged with
+    exact near-field range.
+
+- Sonar experiment text doesn't match the default-parameter tables.
+    - FLS text: ||v|| = 1.3, 1024x1024 rays, Theta_h = 100 deg, Theta_w = 60 deg,
+      rho_near/rho_far = 0.75/3, B_s = 30.
+    - SSS text: ||v|| = 10, 700x250 rays, Theta_h = 30 deg, L = 1.1.
+    - Appendix tables: 7.5 for both, 350x550 or 550 rays, 23 deg, L = 1.2, B_s = 32, and
+      image_range_swath in place of rho_near/rho_far.
+    Text describes the configuration from before the Sept 30 - Oct 4 retune. Either re-run and
+    re-measure, or state which values override the defaults. Also check whether the sonar figures
+    came from the old or the new config.
+
+- SAR bandwidth section blames the wrong cause.
+    main.tex:538 and the conclusion (main.tex:771) say artifacts come from "oversampling". Sample
+    rate alone can't cause them; the cause is the pulse becoming narrower than the spacing between
+    ray returns. The sonar sections (main.tex:647, main.tex:728) explain it correctly, so the paper
+    contradicts itself. Conclusion's "without aliasing or distortion" (main.tex:760) overclaims.
+
+- Abstract and intro claim things the body doesn't support.
+    - "Supports radar cross section modeling, different noise types": RCS appears nowhere in the
+      body; the only noise is an SNR sweep.
+    - "Multi-bounce": exactly two bounces.
+    - "Lack of open-source ... sonar simulators" is false: HoloOcean, Stonefish, and the DAVE/Gazebo
+      sonar plugins are open source, and Related Works cites no sonar work at all.
+    - "Validate the stripmap reconstruction against spotlight" only checks the simulator against
+      itself; not validation.
+
+- "Energy" is used as a field amplitude.
+    The coherent sum sum_k E_k e^{j phi} adds energies as if they were complex fields.
+    validation_plate.py treats |sum|^2 as RCS, which only works if E_k is an amplitude. Rename or
+    justify.
+
+
+3. FLOW AND SMALLER ISSUES
+--------------------------
+
+- Figure 2 is cited (main.tex:58) before Figure 1 (main.tex:60). MDPI wants figures cited in order.
+- Figure 1 (az 210.8 deg, el 32.2 deg, 30 pulses, 90 deg, sinc pulse) doesn't match the defaults
+  table (az 0 deg, el 33 deg, 64 pulses, 135 deg, Gaussian). Say what Figure 1 uses.
+- Figure 6(a,b) reuse scatters.png and signal_clean.png from Figure 1.
+- Sinc pulse train p(z) is defined but never used. Derivation inconsistency: g(z) uses
+  delta(z - z_k), but the result is written as w(z_o - z_k/2).
+- B_s = 2B_t/c only gives the speed of light; no speed of sound for sonar and no stated length unit.
+  E.g. B_s = 30 per metre ~ 4.5 GHz, not realistic.
+- Default waveform is Gaussian, but the waveform section calls it the worst performer. Reviewers
+  will ask why.
+- Absolute peak values (1.2e-7, 7.6e2) mean nothing without calibration; invites R1's units
+  complaint.
+- No Limitations section: no polarization, no physical-optics / EM modeling, required ray density,
+  material realism.
+- MDPI requires Author Contributions and Conflicts of Interest; both are commented out
+  (main.tex:784, main.tex:792).
+- Typos / informal wording: "Jakowatz book", "match-filtered", "SONAR" vs "sonar",
+  "law of conservation" (missing "the"), "classified in some manner".
+
+
+4. ITEMS STILL OPEN ON todo-list.txt
+------------------------------------
+
+- side-scan sonar added to the waveform experiment
+- discussion of sonar quirks (elevation field of view, near-range ray density, grazing banding,
+  near-edge dark strip)
+- comparative analysis section
+- updating Related Works
+
+Sensors special issue deadline is in October.
+
+
+SUGGESTED ORDER
+---------------
+1. validation (point target + flat plate, scripts already exist)
+2. comparison with CVDomes
+3. analysis of coherent imaging
+4. material table and units
+5. sync the sonar numbers
+6. timing table
+7. reframe interposummation
+
+The first three cover most of R1, R2, and R4.
