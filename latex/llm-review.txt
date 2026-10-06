@@ -6,15 +6,15 @@ Five problems a reviewer would likely reject the paper over; most repeat the pre
 1. PREVIOUS REVIEWER CONCERNS STILL OPEN
 ----------------------------------------
 
-- No validation against ground truth (point target, flat plate, trihedral; resolution, peak, sidelobe numbers) [R1, R2, R4]
-    OPEN. The sphere experiment (main.tex:582) only describes how the images look.
-    The repo already has validation_point_target.py and validation_plate.py (compares against the
-    closed-form flat-plate radar cross section). Neither appears in the paper. Adding them is the
-    most effective fix available.
+DONE - No validation against ground truth (point target, flat plate, trihedral; resolution, peak, sidelobe numbers) [R1, R2, R4]
+DONE     OPEN. The sphere experiment (main.tex:582) only describes how the images look.
+DONE     The repo already has validation_point_target.py and validation_plate.py (compares against the
+DONE     closed-form flat-plate radar cross section). Neither appears in the paper. Adding them is the
+DONE     most effective fix available.
 
-- No side-by-side comparison with RaySAR or CVDomes [R1, R2]
-    OPEN. "Write comparative analysis section" is still on the to-do list; render_cvdomes.py exists
-    but isn't used in the paper.
+SEHAJ IS DOING THIS- No side-by-side comparison with RaySAR or CVDomes [R1, R2]
+SEHAJ IS DOING THIS    OPEN. "Write comparative analysis section" is still on the to-do list; render_cvdomes.py exists
+SEHAJ IS DOING THIS    but isn't used in the paper.
 
 - Complex-valued (phase-preserving) imaging works poorly [R2, R3]
     OPEN, and now easy to miss.

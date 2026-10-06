@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} supports only stripmap-mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders four imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{stripmap-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar, and validate the stripmap-mode reconstruction against spotlight mode.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} supports only stripmap-mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders four imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{stripmap-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar, and validate the stripmap-mode reconstruction against spotlight mode.}
 
 \keyword{SAR; spotlight SAR; stripmap SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -49,9 +49,9 @@ SAR and sonar simulators are crucial for developing and validating radar and son
 Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility, rely on outdated software, are each tied to a single SAR imaging mode, and do not simulate sonar.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. Our main contributions are:
+The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
 \begin{itemize}
-    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor.
+    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging.
     \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system.
     \item \textbf{Four imaging modalities} from one simulator: spotlight-mode SAR \cite{spotlightmodesar}, stripmap-mode SAR, side-scan sonar (SSS), and forward-looking sonar (FLS). Every quantity in the simulator is expressed in spatial units, so radar and sonar share the same ray tracer, material model, and interposummation, and differ only in how rays are launched, how returns are weighted by the beam and the medium, and how the signals are formed into an image.
 \end{itemize}
@@ -369,6 +369,9 @@ samples with their position in space. Then with the sifting property $s(z_o)$ is
 The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc
 function acts as both a low-pass interpolation filter and a summation over nearby samples in the
 energy-range scatter. We name the processing in (\ref{eq:interposummation}) \emph{interposummation}.
+Since interposummation is linear in $E_k$, it applies unchanged to complex returns that carry their
+carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
+imaging.
 
 
 \subsection{Arbitrary Transmit Waveforms}
@@ -435,7 +438,9 @@ position of a circular or linear trajectory, aimed at the scene origin, and form
 convolution backprojection \cite{spotlightmodesar}. \textbf{Stripmap-mode SAR} images the signals
 of a linear trajectory by filtered backprojection along the exact range from each sensor position
 to each pixel, with the ramp filter applied after demodulation so that it nulls the carrier rather
-than baseband. Both integrate the pulses coherently when a wavelength is given.
+than baseband. When a wavelength is given, both demodulate each pulse and integrate the
+complex-valued pulses coherently, so the image is formed from the phase of the returns as well as
+their magnitude.
 
 The sonars replace the planar wavefront with a point source. Each ping casts a fan of rays from the
 sensor, every return is attenuated by spherical spreading, and the beam pattern of the sensor
@@ -478,7 +483,8 @@ directly into interposummation (\ref{eq:interposummation}) at its true range wit
 $e^{j4\pi R/\lambda}$, bypassing the ray tracer (Figure \ref{fig:validation}b). Every target is
 imaged as a compact peak within $0.0025$ of its true position, $0.27$ of a pixel of the default
 $128 \times 128$ image, and the phase of each return matches $e^{j4\pi R/\lambda}$ across the
-aperture to $1.7\times10^{-6}$ degrees RMS. A single scatterer at the scene origin
+aperture to $1.7\times10^{-6}$ degrees RMS, so the simulated signals preserve phase and the pulses
+integrate coherently. A single scatterer at the scene origin
 (Figure \ref{fig:validation}a) is imaged as a peak $0.013$ wide at $-3$~dB in both range and
 cross-range, with sidelobes that form an X along the wavefronts of the first and last pulses, where
 the $135^\circ$ aperture ends. Along range, each return takes the shape of the
@@ -510,7 +516,8 @@ its sidelobes spread symmetrically into concentric rings around the target.
   \label{fig:sphere-size}
 \end{figure}
 
-Finally, we ray-trace a square plate of side $L = 0.4$ and area $A = L^2$, facing a sensor at
+Where the point targets bypass the ray tracer, the flat plate tests the phase of ray-traced returns.
+We ray-trace a square plate of side $L = 0.4$ and area $A = L^2$, facing a sensor at
 elevation $0^\circ$ and range $1.3$ with $512 \times 512$ rays, and sweep the sensor azimuth by
 $\phi$ over $\pm 12^\circ$. We compare the squared magnitude of the coherent sum of its returns,
 $\big|\sum_k E_k e^{j2\pi z_k/\lambda}\big|^2$, with the physical-optics radar cross section
@@ -810,7 +817,10 @@ rate. This allows the simulator to generate physically meaningful signals withou
 distortion due to improper interpolation. Interposummation extends to arbitrary transmit waveforms
 by replacing its ideal sinc with the effective window of the waveform's matched filter, so sinc,
 Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
-the same cost, with the range sidelobes of a real pulse-compression system.
+the same cost, with the range sidelobes of a real pulse-compression system. When a carrier wavelength is given,
+every return keeps its round-trip phase, and SAR images are formed by coherent integration of the
+complex-valued signals, which we validated against ideal point scatterers and the physical-optics
+glint of a flat plate.
 
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
 sonar, and forward-looking sonar, while varying key parameters such as aperture, transmit
