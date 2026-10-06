@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} supports only stripmap-mode imaging and ignores multi-bounce ray interactions, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders four imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{stripmap-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar, and validate the stripmap-mode reconstruction against spotlight mode.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} supports only stripmap-mode imaging and forms images directly from geometry without simulating a received signal, while \emph{CVDomes} is limited to a few CAD models and spotlight mode. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders four imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{stripmap-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar, and validate the stripmap-mode reconstruction against spotlight mode.}
 
 \keyword{SAR; spotlight SAR; stripmap SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -46,12 +46,12 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 SAR and sonar simulators are crucial for developing and validating radar and sonar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility, rely on outdated software, are each tied to a single SAR imaging mode, and do not simulate sonar.
+Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility, rely on outdated software, are each tied to a single SAR imaging mode, and do not simulate sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
 The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
 \begin{itemize}
-    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging.
+    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging. Unlike standard range compression, which filters a signal already sampled on a uniform grid, interposummation evaluates the band-limited response directly from irregularly spaced ray returns, so one step both interpolates each return onto the sample grid and sums all returns into each sample.
     \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system.
     \item \textbf{Four imaging modalities} from one simulator: spotlight-mode SAR \cite{spotlightmodesar}, stripmap-mode SAR, side-scan sonar (SSS), and forward-looking sonar (FLS). Every quantity in the simulator is expressed in spatial units, so radar and sonar share the same ray tracer, material model, and interposummation, and differ only in how rays are launched, how returns are weighted by the beam and the medium, and how the signals are formed into an image.
 \end{itemize}
@@ -74,7 +74,9 @@ corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range 
 (Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width
 corresponding to the radar system bandwidth, to sum and interpolate (interposummation) the
 scatters into a single sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing
-between each sinc pulse corresponds to the sample rate of the radar system. Once there is a
+between each sinc pulse corresponds to the sample rate of the radar system. Unlike conventional
+filtering of a sampled signal, this single step places every off-grid return at its exact range and
+sums it with its neighbors, without first binning the returns onto a discrete range grid. Once there is a
 received signal for each pulse at different azimuth and elevation angles, further analysis or
 imaging (Figure \ref{fig:main-fig}.b) can be done.
 
@@ -152,7 +154,8 @@ transmitting pulses or collecting real echoes, RaySAR performs geometric ray tra
 which surfaces are illuminated, and estimates the backscatter of each surface from its local
 incidence geometry relative to the radar sensor. This simulated backscatter is then projected into
 the SAR slant-range coordinate system, producing radar-like images that capture geometric effects
-such as layover, shadowing, and foreshortening. Users can define synthetic flight paths and
+such as layover, shadowing, and foreshortening. Multiple reflections are traced and separated into
+single-, double-, and higher-bounce image layers. Users can define synthetic flight paths and
 viewing geometries \cite{drozdowicz2021open} to analyze how different radar positions influence
 the resulting image. RaySAR is therefore a forward-modeling tool: it predicts how 3D scenes would
 appear in SAR imagery rather than simulating raw signal acquisition.
@@ -323,7 +326,9 @@ two-bounce returns, so each ray contributes at most two returns.
 
 Ray tracing the full grid therefore yields a set of $N$ energy-range pairs $(E_k,z_k)$,
 where $E_k$ is the returned energy of the $k^{th}$ return given by (\ref{eq:returned-energy}) and
-$z_k$ is the total distance traveled by that ray from and back to the ray grid plane. We treat the
+$z_k$ is the total distance traveled by that ray from and back to the ray grid plane. This
+ray-launching stage follows standard SBR practice \cite{sbr}. Our contribution lies in how the
+resulting returns are turned into a sampled signal, described next. We treat the
 returned energy from ray tracing as a continuous spatial signal made up of Dirac
 delta functions.
 \begin{equation}
@@ -368,7 +373,11 @@ samples with their position in space. Then with the sifting property $s(z_o)$ is
 \end{equation}
 The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc
 function acts as both a low-pass interpolation filter and a summation over nearby samples in the
-energy-range scatter. We name the processing in (\ref{eq:interposummation}) \emph{interposummation}.
+energy-range scatter. This differs from standard interpolation, which resamples a signal already
+given on a uniform grid, and from standard range compression, which filters such a sampled signal.
+Here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample
+spacing, and (\ref{eq:interposummation}) interpolates each of them onto the sample grid and sums
+them in a single step. We name the processing in (\ref{eq:interposummation}) \emph{interposummation}.
 Since interposummation is linear in $E_k$, it applies unchanged to complex returns that carry their
 carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
 imaging.
@@ -409,7 +418,7 @@ $ is then given by
     =\sum_{k=1}^{N}E_kw\bigg(z_o-\frac{z_k}{2}\bigg)
     ,
 \end{equation}
-where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. One may view the ideal band-limited digital signal in (\ref{eq:interposummation}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
+where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. Although $w(z)*g(z)$ has the form of conventional matched filtering, it is never computed by convolving a sampled received signal. Since $g(z)$ is a sum of off-grid delta functions, the matched-filter output is evaluated in closed form at each sample $z_o$, so the same sum performs both the interpolation and the summation of the returns. One may view the ideal band-limited digital signal in (\ref{eq:interposummation}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
 
 Each transmit waveform therefore replaces the ideal sinc of interposummation with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
 
@@ -813,7 +822,9 @@ MATLAB.
 
 The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
 summation and interpolation of ray returns, accounting for the sensor's bandwidth and sampling
-rate. This allows the simulator to generate physically meaningful signals without aliasing or
+rate. Rather than range-compressing an already sampled signal, it evaluates the band-limited
+response directly at the sample points from the off-grid ray returns, so interpolation and summation
+happen in one step. This allows the simulator to generate physically meaningful signals without aliasing or
 distortion due to improper interpolation. Interposummation extends to arbitrary transmit waveforms
 by replacing its ideal sinc with the effective window of the waveform's matched filter, so sinc,
 Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
