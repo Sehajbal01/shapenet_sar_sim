@@ -467,7 +467,64 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. The first experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+
+\subsection{Validation Against Closed-Form References}
+\label{sec:validation}
+
+We first image $25$ ideal point scatterers on a $5 \times 5$ grid spanning $\pm 0.4$ in
+spotlight-mode SAR at the default parameters of Table \ref{tab:params}. Each scatterer is injected
+directly into interposummation (\ref{eq:interposummation}) at its true range with the phase
+$e^{j4\pi R/\lambda}$, bypassing the ray tracer (Figure \ref{fig:validation}a). Every target is
+imaged as a compact peak within $0.0025$ of its true position, $0.27$ of a pixel of the default
+$128 \times 128$ image, and the phase of each return matches $e^{j4\pi R/\lambda}$ across the
+aperture to $1.7\times10^{-6}$ degrees RMS. Along range, each return takes the shape of the
+effective window $w(z)$ of Figure \ref{fig:effective-windows}, so the range resolution and
+sidelobes are those of the transmit waveform. In the image, the magnitude of the signal aliases at
+the default $F_s = 2B_s$, which narrows the impulse response by up to $42\%$ relative to an analytic
+backprojection; at $F_s \ge 8B_s$ the two agree within $4\%$.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/sar_validation.png}
+  \caption{(\textbf{a}) A $5\times5$ grid of point scatterers imaged in spotlight-mode SAR at the
+  default parameters, in dB. (\textbf{b}) Glint pattern of a ray-traced flat plate against
+  physical optics (\ref{eq:plate-rcs}) at two wavelengths.}
+  \label{fig:validation}
+\end{figure}
+
+In Figure \ref{fig:sphere-size}, we ray-trace a sphere at five successively halved scales ($1$ to
+$1/16$ of the mesh's native size), with the ground plane removed and the pulse count raised to
+$256$. The image traces the curved illuminated surface of the sphere, which tightens as the sphere
+shrinks until, at the smallest scales, the return collapses to the compact response of a point
+scatterer in Figure \ref{fig:validation}a. Since a sphere backscatters equally from every angle,
+its sidelobes spread symmetrically into concentric rings around the target.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
+  \caption{SAR reconstruction of a sphere at decreasing scale, shown in dB, with the scale factor labeled above each subplot.}
+  \label{fig:sphere-size}
+\end{figure}
+
+Finally, we ray-trace a square plate of side $L = 0.4$ and area $A = L^2$, facing a sensor at
+elevation $0^\circ$ and range $1.3$ with $512 \times 512$ rays, and sweep the sensor azimuth by
+$\phi$ over $\pm 12^\circ$. We compare the squared magnitude of the coherent sum of its returns,
+$\big|\sum_k E_k e^{j2\pi z_k/\lambda}\big|^2$, with the physical-optics radar cross section
+\begin{equation}
+    \sigma(\phi) = \frac{4\pi A^2}{\lambda^2}\cos^2\phi \,
+    \sinc^2\!\bigg(\frac{2L\sin\phi}{\lambda}\bigg)
+    .
+    \label{eq:plate-rcs}
+\end{equation}
+The simulated glint pattern overlays (\ref{eq:plate-rcs}) at both wavelengths
+(Figure \ref{fig:validation}b), with $-3$~dB widths of $3.170^\circ$ and $1.588^\circ$ against
+$3.171^\circ$ and $1.586^\circ$ and peak sidelobes of $-13.42$ and $-13.30$~dB against $-13.30$ and
+$-13.27$~dB, and at normal incidence the simulated $\sigma$ grows as $A^{1.98}$ against $A^2$. The
+match holds as long as the ray spacing $\Delta$ samples the phase across the plate,
+$\Delta < \lambda/(4\sin\phi)$. Because all rays return in phase at normal incidence, the simulated
+$\sigma$ does not depend on $\lambda$, so it matches (\ref{eq:plate-rcs}) only up to the aperture
+gain $4\pi/\lambda^2$.
 
 \subsection{Spotlight-Mode SAR}
 
@@ -577,17 +634,6 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
   \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
   \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
   \label{fig:trajectory-noise}
-\end{figure}
-
-\subsection{Sphere Rendering}
-
-In Figure \ref{fig:sphere-size}, we render a sphere at five successively halved scales ($1$, $1/2$, $1/4$, $1/8$, and $1/16$ of the mesh's native size), with the ground plane removed and the pulse count raised to $256$ to resolve the smaller targets. As the sphere shrinks, its return contracts toward the image center while preserving the curved signature of the illuminated surface. The curve of this signature tightens as the scale decreases, and at the smallest scales the return collapses toward a compact response resembling that of a point scatterer. The sidelobes of the response appear in all directions around the target: because the sphere backscatters equally from every observable angle, the sidelobe energy is distributed symmetrically, producing the concentric ring pattern visible around each target.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
-  \caption{SAR reconstruction of a sphere at decreasing scale, shown in dB, with the scale factor labeled above each subplot.}
-  \label{fig:sphere-size}
 \end{figure}
 
 \subsection{Forward-Looking Sonar Beam Width}
