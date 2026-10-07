@@ -5,7 +5,8 @@ Figure 1 of the paper: one srn_cars pose rendered in spotlight-mode SAR at the p
   (c) first-hit range of each ray    (d) first-bounce return weight E_k of each ray
   (e) energy-range scatter           (f) interposummed signal magnitude
 
-(c)-(f) are one pulse. The paper panels are saved one png each for latex's subfloats; -gif
+(c)-(f) are one pulse, traced with two bounces, and (e)-(f) show the sensor distance +/- half the
+region radius. The paper panels are saved one png each for latex's subfloats; -gif
 instead draws the same six panels on one frame per pulse, on limits shared by all the pulses.
 
     python sar_overview_figure.py
@@ -39,8 +40,9 @@ PANEL_SIZE = (3.0, 2.6)  # inches, one paper panel
 FONT_SIZE  = 13          # readable at 0.3 of the paper's text width
 
 
-def render(obj_id, pose_num, baseline=SAR_PAPER_BASELINE, seed=0):
+def render(obj_id, pose_num, baseline=SAR_PAPER_BASELINE, seed=0, num_bounce=2):
     '''Render the pose once and return everything the panels draw, as numpy.'''
+    baseline = {**baseline, 'num_bounce': num_bounce}
     torch.manual_seed(seed)
     np.random.seed(seed)
     object_dir = os.path.join(_find_split_dir(obj_id), obj_id)
@@ -57,6 +59,10 @@ def render(obj_id, pose_num, baseline=SAR_PAPER_BASELINE, seed=0):
     P = pulses['trajectory'].shape[1]
     maps = [pulses['debugging_maps'][(0, p)] for p in range(P)]
     depth = np.stack([m['depth'].cpu().numpy() for m in maps])                  # (P,H,W)
+    returns = sum(r.numel() for r in pulses['ranges'][0])
+    first_hits = int(sum((m['depth'] >= 0).sum() for m in maps))
+    print('%d bounces: %d returns from %d first hits over %d pulses, %.0f%% from later bounces'
+          % (num_bounce, returns, first_hits, P, 100 * (1 - first_hits / returns)))
     return dict(
         rgb    = np.array(PIL.Image.open(os.path.join(object_dir, 'rgb', f'{pose_num}.png')))[..., :3],
         sar    = sar[0].detach().cpu().numpy(),                                 # (H,W)
@@ -66,6 +72,8 @@ def render(obj_id, pose_num, baseline=SAR_PAPER_BASELINE, seed=0):
         scatter_energy = [e.abs().cpu().numpy() for e in pulses['energies'][0]],
         signal   = pulses['signals'][0].abs().cpu().numpy(),                    # (P,Z)
         sample_z = pulses['sample_z'][0].cpu().numpy(),                         # (P,Z)
+        sensor_distance = pulses['trajectory'][0].norm(dim=-1).cpu().numpy(),   # (P,)
+        half_window = baseline['region_radius'] / 2,
         grid   = (baseline['grid_width'], baseline['grid_height']),
         plane  = (baseline['image_plane_width'], baseline['image_plane_height']),
         display = {k: baseline[k] for k in ('compression', 'db_floor', 'asinh_k_ratio')},
@@ -75,15 +83,30 @@ def render(obj_id, pose_num, baseline=SAR_PAPER_BASELINE, seed=0):
 def limits(data, pulses):
     '''Color and axis limits covering the given pulses, so the gif's frames share one scale.'''
     energy = data['energy'][pulses]
+    scatter_max = max(data['scatter_energy'][p][_in_window(data, p, data['scatter_range'][p])].max()
+                      for p in pulses)
+    signal_max = max(data['signal'][p][_in_window(data, p, data['sample_z'][p])].max()
+                     for p in pulses)
     return dict(
         depth  = (np.nanmin(data['depth'][pulses]), np.nanmax(data['depth'][pulses])),
         energy = np.percentile(energy, 99.9),
         energy_power = _power(energy.max()),
-        scatter_power = _power(max(data['scatter_energy'][p].max() for p in pulses)),
-        scatter_max = max(data['scatter_energy'][p].max() for p in pulses),
-        signal_power = _power(data['signal'][pulses].max()),
-        signal_max = data['signal'][pulses].max(),
+        scatter_power = _power(scatter_max),
+        scatter_max = scatter_max,
+        signal_power = _power(signal_max),
+        signal_max = signal_max,
     )
+
+
+def _window(data, p):
+    '''Range shown in (e) and (f): the sensor distance +/- half the region radius.'''
+    d = data['sensor_distance'][p]
+    return d - data['half_window'], d + data['half_window']
+
+
+def _in_window(data, p, z):
+    lo, hi = _window(data, p)
+    return (z >= lo) & (z <= hi)
 
 
 def _power(peak):
@@ -130,11 +153,10 @@ def draw_energy(fig, ax, data, p, lim):
 
 
 def draw_scatter(fig, ax, data, p, lim):
-    # the far multipath returns fall outside the signal window, so the axis stops where it does
     scale = 10.0 ** lim['scatter_power']
     ax.scatter(data['scatter_range'][p], data['scatter_energy'][p] / scale, s=1, linewidths=0,
                rasterized=True)
-    ax.set_xlim(data['sample_z'][p, 0], data['sample_z'][p, -1])
+    ax.set_xlim(*_window(data, p))
     ax.set_ylim(-0.05 * lim['scatter_max'] / scale, 1.05 * lim['scatter_max'] / scale)
     ax.set_xlabel(r'range ($\ell$)')
     ax.set_ylabel(_scale_label(r'$|E_k|$', lim['scatter_power']))
@@ -143,7 +165,7 @@ def draw_scatter(fig, ax, data, p, lim):
 def draw_signal(fig, ax, data, p, lim):
     scale = 10.0 ** lim['signal_power']
     ax.plot(data['sample_z'][p], data['signal'][p] / scale)
-    ax.set_xlim(data['sample_z'][p, 0], data['sample_z'][p, -1])
+    ax.set_xlim(*_window(data, p))
     ax.set_ylim(-0.05 * lim['signal_max'] / scale, 1.05 * lim['signal_max'] / scale)
     ax.set_xlabel(r'range ($\ell$)')
     ax.set_ylabel(_scale_label(r'$|s(z)|$', lim['signal_power']))
