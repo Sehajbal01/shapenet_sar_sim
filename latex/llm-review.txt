@@ -42,8 +42,10 @@ DONE - No timing or performance results [R4]
 DONE     Compute Time subsection (Table tab:compute-time) from compute_time_experiment.py: CPU vs GPU,
 DONE     small/large mesh, 32^2/64^2/128^2 rays, 30 pulses.
 
-- Figure 1(c,d) have no colorbars [R2]
-    OPEN. depth-map.png still has no colorbar or units.
+DONE - Figure 1(c,d) have no colorbars [R2]
+DONE     Fig. 1(b-f) re-rendered at the SAR baseline by sar_paper_figures.generate_overview_figure
+DONE     (car e6846796, pose 000046 = panel a): colorbars and axes in l, E_k as a fraction of the
+DONE     transmitted energy. Text now says 64 pulses / 135 deg linear, not 30 / 90.
 
 - Detailed per-face materials are impractical [R4]
     NOT ADDRESSED. The paper never says that in practice there are only two materials (object and

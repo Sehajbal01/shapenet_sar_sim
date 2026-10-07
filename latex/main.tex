@@ -58,10 +58,11 @@ The primary functionality of the simulator is to use ray tracing combined with a
 Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a spotlight-mode SAR image by convolution backprojection (CBP), a stripmap-mode SAR image, an SSS image, and an FLS image of four different ShapeNet car models with the same simulator.
 
 Figure \ref{fig:main-fig} showcases an example of our simulator on a ShapeNet \cite{shapenet} car
-model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b with a mean azimuth
-angle of $210.8^\circ$ and a fixed elevation angle of $32.2^\circ$. Figures
-\ref{fig:main-fig}.(c,d,e,f) are examples from just one pulse, but to construct the SAR image we
-aggregate $30$ pulses over a $90^\circ$ azimuth angle spread. The depth (Figure
+model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b, with the aperture
+centered on an azimuth angle of $210.8^\circ$ and an elevation angle of $32.2^\circ$. Figures
+\ref{fig:main-fig}.(c,d,e,f) are examples from just the pulse at the center of the aperture, but to
+construct the SAR image we aggregate $64$ pulses along a linear track spanning $135^\circ$ of
+azimuth, at the default parameters of Table \ref{tab:params}. The depth (Figure
 \ref{fig:main-fig}.c) and energy (Figure \ref{fig:main-fig}.d) maps shown are only for the first
 bounce of each ray; the actual simulation uses $2$ bounces for realism.
 The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim}. Our simulation
@@ -84,15 +85,15 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
     \centering
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/rgb.png}}
     \hfill
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar.png}}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview.png}}
     \hfill
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/depth-map.png}}\\
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/energy-map.png}}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_depth.png}}\\
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_energy.png}}
     \hfill
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/scatters.png}}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_scatters.png}}
     \hfill
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/signal_clean.png}}
-    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, (\textbf{c}) range per ray, (\textbf{d}) returned energy per ray, (\textbf{e}) energy-range scatter, (\textbf{f}) signal calculated via interposummation.}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
+    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of all returns, (\textbf{f}) signal magnitude calculated via interposummation. Panels (\textbf{c}--\textbf{f}) are the pulse at the center of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
 \end{figure}
 
