@@ -183,31 +183,54 @@ angle from the $x$-$y$ plane to the $z$ axis. The grid is orthogonal to this lin
 azimuth/elevation. This set of rays can be viewed as a simulated wavefront. The size of the ray 
 grid only needs to be big enough to cover the ground space desired for imaging.
 
-When a ray makes contact with a surface, some of the energy is reflected, some is absorbed, and 
-some is scattered. We propose to model these three components as $R,S,A$. 
-The scattering component is the only component where some of the energy comes back to the 
-receiver. $R,S,A$ components are assigned to all $F$ faces in the object mesh. Metal surfaces have 
-low scattering $S$ and absorption $A$, but high reflectivity $R$. In contrast, ground clutter 
-tends to have high scattering and absorption.
+When a ray makes contact with a surface, a fraction of its energy is reflected into the next path
+of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as
+$R,A,S$. Scattering is the only component that returns energy to the receiver. The fractions can be
+assigned to each of the $F$ faces of the mesh, but in practice we use only two materials, one for
+the object and one for the ground, whose values are listed in Table \ref{tab:materials}.
 
-Reflectivity, scattering, and absorption components of a particular part of the mesh should add up 
-to 1 to ensure law of conservation of energy.
+The three fractions of a surface add up to 1, so that a surface never returns more energy than it
+receives:
 \begin{equation}
     R+S+A = 1
+    .
 \end{equation}
-Only scattering is considered for returned energy. Scattering occurs in two main ways: directional 
-intensity $I$ and diffuse scattering $D$. To satisfy the law of conservation of energy, once again 
-the components must add up to 1.
+Only scattering is considered for returned energy. Scattering occurs in two ways, directional
+intensity $I$ and diffuse scattering $D$, which split the scattered fraction:
 \begin{equation}
     D + I = 1
+    .
 \end{equation}
+Material properties that do not satisfy these constraints are divided by their sums before ray
+tracing. Table \ref{tab:materials} gives the default materials in both forms. The car scatters about a
+third of the incident energy, almost entirely in the directional lobe, so it returns strong glints
+near the mirror direction and little elsewhere. The ground scatters weakly and mostly diffusely, so it
+returns a dim, nearly uniform clutter that does not mask the car.
+\begin{table}[H]
+\centering
+\caption{Default materials. The configuration values (as in \texttt{obj\_raids} and
+\texttt{ground\_raids}) are normalized to the values used by the simulator. The directional
+exponent is $\alpha = 5$ for both.}
+\label{tab:materials}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Material} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
+\midrule
+Car, configured    & $1.0$   & $1.0$   & $0.9$   & $100.0$ & $0.1$ \\
+Car, normalized    & $0.345$ & $0.345$ & $0.310$ & $0.999$ & $0.001$ \\
+Ground, configured & $1.0$   & $1.0$   & $0.1$   & $1.0$   & $5.0$ \\
+Ground, normalized & $0.476$ & $0.476$ & $0.048$ & $0.167$ & $0.833$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 Returned energy from a particular ray $E_r$ is given by
 \begin{equation}
     E_r = E_{in} S \Big(m_I\cos({\theta/2})^\alpha + m_D\Big)
 \end{equation}
 where $E_{in}$ is the ray energy going into the surface, $\theta$ is the angle between the 
-direction of the reflected ray $\vec{u}_r$ and the direction to the line of sight $\vec{u}_l$, and 
-$m_I,m_D$ are multipliers to ensure law of conservation of energy is preserved.
+direction of the reflected ray $\vec{u}_r$ and the direction to the line of sight $\vec{u}_l$,
+$\alpha$ sets the width of the directional lobe, and $m_I,m_D$ are multipliers that conserve the
+scattered energy.
 
 We solve for the multipliers by ensuring that energy scattered in all directions integrates to
 $SE_{in}$:
@@ -312,7 +335,8 @@ The energy reflected into the next path of the ray after bouncing is given by
 where $E_{out}$ is the energy carried into the next path of the ray after the bounce, and $R$ is
 the reflectivity of the triangle in the object mesh that has been hit. The energy of the first
 path of each ray is set to unity, and (\ref{eq:reflected-energy}) supplies $E_{in}$ for every path
-thereafter. This is illustrated in Figure \ref{fig:terminology}.
+thereafter. Every modality divides its returns by the number of transmitted rays $R_hR_w$, so the
+sensor transmits a total energy of 1 (Section \ref{sec:units}). This is illustrated in Figure \ref{fig:terminology}.
 If the next path of a ray hits a location that is out of the line-of-sight, it is not considered
 for returned energy. If a ray has no intersections, it is also not considered. We only consider
 two-bounce returns, so each ray contributes at most two returns.
@@ -325,7 +349,8 @@ two-bounce returns, so each ray contributes at most two returns.
 \end{figure}
 
 Ray tracing the full grid therefore yields a set of $N$ energy-range pairs $(E_k,z_k)$,
-where $E_k$ is the returned energy of the $k^{th}$ return given by (\ref{eq:returned-energy}) and
+where $E_k$ is the \emph{return weight} of the $k^{th}$ return, its returned energy
+(\ref{eq:returned-energy}) divided by $R_hR_w$, and
 $z_k$ is the total distance traveled by that ray from and back to the ray grid plane. This
 ray-launching stage follows standard SBR practice \cite{sbr}. Our contribution lies in how the
 resulting returns are turned into a sampled signal, described next. We treat the
@@ -349,7 +374,8 @@ A radar system typically uses pulse compression techniques to improve range reso
 the bandwidth of the received signal is approximately the bandwidth of the radar pulse used. The
 temporal bandwidth and sampling rate of the received signal are $B_t$ and $F_t$ respectively. They
 are related to the \emph{spatial bandwidth} and \emph{spatial sampling rate} as $B_s = 2B_t/c$ and
-$F_s = 2F_t/c$, where $c=3\times10^8$~m/s is the speed of light. The corresponding spatial sample
+$F_s = 2F_t/c$, where $c$ is the propagation speed, $3\times10^8$~m/s for radar and about
+$1500$~m/s for sound in water. The corresponding spatial sample
 spacing is $T_s = 1/F_s$.
 
 We propose to simultaneously interpolate and sum the received set of scatters in
@@ -382,6 +408,59 @@ Since interposummation is linear in $E_k$, it applies unchanged to complex retur
 carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
 imaging.
 
+
+\subsection{Units and Scale}
+\label{sec:units}
+
+Every length in the simulator, including the mesh, the ray grid, the sensor distance, the
+wavelength $\lambda$ and the range axis, is expressed in one arbitrary unit $\ell$, and $B_s$ and
+$F_s$ are in cycles per $\ell$. The ShapeNet meshes are normalized so that a car is about
+$0.9\ell$ long. Time never enters the simulation, so the propagation speed $c$ appears only when
+converting $B_s$ and $F_s$ to temporal frequencies. The simulated signals depend only on ratios of
+lengths, such as the range resolution $1/B_s$ to the size of the car or $\lambda$ to the ray
+spacing, so a scene in $\ell$ maps to any physical scale. Table \ref{tab:units} converts the
+defaults for a car about $4.5$~m long, or $1\ell \approx 5$~m.
+\begin{table}[H]
+\centering
+\caption{Default lengths and frequencies converted at $1\ell \approx 5$~m, with
+$B_t = cB_s/2$ and $F_t = cF_s/2$.}
+\label{tab:units}
+\begin{tabular}{lllll}
+\toprule
+\textbf{Quantity} & \textbf{Simulator} & \textbf{At $1\ell \approx 5$~m} & \textbf{Radar} & \textbf{Sonar} \\
+\midrule
+Car length               & $0.9\ell$          & $4.5$~m        & -- & -- \\
+SAR ray grid $W_g$       & $1.2\ell$          & $6$~m          & -- & -- \\
+Sonar distance $\lVert\vec{v}\rVert$ & $7.5\ell$ & $37.5$~m    & -- & -- \\
+Bandwidth $B_s$          & $30\,\ell^{-1}$    & $6$~m$^{-1}$   & $B_t = 900$~MHz & $B_t = 4.5$~kHz \\
+Range resolution $1/B_s$ & $0.033\ell$        & $17$~cm        & -- & -- \\
+Sample rate $F_s$        & $60\,\ell^{-1}$    & $12$~m$^{-1}$  & $F_t = 1.8$~GHz & $F_t = 9$~kHz \\
+SAR wavelength $\lambda$ & $0.5\ell$          & $2.5$~m        & $120$~MHz & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The bandwidth corresponds to a high-resolution radar, and to a low-frequency sonar. The SAR
+wavelength does not: an X-band radar at this scale has $\lambda \approx 3$~cm $\approx 0.006\ell$.
+A short wavelength needs the ray spacing to sample its phase, $\Delta < \lambda/(4\sin\phi)$
+(Section \ref{sec:validation}), or the returns of neighboring rays interfere at random within each
+pulse. At the default $208 \times 208$ rays ($\Delta \approx 0.006\ell$) the images break down at
+$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength}), and X-band would need about four
+times the ray density along each axis, or $15$ times the rays. Coherent integration across pulses
+would also need about $15$ times the $64$ default pulses to sample the aperture without aliasing.
+We therefore use a wavelength much longer than a physical radar's for the same scene, which keeps
+the phase well sampled at an affordable ray count.
+
+Energy is also unitless. The sensor transmits a total energy of 1, split equally among its rays,
+so a return weight $E_k$ is the fraction of the transmitted energy that the $k^{th}$ return brings
+back to the sensor, and a signal or image value is a sum of such fractions. The coherent sum
+(\ref{eq:coherent-scatters}) adds the return weights as field amplitudes, and $|s|^2$ is taken as
+received power, as in the flat-plate validation of Section \ref{sec:validation}. The physically
+consistent amplitude would be $\sqrt{E_k}$. Using $E_k$ instead preserves where returns fall and
+their phases, but squares their relative amplitudes, which doubles the dynamic range of the images
+in dB. No antenna gain, transmit power or
+receiver noise figure is modeled, so signal values are relative to the transmitted energy rather
+than calibrated in watts.
 
 \subsection{Arbitrary Transmit Waveforms}
 \label{sec:waveforms}
@@ -915,10 +994,10 @@ angular sampling uniform, which matters because the beam pattern is applied in a
 Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
 true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
 expanding sphere, which a planar wavefront does not, so each return is attenuated by the spreading
-loss over its round-trip range and normalized by the number of transmitted rays. With the carrier
+loss over its round-trip range. With the carrier
 phase of (\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
 \begin{equation}
-    \tilde{E}_k = \frac{E_k}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    \tilde{E}_k = \frac{E_k}{4 \pi z_k^2}e^{j 2 \pi z_k / \lambda}
     ,
     \label{eq:sonar-energy}
 \end{equation}
@@ -1014,14 +1093,13 @@ $\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The re
 energy of (\ref{eq:sonar-energy}) with an added absorption loss over their round trip through the
 water,
 \begin{equation}
-    \tilde{E}_k = \frac{E_k e^{-\kappa z_k}}{4 \pi z_k^2 R_h R_w}e^{j 2 \pi z_k / \lambda}
+    \tilde{E}_k = \frac{E_k e^{-\kappa z_k}}{4 \pi z_k^2}e^{j 2 \pi z_k / \lambda}
     ,
     \label{eq:ss-energy}
 \end{equation}
-where $\kappa$ is the absorption coefficient in nepers per unit length. The spreading loss
+where $\kappa$ is the absorption coefficient in nepers per $\ell$. The spreading loss
 $4 \pi z_k^2$ can be disabled by setting \texttt{spherical\_spread} to False in the side-scan
-configuration, as in Table \ref{tab:sss-params}, which leaves only the normalization by the
-number of rays. Their azimuths
+configuration, as in Table \ref{tab:sss-params}. Their azimuths
 $\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
 with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
 rather than always lying near $0$.
@@ -1174,7 +1252,7 @@ pedestal nor the analysis above.
 Tables \ref{tab:params}, \ref{tab:sss-params} and \ref{tab:fls-params} list the default parameters of spotlight-mode SAR, side-scan sonar and forward-looking sonar. The sonar baselines image the car at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
 \begin{table}[H]
 \centering
-\caption{Default SAR experiment parameters, matching \texttt{sar\_baseline} in \texttt{config.json}.}
+\caption{Default SAR experiment parameters, matching \texttt{sar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
 \label{tab:params}
 \begin{tabular}{lll}
 \toprule
@@ -1195,6 +1273,7 @@ $W_g$                     & grid\_width            & $1.2$ \\
 $H_g$                     & grid\_height           & $1.2$ \\
 $(R,A,I,D,S)_{\text{obj}}$ & obj\_raids            & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
 $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids         & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+$\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--} & waveform               & gaussian \\
 \multicolumn{1}{c}{--} & num\_bounce            & $2$ \\
 \multicolumn{1}{c}{--} & image\_width           & $128$ \\
@@ -1216,7 +1295,7 @@ $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids         & $(1.0, 1.0, 1.0, 5.0, 0.1)$
 
 \begin{table}[H]
 \centering
-\caption{Default side-scan sonar parameters, matching \texttt{side\_scan\_sonar\_baseline} in \texttt{config.json}.}
+\caption{Default side-scan sonar parameters, matching \texttt{side\_scan\_sonar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
 \label{tab:sss-params}
 \begin{tabular}{lll}
 \toprule
@@ -1241,6 +1320,7 @@ $\kappa$                   & water\_absorption        & $0$ \\
 $\eta$                     & tvg\_exponent            & $0$ \\
 $(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
 $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+$\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--}     & waveform                 & gaussian \\
 \multicolumn{1}{c}{--}     & spherical\_spread        & False \\
 \multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
@@ -1257,7 +1337,7 @@ $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.
 
 \begin{table}[H]
 \centering
-\caption{Default forward-looking sonar parameters, matching \texttt{forward\_looking\_sonar\_baseline} in \texttt{config.json}.}
+\caption{Default forward-looking sonar parameters, matching \texttt{forward\_looking\_sonar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
 \label{tab:fls-params}
 \begin{tabular}{lll}
 \toprule
@@ -1279,6 +1359,7 @@ $B_s$                      & spatial\_bw              & $32$ \\
 $F_s$                      & spatial\_fs              & $64$ \\
 $(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
 $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+$\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--}     & waveform                 & gaussian \\
 \multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
 \multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\

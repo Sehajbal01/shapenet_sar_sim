@@ -16,27 +16,27 @@ SEHAJ IS DOING THIS- No side-by-side comparison with RaySAR or CVDomes [R1, R2]
 SEHAJ IS DOING THIS    OPEN. "Write comparative analysis section" is still on the to-do list; render_cvdomes.py exists
 SEHAJ IS DOING THIS    but isn't used in the paper.
 
-- Complex-valued (phase-preserving) imaging works poorly [R2, R3]
-    OPEN, and now easy to miss.
-    - Default use_sig_magnitude=True, so every SAR figure except the wavelength sweep keeps only the
-      signal magnitude and drops phase. Contradicts main.tex:438 ("Both integrate the pulses
-      coherently when a wavelength is given").
-    - The wavelength figure shows the image falling apart at lambda = 0.01-0.02 and only one edge of
-      the car at the default lambda = 0.5.
-    - main.tex:501 says images are clearest when lambda is "matched to the range resolution"; in real
-      SAR lambda is ~100x smaller than the resolution. Reads as an admission that coherent imaging
-      fails at realistic wavelengths.
-    - Likely cause: ray spacing (1.2/208 ~ 0.006) does not sample the phase finely enough at short
-      lambda. Needs an analysis like the one done for ray density.
+DONE - Complex-valued (phase-preserving) imaging works poorly [R2, R3]
+DONE     OPEN, and now easy to miss.
+DONE     - Default use_sig_magnitude=True, so every SAR figure except the wavelength sweep keeps only the
+DONE       signal magnitude and drops phase. Contradicts main.tex:438 ("Both integrate the pulses
+DONE       coherently when a wavelength is given").
+DONE     - The wavelength figure shows the image falling apart at lambda = 0.01-0.02 and only one edge of
+DONE       the car at the default lambda = 0.5.
+DONE     - main.tex:501 says images are clearest when lambda is "matched to the range resolution"; in real
+DONE       SAR lambda is ~100x smaller than the resolution. Reads as an admission that coherent imaging
+DONE       fails at realistic wavelengths.
+DONE     - Likely cause: ray spacing (1.2/208 ~ 0.006) does not sample the phase finely enough at short
+DONE       lambda. Needs an analysis like the one done for ray density.
 
-- Interposummation looks like standard sinc / matched-filter range compression [R2]
-    OPEN, and now weaker. The new waveform section (main.tex:380-409) derives it as w(z)*g(z), which
-    makes the reviewer's argument for them. Still listed as contribution #1.
-    Reposition as: evaluating the band-limited, range-compressed signal directly from the ray returns
-    at the sample points, with no fine-grid accumulation. Cite standard SBR / range-profile synthesis.
+DONE - Interposummation looks like standard sinc / matched-filter range compression [R2]
+DONE     OPEN, and now weaker. The new waveform section (main.tex:380-409) derives it as w(z)*g(z), which
+DONE     makes the reviewer's argument for them. Still listed as contribution #1.
+DONE     Reposition as: evaluating the band-limited, range-compressed signal directly from the ray returns
+DONE     at the sample points, with no fine-grid accumulation. Cite standard SBR / range-profile synthesis.
 
-- Units and material parameters unclear [R1]
-    WORSE. See section 2.
+DONE - Units and material parameters unclear [R1]
+DONE     WORSE. See section 2.
 
 - No timing or performance results [R4]
     OPEN. Paper says "GPU-accelerated", "efficient", "scalable" but gives no runtimes. Needs a table
@@ -57,12 +57,12 @@ SEHAJ IS DOING THIS    but isn't used in the paper.
 2. NEW SERIOUS PROBLEMS
 -----------------------
 
-- Material tables contradict the equations.
-    obj_raids = (1.0, 1.0, 100, 0.1, 0.9) breaks both stated constraints: R+S+A = 1 (here 2.9) and
-    I+D = 1 (here 100.1). The code (utils.py:30, correct_material_properties) silently normalizes.
-    After normalizing, the car has S ~ 0.31 and the ground S ~ 0.05, contradicting main.tex:186-188
-    (metal has low scattering, ground clutter high). The exponent alpha is in no table.
-    This is exactly R1's reproducibility complaint: show normalized values plus alpha.
+DONE - Material tables contradict the equations.
+DONE     obj_raids = (1.0, 1.0, 100, 0.1, 0.9) breaks both stated constraints: R+S+A = 1 (here 2.9) and
+DONE     I+D = 1 (here 100.1). The code (utils.py:30, correct_material_properties) silently normalizes.
+DONE     After normalizing, the car has S ~ 0.31 and the ground S ~ 0.05, contradicting main.tex:186-188
+DONE     (metal has low scattering, ground clutter high). The exponent alpha is in no table.
+DONE     This is exactly R1's reproducibility complaint: show normalized values plus alpha.
 
 - "Stripmap-mode SAR" isn't really stripmap.
     Table 1 and Appendix A.4 describe the same parallel rays aimed at the scene origin over a linear
@@ -97,10 +97,10 @@ SEHAJ IS DOING THIS    but isn't used in the paper.
     - "Validate the stripmap reconstruction against spotlight" only checks the simulator against
       itself; not validation.
 
-- "Energy" is used as a field amplitude.
-    The coherent sum sum_k E_k e^{j phi} adds energies as if they were complex fields.
-    validation_plate.py treats |sum|^2 as RCS, which only works if E_k is an amplitude. Rename or
-    justify.
+DONE - "Energy" is used as a field amplitude.
+DONE     The coherent sum sum_k E_k e^{j phi} adds energies as if they were complex fields.
+DONE     validation_plate.py treats |sum|^2 as RCS, which only works if E_k is an amplitude. Rename or
+DONE     justify.
 
 
 3. FLOW AND SMALLER ISSUES
@@ -112,12 +112,12 @@ SEHAJ IS DOING THIS    but isn't used in the paper.
 - Figure 6(a,b) reuse scatters.png and signal_clean.png from Figure 1.
 - Sinc pulse train p(z) is defined but never used. Derivation inconsistency: g(z) uses
   delta(z - z_k), but the result is written as w(z_o - z_k/2).
-- B_s = 2B_t/c only gives the speed of light; no speed of sound for sonar and no stated length unit.
-  E.g. B_s = 30 per metre ~ 4.5 GHz, not realistic.
+DONE - B_s = 2B_t/c only gives the speed of light; no speed of sound for sonar and no stated length unit.
+DONE   E.g. B_s = 30 per metre ~ 4.5 GHz, not realistic.
 - Default waveform is Gaussian, but the waveform section calls it the worst performer. Reviewers
   will ask why.
-- Absolute peak values (1.2e-7, 7.6e2) mean nothing without calibration; invites R1's units
-  complaint.
+DONE - Absolute peak values (1.2e-7, 7.6e2) mean nothing without calibration; invites R1's units
+DONE   complaint.
 - No Limitations section: no polarization, no physical-optics / EM modeling, required ray density,
   material realism.
 - MDPI requires Author Contributions and Conflicts of Interest; both are commented out
