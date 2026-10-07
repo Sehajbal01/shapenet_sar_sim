@@ -60,7 +60,7 @@ Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a sp
 Figure \ref{fig:main-fig} showcases an example of our simulator on a ShapeNet \cite{shapenet} car
 model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b, with the aperture
 centered on an azimuth angle of $210.8^\circ$ and an elevation angle of $32.2^\circ$. Figures
-\ref{fig:main-fig}.(c,d,e,f) are examples from just the pulse at the center of the aperture, but to
+\ref{fig:main-fig}.(c,d,e,f) are examples from just the middle pulse of the aperture, but to
 construct the SAR image we aggregate $64$ pulses along a linear track spanning $135^\circ$ of
 azimuth, at the default parameters of Table \ref{tab:params}. The depth (Figure
 \ref{fig:main-fig}.c) and energy (Figure \ref{fig:main-fig}.d) maps shown are only for the first
@@ -93,7 +93,7 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_scatters.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
-    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of all returns, (\textbf{f}) signal magnitude calculated via interposummation. Panels (\textbf{c}--\textbf{f}) are the pulse at the center of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
+    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of all returns, (\textbf{f}) signal magnitude calculated via interposummation. Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
 \end{figure}
 

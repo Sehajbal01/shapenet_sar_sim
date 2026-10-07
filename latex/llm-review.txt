@@ -43,7 +43,7 @@ DONE     Compute Time subsection (Table tab:compute-time) from compute_time_expe
 DONE     small/large mesh, 32^2/64^2/128^2 rays, 30 pulses.
 
 DONE - Figure 1(c,d) have no colorbars [R2]
-DONE     Fig. 1(b-f) re-rendered at the SAR baseline by sar_paper_figures.generate_overview_figure
+DONE     Fig. 1(b-f) re-rendered at the SAR baseline by sar_overview_figure.py, (b) with range/cross-range
 DONE     (car e6846796, pose 000046 = panel a): colorbars and axes in l, E_k as a fraction of the
 DONE     transmitted energy. Text now says 64 pulses / 135 deg linear, not 30 / 90.
 

@@ -106,28 +106,35 @@ def signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, regi
         ax11.set_ylabel('Amplitude')
         ax11.set_ylim(sig_min, sig_max)
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        frame = np.array(PIL.Image.open(buf))[..., :3]
-        plt.close(fig)
-        images.append(frame)
+        images.append(figure_to_frame(fig))
 
-    # make a boomerang gif
-    images = np.stack(images, axis=0)  # (N, H, W, C)
+    ext = 'mp4' if use_mp4_format else 'gif'
+    path = f'figures/dm_em_sc_si_{suffix}.{ext}' if suffix is not None else get_next_path(f'figures/dm_em_sc_si.{ext}')
+    save_boomerang(images, path, fps=P / 4.0)
+
+
+def figure_to_frame(fig, dpi=None):
+    '''Rasterize and close a matplotlib figure, as one (H,W,3) uint8 animation frame.'''
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=dpi)
+    buf.seek(0)
+    frame = np.array(PIL.Image.open(buf))[..., :3]
+    plt.close(fig)
+    return frame
+
+
+def save_boomerang(frames, path, fps):
+    '''Save frames forward then backward, as an MP4 or a looping GIF by path's extension.'''
+    images = np.stack(frames, axis=0)  # (N, H, W, C)
     images = np.concatenate((images, np.flip(images, axis=0)), axis=0)
 
-    fps = P / 4.0
-    if use_mp4_format:
+    if path.endswith('.mp4'):
         print('Saving MP4 with %.1f fps...' % fps)
-        path = f'figures/dm_em_sc_si_{suffix}.mp4' if suffix is not None else get_next_path('figures/dm_em_sc_si.mp4')
         imageio.mimsave(path, images, fps=fps, format='FFMPEG')
-        print('MP4 saved to: ', path)
     else:
         print('Saving GIF with %.1f fps...' % fps)
-        path = f'figures/dm_em_sc_si_{suffix}.gif' if suffix is not None else get_next_path('figures/dm_em_sc_si.gif')
         imageio.mimsave(path, images, fps=fps, format='GIF', loop=0)
-        print('GIF saved to: ', path)
+    print('Saved to: ', path)
 
 
 def signal_column_image(signals, sample_z, ping_offsets=None, suffix=None,

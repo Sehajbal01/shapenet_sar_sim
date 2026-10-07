@@ -28,6 +28,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         waveform = 'sinc',
                         debug_gif = False,
                         debug_gif_suffix = None,
+                        return_pulses = False,
                         snr_db = None,
                         wavelength = None,
                         use_sig_magnitude = True,
@@ -80,10 +81,14 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
             caller's business, since the mesh is already built
         octree (Octree): a previously built octree for the mesh, built in the accumulator when
             None. Depends only on the mesh, so it is built once alongside preloaded_mesh
+        return_pulses (bool): also return the per-pulse intermediates, as (image, pulses)
         remaining arguments: as documented on render_random_image
 
     outputs:
         sar_image (T,H,W), or {algorithm: (T,H,W)} when imaging_algorithm is a sequence
+        pulses (dict): only with return_pulses. trajectory (T,P,3), ranges and energies
+            [T][P] of (R',) round-trip scatters, debugging_maps (t,p) -> first-bounce
+            {'depth','energy'} (H,W), and the signals (T,P,Z) and sample_z (T,P,Z) imaged
     '''
 
     # set device
@@ -126,7 +131,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     all_ranges, all_energies, debugging_maps = accumulate_scatters(
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
-        debug_gif      = debug_gif,
+        debug_gif      = debug_gif or return_pulses,
 
         # image size stuff
         grid_width     = grid_width,
@@ -232,7 +237,11 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         signal_gif(signals, sample_z, debugging_maps, all_ranges, all_energies, region_radius, suffix=debug_gif_suffix)
 
     # a caller that named one algorithm as a string gets that one image back, as before
-    return sar_images[imaging_algorithm] if one_algorithm else sar_images
+    image = sar_images[imaging_algorithm] if one_algorithm else sar_images
+    if return_pulses:
+        return image, dict(trajectory=true_trajectory, ranges=all_ranges, energies=all_energies,
+                           debugging_maps=debugging_maps, signals=signals, sample_z=sample_z)
+    return image
 
 
 
