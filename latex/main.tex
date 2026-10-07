@@ -560,7 +560,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory, and then measure the compute time on a GPU and a CPU. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Validation Against Closed-Form References}
 \label{sec:validation}
@@ -733,6 +733,56 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
   \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
   \label{fig:trajectory-noise}
 \end{figure}
+
+\subsection{Compute Time}
+\label{sec:compute-time}
+
+Table \ref{tab:compute-time} reports the time to render one spotlight-mode SAR image on a GPU and
+on a CPU, for two mesh sizes and three ray grids. We use the smallest and the largest car mesh in
+the srncars training split, with $12{,}762$ and $1{,}323{,}584$ triangles, each placed on a
+$20{,}000$-triangle ground plane. All other parameters are the defaults of Table \ref{tab:params},
+except for $P = 30$ pulses and the ray grid $R_w = R_h \in \{32, 64, 128\}$. The code is the same on
+both devices, only the PyTorch device changes. The GPU is one NVIDIA L40S, and the CPU is an AMD EPYC
+7763 with PyTorch running $128$ threads. Each time is the wall-clock time from the trajectory to the
+final image, which includes both bounces of the ray trace, interposummation, and CBP. GPU times are
+the median of three runs after a warm-up run, and CPU times are from a single run after a warm-up.
+The machine was shared with other jobs during the CPU runs, so the CPU times are indicative. Loading
+the mesh and building its octree are done once per object and are not included in the table. They
+take $0.2$~s and $0.1$~s for the small mesh, and $7.3$~s and $1.9$~s for the large mesh.
+
+\begin{table}[H]
+\caption{Time to render one spotlight-mode SAR image with $P = 30$ pulses and a $128 \times 128$
+image, on one NVIDIA L40S GPU and an AMD EPYC 7763 CPU ($128$ threads). The ray grid is
+$R_w \times R_h$ rays per pulse. Mesh loading and octree construction, which are done once per object,
+are excluded.}
+\label{tab:compute-time}
+\centering
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Mesh (triangles)} & \textbf{Rays} & \textbf{CPU (s)} & \textbf{GPU (s)} & \textbf{Speedup} & \textbf{GPU memory (GB)} \\
+\midrule
+Small ($12.8$k) & $32^2$  & $5.2$    & $0.34$ & $15\times$  & $0.29$ \\
+                & $64^2$  & $31.1$   & $0.90$ & $35\times$  & $0.55$ \\
+                & $128^2$ & $137.9$  & $3.04$ & $45\times$  & $0.63$ \\
+\midrule
+Large ($1.32$M) & $32^2$  & $34.3$   & $0.55$ & $62\times$  & $0.84$ \\
+                & $64^2$  & $428.6$  & $1.92$ & $223\times$ & $1.90$ \\
+                & $128^2$ & $2107.4$ & $6.89$ & $306\times$ & $2.53$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ray tracing takes at least $94\%$ of the time in every setting, and over $97\%$ at $128^2$ rays.
+Interposummation of all $30$ pulses takes $0.01$~s on the GPU, and CBP takes under $0.01$~s, so the
+cost of the simulator is set by the number of rays and not by the bandwidth, sample rate, or
+transmit waveform. On the GPU, $16\times$ more rays cost $9\times$ more time on the small mesh and
+$12.5\times$ more on the large mesh. The large mesh has about $100\times$ more triangles than the small
+one but takes only $1.6$--$2.3\times$ longer on the GPU, since the octree limits each ray to the
+triangles near its path. On the CPU, the time grows faster than the number of rays and the number of
+triangles, so the speedup of the GPU grows with the size of the problem, from $15\times$ for the
+small mesh at $32^2$ rays to $306\times$ for the large mesh at $128^2$ rays. The largest setting,
+with $30 \times 128^2 \approx 4.9 \times 10^5$ rays over a $1.3$~M-triangle mesh, renders in under $7$~s on the GPU and needs $2.5$~GB
+of GPU memory, compared with $35$~min on the CPU.
 
 \subsection{Forward-Looking Sonar Beam Width}
 

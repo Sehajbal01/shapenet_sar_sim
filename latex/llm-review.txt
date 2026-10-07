@@ -38,9 +38,9 @@ DONE     at the sample points, with no fine-grid accumulation. Cite standard SBR
 DONE - Units and material parameters unclear [R1]
 DONE     WORSE. See section 2.
 
-- No timing or performance results [R4]
-    OPEN. Paper says "GPU-accelerated", "efficient", "scalable" but gives no runtimes. Needs a table
-    of time vs rays, pulses, GPU.
+DONE - No timing or performance results [R4]
+DONE     Compute Time subsection (Table tab:compute-time) from compute_time_experiment.py: CPU vs GPU,
+DONE     small/large mesh, 32^2/64^2/128^2 rays, 30 pulses.
 
 - Figure 1(c,d) have no colorbars [R2]
     OPEN. depth-map.png still has no colorbar or units.
