@@ -5,8 +5,8 @@ Figure 1 of the paper: one srn_cars pose rendered in spotlight-mode SAR at the p
   (c) first-hit range of each ray    (d) first-bounce return weight E_k of each ray
   (e) energy-range scatter           (f) interposummed signal magnitude
 
-(c)-(f) are one pulse, traced with two bounces, and (e)-(f) show the sensor distance +/- half the
-region radius. The paper panels are saved one png each for latex's subfloats; -gif
+(c)-(f) are one pulse, traced with two bounces, and (e)-(f) are cropped to the inner half of the
+simulated window (sensor distance +/- region_radius), i.e. +/- region_radius/2. The paper panels are saved one png each for latex's subfloats; -gif
 instead draws the same six panels on one frame per pulse, on limits shared by all the pulses.
 
     python sar_overview_figure.py
@@ -99,7 +99,7 @@ def limits(data, pulses):
 
 
 def _window(data, p):
-    '''Range shown in (e) and (f): the sensor distance +/- half the region radius.'''
+    '''Range shown in (e) and (f): the inner half of the sensor distance +/- region_radius window.'''
     d = data['sensor_distance'][p]
     return d - data['half_window'], d + data['half_window']
 
