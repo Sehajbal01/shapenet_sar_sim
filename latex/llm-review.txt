@@ -48,8 +48,9 @@ DONE     (car e6846796, pose 000046 = panel a): colorbars and axes in l, E_k as 
 DONE     transmitted energy. Text now says 64 pulses / 135 deg linear, not 30 / 90.
 
 - Detailed per-face materials are impractical [R4]
-    NOT ADDRESSED. The paper never says that in practice there are only two materials (object and
-    ground).
+    DONE. Signal Simulation now says the defaults are two materials (object and ground) and that a
+    .mp file next to the .obj gives per-triangle materials; Section "Per-Triangle Materials" compares
+    a constant .mp with one converted from the CVDomes labels (render_cvdomes.py, convert_cvdomes.py).
 
 - License, example scripts, reproducibility section [R1]
     PARTLY DONE. Repo URL and parameter appendix exist, but no license is mentioned and there is no

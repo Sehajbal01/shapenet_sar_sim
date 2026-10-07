@@ -443,13 +443,16 @@ def load_mesh(  file_name,
                 rotate_xyz = (0.0, 0.0, 0.0),
                 device = 'cuda',
                 scale = None,
+                material_file = None,
         ):
     '''
     Load a mesh from an obj file and compute face normals.
     Inputs:
         file_name: str - path to the obj file
         make_ground: bool - whether to add a ground plane
-        obj_raids: tuple - roughness, specular, ambient for the object material
+        obj_raids: tuple - roughness, specular, ambient for the object material, unless there is a .mp file
+        material_file: str - .mp file with one "r a i d s" line per triangle; None uses file_name's sibling
+            .mp if there is one, else obj_raids
         ground_raids: tuple - roughness, specular, ambient for the ground material, set to None to skip ground
         ground_dim: int - axis index for the vertical dimension (default 2 for z-up)
         level_with_ground: bool - if True, translate the object so its bottom sits at 0 along ground_dim before adding the ground
@@ -485,8 +488,14 @@ def load_mesh(  file_name,
         dim_min = verts[:, ground_dim].min()
         verts[:, ground_dim] -= dim_min
 
-    # set material properties for each face
-    raids = torch.tensor(obj_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(faces.shape[0], 1)  # (F, 5)
+    # set material properties for each face, per triangle from a .mp file if there is one
+    mp_path = os.path.splitext(file_name)[0] + '.mp' if material_file is None else material_file
+    if material_file is not None or os.path.exists(mp_path):
+        raids = torch.tensor(np.loadtxt(mp_path, ndmin=2), device=device, dtype=torch.float32)  # (F, 5)
+        assert raids.shape == (faces.shape[0], 5), f'{mp_path}: {tuple(raids.shape)} rows, mesh has {faces.shape[0]} triangles'
+        print(f'load_mesh: per-triangle materials from {mp_path}')
+    else:
+        raids = torch.tensor(obj_raids, device=device, dtype=torch.float32).reshape(1, 5).repeat(faces.shape[0], 1)  # (F, 5)
 
     # add a ground if desired to the mesh
     if make_ground and ground_raids is None:

@@ -187,8 +187,10 @@ grid only needs to be big enough to cover the ground space desired for imaging.
 When a ray makes contact with a surface, a fraction of its energy is reflected into the next path
 of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as
 $R,A,S$. Scattering is the only component that returns energy to the receiver. The fractions can be
-assigned to each of the $F$ faces of the mesh, but in practice we use only two materials, one for
-the object and one for the ground, whose values are listed in Table \ref{tab:materials}.
+assigned to each of the $F$ faces of the mesh by a \texttt{.mp} file that accompanies the
+\texttt{.obj}, with one line of $(R,A,I,D,S)$ per triangle (Section \ref{sec:per-triangle-materials}).
+Without one, we use only two materials, one for the object and one for the ground, whose values are
+listed in Table \ref{tab:materials}.
 
 The three fractions of a surface add up to 1, so that a surface never returns more energy than it
 receives:
@@ -561,7 +563,38 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory, and then measure the compute time on a GPU and a CPU. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory, and then measure the compute time on a GPU and a CPU. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+
+\subsection{Per-Triangle Materials}
+\label{sec:per-triangle-materials}
+
+In Figure \ref{fig:materials}, we render the CVDomes \cite{cvdomes} Camry with two \texttt{.mp} files. The first
+gives every triangle the same perfect-conductor material, $(R,A,I,D,S) = (0.8, 0, 0.9, 0.1, 0.2)$.
+The second converts the CVDomes material labels of Section \ref{sec:cvdomes}: the body and rims keep
+that material, the tires are absorbers, and the glass and plastic reflect only $|\Gamma|^2 \approx
+0.15$ of the energy, the band-averaged reflection of a $6.35$~mm glass slab, with the rest absorbed
+since CVDomes does not trace rays into the vehicle interior. To build it, a conversion script reads
+the material each triangle is assigned in the \texttt{.obj} (body, rims, glass, plastic, or rubber),
+maps it to its CVDomes label, and writes that label's $(R,A,I,D,S)$ as the triangle's line of the
+\texttt{.mp}. The windows, tires, and trim go dark in
+the first-bounce energy, and the SAR peak drops by $4.7$~dB.
+
+\begin{figure}[H]
+  \centering
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_constant_energy.png}}
+    \hspace{0.05\textwidth}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_per-triangle_energy.png}}\\
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_constant_sar.png}}
+    \hspace{0.05\textwidth}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_per-triangle_sar.png}}
+    \caption{CVDomes Camry with a constant material and with per-triangle CVDomes materials.
+    (\textbf{a}) First-bounce energy of the center pulse with a constant material, (\textbf{b})
+    first-bounce energy of the center pulse with per-triangle materials, (\textbf{c}) SAR image with
+    a constant material, (\textbf{d}) SAR image with per-triangle materials. Panels (\textbf{a},\textbf{b})
+    share one scale, normalized to their common peak, and panels (\textbf{c},\textbf{d}) share one dB
+    scale referenced to their common peak.}
+  \label{fig:materials}
+\end{figure}
 
 \subsection{Validation Against Closed-Form References}
 \label{sec:validation}
