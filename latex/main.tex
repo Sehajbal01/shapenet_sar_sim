@@ -448,7 +448,7 @@ wavelength does not: an X-band radar at this scale has $\lambda \approx 3$~cm $\
 A short wavelength needs the ray spacing to sample its phase, $\Delta < \lambda/(4\sin\phi)$
 (Section \ref{sec:validation}), or the returns of neighboring rays interfere at random within each
 pulse. At the default $208 \times 208$ rays ($\Delta \approx 0.006\ell$) the images break down at
-$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength}), and X-band would need about four
+$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength} of Appendix \ref{app:sar-examples}), and X-band would need about four
 times the ray density along each axis, or $15$ times the rays. Coherent integration across pulses
 would also need about $15$ times the $64$ default pulses to sample the aperture without aliasing.
 We therefore use a wavelength much longer than a physical radar's for the same scene, which keeps
@@ -563,7 +563,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, and vary the aperture, the noise, the wavelength, the transmit waveform, the bandwidth, and the sensor trajectory, and then measure the compute time on a GPU and a CPU. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, the transmit waveform, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The stripmap-mode reconstruction is validated against spotlight mode in Appendix \ref{sec:stripmap-sar}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -658,70 +658,6 @@ $\Delta < \lambda/(4\sin\phi)$. Because all rays return in phase at normal incid
 $\sigma$ does not depend on $\lambda$, so it matches (\ref{eq:plate-rcs}) only up to the aperture
 gain $4\pi/\lambda^2$.
 
-\subsection{Spotlight-Mode SAR}
-
-In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_az_spread.png}
-  \caption{Varying the azimuth spread in our simulation.}
-  \label{fig:az-spread}
-\end{figure}
-
-In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of transmitted pulses in our simulation. With a small number of pulses, the reconstructed image appears coarse and lacks definition. As the pulse count increases, the image quality improves noticeably, revealing sharper boundaries and more distinct structural features of the target.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_num_pulse.png}
-  \caption{Effect of varying the number of pulses in our simulation.}
-  \label{fig:num-pulse}
-\end{figure}
-
-In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (SNR) in decibels (dB) influences the quality of the simulated SAR image. In real SAR scenarios SNR decreases as range to the target increases. At low SNR values (around 0 dB), the image is dominated by noise, obscuring most structural details. As the SNR increases toward 22 dB, the object becomes clearly resolved, with well-defined features. SNR is calculated as an average over all signals used to generate the spotlight-mode SAR image.
-        
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_snrdb.png}
-  \caption{Varying the SNR in our simulation.}
-  \label{fig:snr}
-\end{figure}
-
-In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals in both spotlight-mode and stripmap-mode SAR. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
-  \caption{Varying the wavelength in our simulation with coherent integration.}
-  \label{fig:wavelength}
-\end{figure}
-
-\subsection{Transmit Waveform}
-
-In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
-ideal sinc of interposummation with the effective window $w(z)$ of the
-corresponding pulse-compression matched filter as described in Section
-\ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}.
-The ray trace is identical across the panels, and only the effective window
-changes. We
-compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
-code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
-and Barker-13 reconstructions share a comparable range resolution but are
-accompanied by the range sidelobes characteristic of each waveform, which
-appear as faint replicas alongside the strong scatterers. The Gaussian pulse
-produces no range sidelobes, but it does a poor job of suppressing
-out-of-bandwidth frequencies, leaving much of its energy outside the allotted
-band $\pm B_s/2$. Its gradual roll-off also tapers the in-band response, which
-costs coherent gain and yields the visibly dimmer reconstruction in Figure
-\ref{fig:waveform}.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_waveform.png}
-  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
-  \label{fig:waveform}
-\end{figure}
-
 \subsection{Bandwidth and Ray Density}
 
 In Figure \ref{fig:fsbw}, we analyze the effect of varying the spatial sample rate and bandwidth. Each plot indicates the sample rate in its caption, and we set the spatial bandwidth $B_s = F_s$ equal to the sampling frequency. The images are shown in dB scale with a shared DC maximum. As expected, the image resolution improves as both bandwidth and sample rate increase. However, an interesting artifact appears at $F_s = 512$. This occurs because, at high sampling rates, the discrete samples begin to capture the fine-scale variations of the continuous returned-signal model described in (\ref{eq:returned-scatters}). Since this signal model is composed of a series of delta functions, oversampling reveals its discontinuous nature rather than producing a smooth approximation, and the reconstructed SAR image degrades.
@@ -747,26 +683,6 @@ We further look into this problem in Figure \ref{fig:signals-square}. The figure
 \end{figure}
 
 There are two ways to mitigate this effect: increasing the number of rays $(R_h, R_w)$, and decreasing the spatial bandwidth $B_s$. A denser ray grid allows for more scatters near the center of the sinc pulses in interposummation, which reduces the variable sums between neighboring sincs. Decreasing the spatial bandwidth $B_s$ of the interposummation accomplishes the same goal, but by widening the sinc pulses to accumulate more scatters instead of adding more scatters. The trade-offs between the two solutions are that increasing the ray density increases the computational complexity, and decreasing the bandwidth reduces image quality.
-
-\subsection{Sensor Trajectory}
-
-In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses. The linear trajectory is the collection geometry of stripmap-mode SAR. Both are imaged here by convolution backprojection, and Appendix \ref{sec:stripmap-sar} shows that the stripmap-mode reconstruction of the same linear-trajectory signals matches it to within $1$~dB of dynamic range.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.5\textwidth]{figs/sar_stitched_trajectory_type.png}
-  \caption{Comparison of circular and linear sensor trajectories in our simulation.}
-  \label{fig:trajectory-type}
-\end{figure}
-
-In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
-  \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
-  \label{fig:trajectory-noise}
-\end{figure}
 
 \subsection{Compute Time}
 \label{sec:compute-time}
@@ -997,8 +913,9 @@ complex-valued signals, which we validated against ideal point scatterers and th
 glint of a flat plate.
 
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
-sonar, and forward-looking sonar, while varying key parameters such as aperture, transmit
-waveform, bandwidth, wavelength, sampling rate, sensor trajectory, and beam width, and validated
+sonar, and forward-looking sonar, while varying key parameters such as bandwidth, sampling rate, and beam width, with
+further SAR examples varying the aperture, transmit waveform, wavelength, and sensor trajectory in
+Appendix \ref{app:sar-examples}, and validated
 the stripmap-mode reconstruction against spotlight mode. These experiments demonstrate how system
 parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
 sonar that excessive oversampling of the energy-range scatter leads to poor signal quality and
@@ -1331,6 +1248,96 @@ same signals agree to within $1$~dB of dynamic range. The far-field approximatio
 for the exact range in (\ref{eq:naive-bp}) and (\ref{eq:filtered-bp}), and affects neither the
 pedestal nor the analysis above.
 
+\section{SAR Image Examples}
+\label{app:sar-examples}
+This appendix shows spotlight-mode SAR images of the car of Figure \ref{fig:main-fig}.a as single parameters
+are varied from the defaults of Table \ref{tab:params}: the aperture, the noise, the wavelength, the
+transmit waveform, and the sensor trajectory.
+
+\subsection{Aperture, Noise, and Wavelength}
+
+In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_az_spread.png}
+  \caption{Varying the azimuth spread in our simulation.}
+  \label{fig:az-spread}
+\end{figure}
+
+In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of transmitted pulses in our simulation. With a small number of pulses, the reconstructed image appears coarse and lacks definition. As the pulse count increases, the image quality improves noticeably, revealing sharper boundaries and more distinct structural features of the target.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_num_pulse.png}
+  \caption{Effect of varying the number of pulses in our simulation.}
+  \label{fig:num-pulse}
+\end{figure}
+
+In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (SNR) in decibels (dB) influences the quality of the simulated SAR image. In real SAR scenarios SNR decreases as range to the target increases. At low SNR values (around 0 dB), the image is dominated by noise, obscuring most structural details. As the SNR increases toward 22 dB, the object becomes clearly resolved, with well-defined features. SNR is calculated as an average over all signals used to generate the spotlight-mode SAR image.
+        
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_snrdb.png}
+  \caption{Varying the SNR in our simulation.}
+  \label{fig:snr}
+\end{figure}
+
+In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals in both spotlight-mode and stripmap-mode SAR. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
+  \caption{Varying the wavelength in our simulation with coherent integration.}
+  \label{fig:wavelength}
+\end{figure}
+
+\subsection{Transmit Waveform}
+
+In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
+ideal sinc of interposummation with the effective window $w(z)$ of the
+corresponding pulse-compression matched filter as described in Section
+\ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}.
+The ray trace is identical across the panels, and only the effective window
+changes. We
+compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
+code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
+and Barker-13 reconstructions share a comparable range resolution but are
+accompanied by the range sidelobes characteristic of each waveform, which
+appear as faint replicas alongside the strong scatterers. The Gaussian pulse
+produces no range sidelobes, but it does a poor job of suppressing
+out-of-bandwidth frequencies, leaving much of its energy outside the allotted
+band $\pm B_s/2$. Its gradual roll-off also tapers the in-band response, which
+costs coherent gain and yields the visibly dimmer reconstruction in Figure
+\ref{fig:waveform}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_waveform.png}
+  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
+  \label{fig:waveform}
+\end{figure}
+
+\subsection{Sensor Trajectory}
+
+In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses. The linear trajectory is the collection geometry of stripmap-mode SAR. Both are imaged here by convolution backprojection, and Appendix \ref{sec:stripmap-sar} shows that the stripmap-mode reconstruction of the same linear-trajectory signals matches it to within $1$~dB of dynamic range.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.5\textwidth]{figs/sar_stitched_trajectory_type.png}
+  \caption{Comparison of circular and linear sensor trajectories in our simulation.}
+  \label{fig:trajectory-type}
+\end{figure}
+
+In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_noise_var.png}
+  \caption{Effect of trajectory position noise variance on the reconstructed SAR image.}
+  \label{fig:trajectory-noise}
+\end{figure}
+
 \section{Default Parameters}
 \label{app:params}
 Tables \ref{tab:params}, \ref{tab:sss-params} and \ref{tab:fls-params} list the default parameters of spotlight-mode SAR, side-scan sonar and forward-looking sonar. The sonar baselines image the car at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
@@ -1463,7 +1470,7 @@ The experimental figures and tables are produced by scripts in the code reposito
 The scripts read their defaults from \texttt{config.json} (Appendix \ref{app:params}), whose \texttt{srn\_cars\_dir} points to the srncars dataset \cite{srn}, and the conda environment is given in \texttt{environment.yml}. For example:
 \begin{itemize}
   \item Figure \ref{fig:main-fig}: \texttt{sar\_overview\_figure.py}
-  \item Figures \ref{fig:sphere-size}--\ref{fig:fsbw} and \ref{fig:trajectory-type}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figures \ref{fig:sphere-size}, \ref{fig:fsbw}, and \ref{fig:az-spread}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
   \item Figures \ref{fig:fls-beam-width}--\ref{fig:ss-fsbw}: \texttt{fls\_paper\_figures.py} and \texttt{sss\_paper\_figures.py}
   \item Figure \ref{fig:validation}: \texttt{sar\_validation.py}
   \item Figure \ref{fig:materials}: \texttt{convert\_cvdomes.py}, then \texttt{render\_cvdomes.py}
