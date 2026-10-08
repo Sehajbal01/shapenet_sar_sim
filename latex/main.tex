@@ -1457,6 +1457,19 @@ $\alpha$                  & --                     & $5$ \\
 \end{tabular}
 \end{table}
 
+\section{Reproducibility}
+\label{app:repro}
+The experimental figures and tables are produced by scripts in the code repository, each run with no arguments.
+The scripts read their defaults from \texttt{config.json} (Appendix \ref{app:params}), whose \texttt{srn\_cars\_dir} points to the srncars dataset \cite{srn}, and the conda environment is given in \texttt{environment.yml}. For example:
+\begin{itemize}
+  \item Figure \ref{fig:main-fig}: \texttt{sar\_overview\_figure.py}
+  \item Figures \ref{fig:sphere-size}--\ref{fig:fsbw} and \ref{fig:trajectory-type}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figures \ref{fig:fls-beam-width}--\ref{fig:ss-fsbw}: \texttt{fls\_paper\_figures.py} and \texttt{sss\_paper\_figures.py}
+  \item Figure \ref{fig:validation}: \texttt{sar\_validation.py}
+  \item Figure \ref{fig:materials}: \texttt{convert\_cvdomes.py}, then \texttt{render\_cvdomes.py}
+  \item Table \ref{tab:compute-time}: \texttt{compute\_time\_experiment.py}
+\end{itemize}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{adjustwidth}{-\extralength}{0cm}
 
