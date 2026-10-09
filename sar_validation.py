@@ -25,6 +25,7 @@ from matplotlib import pyplot as plt
 
 from config import CONFIG
 from imaging_algorithms import projected_CBP
+from render_images import pose_az_el
 from signal_simulation import make_transmit_waveform
 from utils import get_next_path
 import validation_plate as plate
@@ -37,11 +38,12 @@ from validation_point_target import (
 
 
 SAR = CONFIG['sar_baseline']
+SAR_AZ, SAR_EL = pose_az_el(SAR['obj_id'], SAR['pose_num'])
 
 # point-target settings taken from the paper's SAR defaults; srncars poses sit at distance 1.3
 POINT = dict(
-    azimuth_deg=SAR['azimuth_deg'],
-    elevation_deg=SAR['elevation_deg'],
+    azimuth_deg=SAR_AZ,
+    elevation_deg=SAR_EL,
     sensor_distance=1.3,
     azimuth_spread=SAR['azimuth_spread'],
     num_pulses=SAR['num_pulse'],

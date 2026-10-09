@@ -37,7 +37,7 @@ import torch
 import render_images
 from config import CONFIG, SHAPENET_CARS_DIR
 from ray_tracer_v2 import build_octree
-from render_images import _find_split_dir, _nearest_pose_num, sar_render_image
+from render_images import _find_split_dir, _nearest_pose_num, pose_az_el, sar_render_image
 from signal_simulation import load_mesh
 
 
@@ -103,7 +103,7 @@ class StageTimer:
 def load_scene(obj_id, device):
     """Mesh, pose and octree for one object, each step timed."""
     dataset_dir = _find_split_dir(obj_id)
-    pose_num, _, _ = _nearest_pose_num(dataset_dir, obj_id, SAR['azimuth_deg'], SAR['elevation_deg'])
+    pose_num, _, _ = _nearest_pose_num(dataset_dir, obj_id, *pose_az_el(SAR['obj_id'], SAR['pose_num']))
     pose = np.loadtxt(os.path.join(dataset_dir, obj_id, 'pose', '%s.txt' % pose_num))
     pose = torch.tensor(pose, dtype=torch.float32, device=device).reshape(1, 4, 4)
 

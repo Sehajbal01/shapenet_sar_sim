@@ -254,6 +254,14 @@ def _find_split_dir(obj_id):
     raise FileNotFoundError('object %s is in none of the srn_cars splits' % obj_id)
 
 
+def pose_az_el(obj_id, pose_num):
+    '''Azimuth and elevation in deg of one srn_cars pose, from any split.'''
+    pose_path = os.path.join(_find_split_dir(obj_id), obj_id, 'pose', '%s.txt' % pose_num)
+    pose = np.loadtxt(pose_path).reshape(1, 4, 4).astype(np.float32)
+    pose_info = extract_pose_info(torch.from_numpy(pose))
+    return pose_info[6].item(), pose_info[5].item()
+
+
 def _nearest_pose_num(dataset_dir, obj_id, azimuth_deg, elevation_deg):
     '''
     The pose of obj_id whose look direction is closest to (azimuth_deg, elevation_deg), so an image

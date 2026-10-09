@@ -18,9 +18,9 @@ from utils import extract_pose_info, generate_pose_mat
 
 
 # config.json's sar_baseline. Notes on its keys:
-#   obj_id/azimuth_deg/elevation_deg pin the object and the look: render_random_image renders the
-#     object's pose nearest that azimuth and elevation, e.g. one read off a generate_dataset.py
-#     test-run gif, and draws both at random when None. The object may be from any split
+#   obj_id/pose_num pin the object and the pose, the sonar baselines' own, so all three modalities
+#     image one view. render_random_image draws both at random when None, and also takes
+#     azimuth_deg/elevation_deg in place of pose_num. The object may be from any split
 #   spatial_bw/spatial_fs, region_radius, num_bounce and asinh_k_ratio match SSS_PAPER_BASELINE
 #   wavelength can't be None, unlike the side scan baseline's: strip_map_imaging always demodulates
 #     by wavelength, and az_spread_linear_stripmap below needs it

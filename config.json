@@ -6,9 +6,10 @@
     // cluster 1 dataset paths
     "srn_cars_dir": "/workspace/data/srncars",
     "shapenet_cars_dir": "/workspace/data/srncars/02958343",
+    // all three baselines image this one car from this one pose: the forward looking sonar's 40.6 deg elevation view, which throws a shadow
     "side_scan_sonar_baseline": {
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
-        "pose_num": "000043",
+        "pose_num": "000000",
         "sensor_distance": 7.5,
         "track_length": 1.2,
         "num_pings": 128,
@@ -41,9 +42,8 @@
         "ground_raids": [1.0, 1.0, 1.0, 5, 0.1]
     },
     "sar_baseline": {
-        "obj_id": "12410830e8a5067c69576518bd9bfe48",
-        "azimuth_deg": 0.0,
-        "elevation_deg": 33.0,
+        "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
+        "pose_num": "000000",
         "azimuth_spread": 135,
         "debug_gif": false,
         "num_pulse": 64,
@@ -78,7 +78,6 @@
         "asinh_k_ratio": 0.005
     },
     "forward_looking_sonar_baseline": {
-        // the side scan baseline's car, from a 40.6 deg elevation pose that throws a shadow
         "obj_id": "100715345ee54d7ae38b52b4ee9d36a3",
         "pose_num": "000000",
         // matches the side scan's, along the pose's direction; null keeps the pose file's 1.3
