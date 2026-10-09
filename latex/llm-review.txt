@@ -75,15 +75,16 @@ DONE     This is exactly R1's reproducibility complaint: show normalized values 
     mislabeled. Also a mismatch: signals simulated with a far-field planar wavefront but imaged with
     exact near-field range.
 
-- Sonar experiment text doesn't match the default-parameter tables.
-    - FLS text: ||v|| = 1.3, 1024x1024 rays, Theta_h = 100 deg, Theta_w = 60 deg,
-      rho_near/rho_far = 0.75/3, B_s = 30.
-    - SSS text: ||v|| = 10, 700x250 rays, Theta_h = 30 deg, L = 1.1.
-    - Appendix tables: 7.5 for both, 350x550 or 550 rays, 23 deg, L = 1.2, B_s = 32, and
-      image_range_swath in place of rho_near/rho_far.
-    Text describes the configuration from before the Sept 30 - Oct 4 retune. Either re-run and
-    re-measure, or state which values override the defaults. Also check whether the sonar figures
-    came from the old or the new config.
+DONE - Sonar experiment text doesn't match the default-parameter tables.
+DONE     - FLS text: ||v|| = 1.3, 1024x1024 rays, Theta_h = 100 deg, Theta_w = 60 deg,
+DONE       rho_near/rho_far = 0.75/3, B_s = 30.
+DONE     - SSS text: ||v|| = 10, 700x250 rays, Theta_h = 30 deg, L = 1.1.
+DONE     - Appendix tables: 7.5 for both, 350x550 or 550 rays, 23 deg, L = 1.2, B_s = 32, and
+DONE       image_range_swath in place of rho_near/rho_far.
+DONE     Text describes the configuration from before the Sept 30 - Oct 4 retune. Either re-run and
+DONE     re-measure, or state which values override the defaults. Also check whether the sonar figures
+DONE     came from the old or the new config.
+DONE     Re-ran all four sweeps at the current defaults on 2026-10-08 and re-measured every number.
 
 - SAR bandwidth section blames the wrong cause.
     main.tex:538 and the conclusion (main.tex:771) say artifacts come from "oversampling". Sample

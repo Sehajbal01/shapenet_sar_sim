@@ -740,28 +740,32 @@ The remaining experiments test the two sonar modalities of Section \ref{sec:moda
 (Appendices \ref{sec:forward-looking} and \ref{sec:side-scan}) on a second car from the ShapeNet
 cars dataset. They use the same ray tracer, material model, and interposummation as the SAR
 experiments above. The car scatters almost entirely into the directional lobe and the
-seafloor mostly diffusely, so the car appears dark against the seafloor, apart from glints where its
-surface faces the sensor.
+seafloor mostly diffusely, so the surfaces of the car that face the sensor return brightly, while
+the rest of the car and its acoustic shadow are dark against the seafloor.
 
 In Figure \ref{fig:fls-beam-width}, we vary the azimuth beam width $\beta$ of the forward-looking
-sonar of Appendix \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$. The sensor
-sits at a range of $\lVert\vec{v}\rVert = 1.3$ and an elevation of $e = 40.6^\circ$, and steers
-$P = 128$ pings across $\Theta_p = 50^\circ$, one every $0.39^\circ$. Its fan of
-$R_h \times R_w = 1024 \times 1024$ rays spans $\Theta_h = 100^\circ$ in elevation and
-$\Theta_w = 60^\circ$ in azimuth. The $M = 128$ rows run from $\rho_{near} = 0.75$ to
-$\rho_{far} = 3$, the pulse is Gaussian with $B_s = 30$, and no wavelength is given. Each panel is
-shown in dB relative to its own peak, with a floor of $-60$~dB.
+sonar of Appendix \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$, with the
+other parameters at their defaults (Table \ref{tab:fls-params}). The sensor sits at a range of
+$\lVert\vec{v}\rVert = 7.5$ and an elevation of $e = 40.6^\circ$, and steers $P = 128$ pings across
+$\Theta_p = 9.15^\circ$, one every $0.072^\circ$. Its fan of $R_h \times R_w = 550 \times 350$ rays
+spans $\Theta_h = 23^\circ$ in elevation and $\Theta_w = 10^\circ$ in azimuth. The $M = 128$ rows
+span $S_\rho = 1.2$, from $\rho_{near} = 6.9$ to $\rho_{far} = 8.1$, the pulse is Gaussian with
+$B_s = 32$, and no wavelength is given. Each panel is shown in dB relative to its own peak, with a
+floor of $-60$~dB.
 
-At $0.1^\circ$, the car and its shadow form a sharp dark silhouette on the seafloor, crossed by
-bright glints. The $0.1^\circ$ and $0.32^\circ$ images are nearly identical, because both beams are
-narrower than the spacing of the pings, which then sets the azimuth resolution: the $10$--$90\%$
-width of the edge of the silhouette is $0.39^\circ$, a single ping, in both. From $1^\circ$ on, the
-beam sets the resolution, and the edge widens with it, to $0.79^\circ$ at $1^\circ$, $2.4^\circ$ at
-$3.16^\circ$, and $7.5^\circ$ at $10^\circ$, where the silhouette blurs into a dark smear and the
-glints into streaks of constant range. Range is unaffected, since it is resolved by $B_s$. The peak
-grows roughly in proportion to $\beta$, from $1.2\times10^{-7}$ at $0.1^\circ$ to
-$8.9\times10^{-6}$ at $10^\circ$. The fan is the same at every width, and the beam pattern peaks at
-$1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into each ping.
+At $0.1^\circ$, the car and its shadow form a sharp silhouette on the seafloor: the near side of the
+car is bright, and its roof and the shadow behind it are dark. Even the narrowest beam spans
+$1.4$ ping spacings, so the beam rather than the pings sets the azimuth resolution at every width,
+and the $10$--$90\%$ width of the edge of the shadow grows with it, from $0.15^\circ$, two pings, at
+$0.1^\circ$ to $0.36^\circ$ at $0.32^\circ$ and $1.06^\circ$ at $1^\circ$. At $3.16^\circ$ the beam
+is wider than the $3^\circ$ shadow, whose darkest point rises to $42\%$ of the amplitude of the
+seafloor, and at $10^\circ$ the shadow is gone and the returns of the car spread into streaks of
+constant range across the image. Range is unaffected, since it is resolved by $B_s$. The peak, on
+the near side of the car, grows roughly in proportion to $\beta$ up to $1^\circ$, from
+$6.8\times10^{-9}$ to $5.6\times10^{-8}$. The fan is the same at every width, and the beam pattern
+peaks at $1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into
+each ping. Beyond $1^\circ$ the growth slows, to $1.0\times10^{-7}$ at $10^\circ$, as the beam comes
+to cover most of the $10^\circ$ fan.
 
 \begin{figure}[H]
   \centering
@@ -776,26 +780,28 @@ $1$ rather than integrating to $1$, so a wider beam sums the returns of more ray
 
 In Figure \ref{fig:fls-fsbw}, we vary the spatial bandwidth $B_s$ of the forward-looking sonar from
 $4$ to $512$ in powers of two, with $F_s = 2B_s$ and the other settings of Figure
-\ref{fig:fls-beam-width} at $\beta = 1^\circ$. The Gaussian pulse has an amplitude full width at
-half maximum of $0.62/B_s$, which spans $8.8$ rows at $B_s = 4$ and one row at $B_s \approx 35$.
+\ref{fig:fls-beam-width} at their defaults, so $\beta = 0.1^\circ$. The Gaussian pulse has an
+amplitude full width at half maximum of $0.62/B_s$, which spans $16$ rows at $B_s = 4$ and one row at
+$B_s \approx 66$.
 
-At $B_s = 4$, the silhouette of the car is smeared in range, and the bright returns at the near edge
-of the image spill into its bottom rows. Those rows lie nearer than the seafloor directly beneath
-the sensor, at a range of $0.85$, and go dark as the bandwidth grows. The car sharpens in range with
-the bandwidth, and by $B_s = 32$ its outline and glints are resolved. The peak lies at the near edge
-of the image in front of the car, and from $B_s = 16$ on it roughly halves with every doubling of
-$B_s$, from $2.0\times10^{-6}$ to $9.0\times10^{-8}$ at $B_s = 512$. This is the signature of returns
-spread continuously over range, of which a narrower pulse gathers fewer.
+At $B_s = 4$, the car is smeared in range into a bright blob, and the edges of its shadow are soft.
+The car sharpens in range with the bandwidth, and by $B_s = 32$ its outline and glints are resolved.
+The seafloor is a continuum of returns, of which a narrower pulse gathers fewer, so its amplitude
+halves with every doubling of $B_s$. The peak, on the near side of the car, is more compact in
+range and falls more slowly, by a factor of $0.55$--$0.72$ per doubling, from $2.1\times10^{-8}$ at
+$B_s = 4$ to $7.3\times10^{-10}$ at $512$. The seafloor therefore darkens relative to the peak, from
+$-27$~dB at $B_s = 4$ to $-36$~dB at $64$.
 
-From $B_s = 128$ on, concentric rings centered on boresight appear in the seafloor behind the car.
-This is the ray density effect of Figure \ref{fig:signals-square}. The pulse has become narrower
-than the range spacing between the seafloor returns of neighboring rays, which grows with range as
-the fan meets the seafloor at ever shallower angles, from $0.0026$ at the range of the car to
-$0.0073$ at a range of $2$. Each signal then resolves the returns of individual rays, and the dark
-rings trace the pixels whose ranges fall between them. Just behind the car, the standard deviation
-of the seafloor is about $3$~dB for $B_s \le 64$, but $12$~dB at $B_s = 256$ and $32$~dB at $512$,
-where the dark rings are nulls. As with SAR, a denser fan or a lower bandwidth removes the rings:
-raising $R_h$ from $1024$ to $4096$ at $B_s = 512$ is enough.
+From $B_s = 128$ on, concentric rings centered on boresight appear in the seafloor. This is the ray
+density effect of Figure \ref{fig:signals-square}. The pulse has become narrower than the range
+spacing between the seafloor returns of neighboring rays, which grows with range as the fan meets
+the seafloor at ever shallower angles, from $0.0050$ at the near edge of the image to $0.0078$ at
+the far edge, against a pulse width of $0.0048$ at $B_s = 128$ and $0.0024$ at $256$. Each signal
+then resolves the returns of individual rays, and the dark rings trace the pixels whose ranges fall
+between them. Beside the car, the standard deviation of the seafloor is $0.8$~dB for
+$B_s \le 64$, but $1.6$~dB at $B_s = 128$, $8.7$~dB at $256$, and $32$~dB at $512$, where the dark
+rings are nulls. As with SAR, a denser fan or a lower bandwidth removes the rings: raising $R_h$
+from $550$ to $2200$ at $B_s = 512$ brings the standard deviation back to $1.0$~dB.
 
 \begin{figure}[H]
   \begin{adjustwidth}{-\extralength}{0cm}
@@ -810,37 +816,39 @@ raising $R_h$ from $1024$ to $4096$ at $B_s = 512$ is enough.
 \subsection{Side-Scan Sonar Beam Width}
 
 In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the side-scan sonar of
-Appendix \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$. The platform passes the
-car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
-$\lVert\bar{\vec{v}}\rVert = 10$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
-spaced over a track of length $L = 1.1$, and each $128 \times 128$ image covers $S_\ell = S_\rho = 1.1$.
-Each ping casts a fan of $R_h \times R_w = 700 \times 250$ rays over $\Theta_h = 30^\circ$ in
-elevation and $\Theta_w = 3\beta$ in azimuth. The $250$ azimuth rays are enough for the image to
-converge even at $10^\circ$, where they are spread the most sparsely. The pulse is Gaussian with
-$B_s = 30$, the time-varying gain is $\eta = 10$, and no wavelength is given, so the returns add
-without their carrier phase.
+Appendix \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$, with the other
+parameters at their defaults (Table \ref{tab:sss-params}) except the number of azimuth rays. The
+platform passes the car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
+$\lVert\bar{\vec{v}}\rVert = 7.5$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
+spaced over a track of length $L = 1.2$, and each $128 \times 128$ image covers
+$S_\ell = S_\rho = 1.2$. Each ping casts a fan of $R_h \times R_w = 550 \times 250$ rays over
+$\Theta_h = 23^\circ$ in elevation and $\Theta_w = 3\beta$ in azimuth, in place of the default single
+boresight ray, which would leave the beam nothing to weight. The $250$ azimuth rays are enough for
+the image to converge even at $10^\circ$, where they are spread the most sparsely. The pulse is
+Gaussian with $B_s = 30$, there is no time-varying gain, spreading, or absorption, and no
+wavelength is given, so the returns add without their carrier phase. Each panel is shown in dB
+relative to its own peak, with a floor of $-60$~dB.
 
-At the range of the car, $\rho \approx 10$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.017$ of
-the track, about two pixels, and the image resolves the outline of the car. The returns of the car
+At the range of the car, $\rho \approx 7.5$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.013$ of
+the track, about $1.4$ pixels, and the image resolves the outline of the car. The returns of the car
 lie at near range, and behind them the car casts an acoustic shadow in which the seafloor returns
 almost nothing. As the beam widens, each return is smeared along the track over $\rho\beta$ while
-its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.17$, and
-at $3.16^\circ$ the beam covers half of the image and the car stretches into streaks that span it.
-At $10^\circ$, $\rho\beta \approx 1.7$ exceeds the width of the image, so every ping hears nearly
-the whole car and each row is almost constant: the standard deviation of a row averages $3.5\%$ of
-its mean, against $44\%$ at $0.1^\circ$. The streaks stay at the same ranges as the car in the
-$0.1^\circ$ panel, since range resolution is set by $B_s$ rather than $\beta$. The shadow fills in
-as well, since a ping whose beam reaches past the ends of the car hears unshadowed seafloor at the
-ranges of the shadow. Its mean amplitude rises from $0.3\%$ of the seafloor's at $0.1^\circ$ to
-$71\%$ at $10^\circ$.
+its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.13$, and
+at $3.16^\circ$ the beam covers a third of the image and the car stretches into streaks across it.
+At $10^\circ$, $\rho\beta \approx 1.3$ exceeds the width of the image, so every ping hears nearly
+the whole car and each row is nearly constant: across the rows of the car and its shadow, the
+standard deviation of a row averages $14\%$ of its mean, against $102\%$ at $0.1^\circ$. The streaks
+stay at the same ranges as the car in the $0.1^\circ$ panel, since range resolution is set by $B_s$
+rather than $\beta$. The shadow fills in as well, since a ping whose beam reaches past the ends of
+the car hears unshadowed seafloor at the ranges of the shadow. Its mean amplitude rises from
+$0.4\%$ of the seafloor beside it at $0.1^\circ$ to $28\%$ at $3.16^\circ$ and $69\%$ at $10^\circ$.
 
-Each panel is normalized to its own peak, printed beneath its colorbar. Unlike the fixed fan of
-Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same number of rays falls
-under the beam at every width. Widening the beam therefore averages the brightest returns of the car
-with their darker surroundings, and the peak falls from $7.6\times10^2$ at $0.1^\circ$ to
-$1.6\times10^2$ at $10^\circ$. The seafloor is uniform along the
-track, so the averaging leaves it unchanged, and its median amplitude agrees to within about $1\%$
-across the panels. Relative to the falling peak, it brightens into the gray background of the
+Unlike the fixed fan of Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same
+number of rays falls under the beam at every width. Widening the beam therefore averages the
+brightest returns of the car with their darker surroundings, and the peak falls from
+$8.7\times10^{-4}$ at $0.1^\circ$ to $2.2\times10^{-4}$ at $10^\circ$. The seafloor is uniform along
+the track, so the averaging leaves it unchanged, and its median amplitude agrees to within about
+$1\%$ across the panels. Relative to the falling peak, it brightens into the gray background of the
 $10^\circ$ panel.
 
 \begin{figure}[H]
@@ -848,7 +856,7 @@ $10^\circ$ panel.
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
   \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
   $0.1^\circ$ to $10^\circ$. Along-track position runs horizontally and slant range vertically,
-  with near range at the bottom. Each panel is normalized to its own peak, printed beneath its
+  with near range at the bottom. Each panel is in dB relative to its own peak, printed beneath its
   colorbar.}
   \label{fig:ss-beam-width}
 \end{figure}
@@ -858,24 +866,27 @@ $10^\circ$ panel.
 In Figure \ref{fig:ss-fsbw}, we vary the spatial bandwidth $B_s$ of the side-scan sonar from $4$ to
 $512$ in powers of two, with $F_s = 2B_s$ and the geometry of Figure \ref{fig:ss-beam-width}. Each
 ping casts a single ray in azimuth, on boresight, so the beam does not blur the image along the
-track and only its range resolution changes. The pulse width of $0.62/B_s$ spans $18$ rows at
-$B_s = 4$ and one row at $B_s \approx 72$.
+track and only its range resolution changes. The pulse width of $0.62/B_s$ spans $16$ rows at
+$B_s = 4$ and one row at $B_s \approx 66$.
 
-At $B_s = 4$, the car is a blur, and the returns smeared into its shadow fill it to $90\%$ of the
-level of the seafloor. As the bandwidth grows the shadow empties, to $33\%$ at $B_s = 8$ and $7\%$
-at $16$, and by $B_s = 32$ the outline of the car, its shadow, and the edges of its body are sharp.
-The seafloor is a continuum of returns, so its amplitude halves with every doubling of $B_s$, from a
-median of $890$ at $B_s = 4$ to $27$ at $128$. The brightest returns of the car are compact in range
-and fall more slowly, so the ratio of the peak to the seafloor grows from $6$ to $34$ over the same
-span, and the seafloor darkens in the normalized panels.
+At $B_s = 4$, the car is a blur, and the returns smeared into its shadow fill it to the level of
+the seafloor beside it. As the bandwidth grows the shadow empties, to $46\%$ at $B_s = 8$, $16\%$
+at $16$, and $3\%$ at $32$, where the outline of the car, its shadow, and the edges of its body are
+sharp. The seafloor is a continuum of returns, so its amplitude halves with every doubling of
+$B_s$, from a median of $5.3\times10^{-4}$ in the far rows at $B_s = 4$ to $1.7\times10^{-5}$ at
+$128$. The brightest returns of the car are compact in range and fall more slowly, so the ratio of
+the peak to the seafloor grows from $10$ to $55$ over the same span, and the seafloor darkens in the
+panels.
 
-At $B_s = 256$ and $512$, the pulse is narrower than the $0.0044$ range spacing between the seafloor
-returns of neighboring rays near the car, and the rings of Figure \ref{fig:fls-fsbw} appear here as
-horizontal stripes. Every ping sees the same flat seafloor through the same fan, so the returns of
+At $B_s = 256$ and $512$, the pulse, $0.0024$ and $0.0012$ wide, is narrower than the
+$0.0040$--$0.0045$ range spacing between the seafloor returns of neighboring rays in the far rows,
+and the rings of Figure \ref{fig:fls-fsbw} appear here as horizontal stripes. The spacing is
+smaller than in the forward-looking sonar because the steeper $59.3^\circ$ look meets the seafloor
+less obliquely. Every ping sees the same flat seafloor through the same fan, so the returns of
 every ping fall at the same ranges, and a row that falls between them is dim along the whole track.
-Across the rows of the far seafloor, the row mean varies by $3\%$, one standard deviation, for
-$16 \le B_s \le 64$, but by $42\%$ at $B_s = 256$ and $118\%$ at $512$. The curved body of the car
-breaks into dots and rings.
+Across the far rows, the row mean varies about its smooth trend in range by about $1\%$, one
+standard deviation, for $B_s \le 128$, but by $23\%$ at $B_s = 256$ and $83\%$ at $512$. The curved
+body of the car breaks into dots and rings.
 
 \begin{figure}[H]
   \begin{adjustwidth}{-\extralength}{0cm}
@@ -883,7 +894,7 @@ breaks into dots and rings.
   \includegraphics[width=\fulllength]{figs/side_scan_stitched_spatial_bw.png}
   \end{adjustwidth}
   \caption{Side-scan sonar images as the spatial bandwidth $B_s$ grows from $4$ to $512$, with
-  $F_s = 2B_s$, laid out as in Figure \ref{fig:ss-beam-width}. Each panel is normalized to its own
+  $F_s = 2B_s$, laid out as in Figure \ref{fig:ss-beam-width}. Each panel is in dB relative to its own
   peak, printed beneath its colorbar.}
   \label{fig:ss-fsbw}
 \end{figure}
