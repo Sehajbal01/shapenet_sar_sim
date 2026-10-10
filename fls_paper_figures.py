@@ -119,15 +119,30 @@ def _fls_experiments():
     # One image from the sensor out to twice the car's range, with a fan wide enough to reach nadir
     # (needs 2*(90-40.6) = 99 deg), so the seafloor rays thin from dense near nadir to sparse far out
     fs = FLS_PAPER_BASELINE['spatial_fs']
-    range_swath = 2 * FLS_PAPER_BASELINE['sensor_distance'] - 2 / fs  # a sample in from 0, which the assert's float norm rejects
+    d = FLS_PAPER_BASELINE['sensor_distance']
+    range_swath = 2 * d - 2 / fs  # a sample in from 0, which the assert's float norm rejects
+    # azimuth span whose arc at the car's range, span * d, matches the 2d range axis, so the car keeps its proportions
+    density_span = np.degrees(2.0)
+    density_pings = 512
+    # beam and az rays per ping spacing as in the baseline
+    base_spacing = FLS_PAPER_BASELINE['image_azimuth_range'] / (FLS_PAPER_BASELINE['num_pings'] - 1)
+    density_beam = FLS_PAPER_BASELINE['azimuth_beam_width_deg'] * (density_span / (density_pings - 1)) / base_spacing
+    rays_per_deg = FLS_PAPER_BASELINE['num_ray_width'] / FLS_PAPER_BASELINE['ray_fov_az'] * \
+        FLS_PAPER_BASELINE['azimuth_beam_width_deg'] / density_beam
+    density_fov_az = density_span + 3 * density_beam  # paper's margin
     range_density = dict(
         name='range_density',
         vary={'image_range_swath': [range_swath]},
         overrides={'ray_fov_el': 100.0,
                    'num_ray_height': 1600,
+                   'image_azimuth_range': density_span,
+                   'num_pings': density_pings,
+                   'azimuth_beam_width_deg': density_beam,
+                   'ray_fov_az': density_fov_az,
+                   'num_ray_width': int(round(rays_per_deg * density_fov_az)),
                    'db_floor': -80.0,  # the far seafloor sits ~70 dB under the nadir peak
                    'num_range_values': round(range_swath * fs) + 1},  # a row per signal sample
-        custom_title_strings=['Range 0 to %.0f, Elevation FOV: 100 deg' % range_swath],
+        custom_title_strings=[''],  # described in the paper's caption
     )
 
     return [
