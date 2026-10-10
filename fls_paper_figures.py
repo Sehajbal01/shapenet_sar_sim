@@ -134,7 +134,7 @@ def _fls_experiments():
         name='range_density',
         vary={'image_range_swath': [range_swath]},
         overrides={'ray_fov_el': 100.0,
-                   'num_ray_height': 1600,
+                   'num_ray_height': 1040,
                    'image_azimuth_range': density_span,
                    'num_pings': density_pings,
                    'azimuth_beam_width_deg': density_beam,
