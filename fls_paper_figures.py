@@ -116,14 +116,29 @@ def _fls_experiments():
         custom_title_strings=['Elevation: %.0f deg' % e for e in elevation_vals],
     )
 
+    # One image from the sensor out to twice the car's range, with a fan wide enough to reach nadir
+    # (needs 2*(90-40.6) = 99 deg), so the seafloor rays thin from dense near nadir to sparse far out
+    fs = FLS_PAPER_BASELINE['spatial_fs']
+    range_swath = 2 * FLS_PAPER_BASELINE['sensor_distance'] - 2 / fs  # a sample in from 0, which the assert's float norm rejects
+    range_density = dict(
+        name='range_density',
+        vary={'image_range_swath': [range_swath]},
+        overrides={'ray_fov_el': 100.0,
+                   'num_ray_height': 1600,
+                   'db_floor': -80.0,  # the far seafloor sits ~70 dB under the nadir peak
+                   'num_range_values': round(range_swath * fs) + 1},  # a row per signal sample
+        custom_title_strings=['Range 0 to %.0f, Elevation FOV: 100 deg' % range_swath],
+    )
+
     return [
+        range_density,
         # beam_width,
         # spatial_bw,
         # db_floor,
         # num_rays,
         # num_ray_height,
-        ray_fov_el_60,
-        ray_fov_el_20,
+        # ray_fov_el_60,
+        # ray_fov_el_20,
         # sensor_distance,
         # poses,
         # elevation_angle,

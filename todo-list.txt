@@ -5,10 +5,6 @@
 - experiment comparing spotlight mode sar, strip map mode sar, sss, fls
 - add sss to the waveforms experiment
 - add sss to the fs bw ray density experiment
-- talk about the peculiarities of sonar in regards to
-    - elevation fov
-    - ray density
-    - more rays hit close by than far away
 
 - sehaj needs to get these plots under way
 

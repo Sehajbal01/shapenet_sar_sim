@@ -940,6 +940,89 @@ $10^\circ$ panel.
   \label{fig:ss-beam-width}
 \end{figure}
 
+\subsection{Sonar Ray Density Across Range}
+\label{sec:sonar-range-density}
+
+The SAR ray grid is orthographic, so its rays are spaced evenly over the scene. The rays of a sonar
+fan instead leave a single point at uniform angular steps (\ref{eq:ray-fan}), and on a flat seafloor
+uniform steps in angle are not uniform steps in range. A ray that meets the seafloor at a grazing
+angle $\gamma$, from a sensor at height $h = \lVert\vec{v}\rVert\sin e$, returns from a one-way
+range $\rho = h/\sin\gamma$. Neighboring elevation rays differ in $\gamma$ by
+$\Delta\psi = \Theta_h/(R_h-1)$, so their returns are spaced in range by
+\begin{equation}
+    \Delta\rho = \bigg|\frac{d\rho}{d\gamma}\bigg|\,\Delta\psi = \rho\cot\gamma\,\Delta\psi
+    = \frac{\rho\sqrt{\rho^2-h^2}}{h}\,\Delta\psi
+    .
+    \label{eq:sonar-ray-spacing}
+\end{equation}
+The spacing vanishes at nadir, where $\rho = h$, and grows as $\rho^2/h$ at long range, so each
+azimuth ray of the fan puts $1/(F_s\Delta\rho)$ returns into a signal sample: many at near range,
+and fewer than one at far range. This has two consequences. First, a pixel sums the energies of the
+returns in its range cell, so the near seafloor is bright because more rays land there. The fan
+samples solid angle uniformly, so the number of rays in a range cell follows the solid angle the cell
+subtends from the sensor, which is the share of the transmitted energy it intercepts. Second, the far
+seafloor is undersampled. Once $\Delta\rho$ exceeds the pulse width, the gaps between returns of
+Section \ref{sec:bw-ray-density} appear at far range, while near range stays smooth.
+
+To show both, we render one forward-looking sonar image whose rows run from the sensor out to twice
+the range of the car, $\rho_{near} = 0.016$ to $\rho_{far} = 14.98$. The $M = 959$ rows are
+$1/F_s$ apart, one per signal sample, so the rows do not beat against the samples. The fan spans
+$\Theta_h = 100^\circ$ in elevation with $R_h = 1600$ rays, so $\Delta\psi = 0.063^\circ$. At the
+elevation $e = 40.6^\circ$ of \texttt{pose\_num} 000000, the fan needs
+$2(90^\circ - e) = 98.9^\circ$ to reach nadir, and the sensor height is $h = 4.88$. All other
+parameters are the defaults of Table \ref{tab:fls-params}: a range of $\lVert\vec{v}\rVert = 7.5$,
+a Gaussian pulse with $B_s = 32$ and $F_s = 64$, $P = 128$ pings across $9.15^\circ$, $R_w = 350$
+rays across $10^\circ$, and $\beta = 0.1^\circ$. Figure \ref{fig:fls-range-density} shows the image
+in dB relative to its peak, with a floor of $-80$~dB.
+
+Nothing returns from before $\rho = h$, the water column between the sensor and the seafloor. The
+image peaks just past it, at $\rho = 4.89$. At nadir $\Delta\rho$ falls to second order,
+$h\Delta\psi^2/2 = 3\times10^{-6}$, so over $70$ elevation rays from the last $4.6^\circ$ of the fan
+land within one sample of nadir. Beyond nadir, the seafloor darkens steadily. Away from the car
+($|\phi_i| > 2^\circ$), its median level is $-24.2$~dB at $\rho = 5.5$, $-40.5$~dB at the range of
+the car, $\rho = 7.5$, and $-65.0$~dB at $\rho = 14$. The brightest return of the car, at
+$-6.7$~dB, is weaker than the nadir line. Counting the first-bounce returns of the fan per sample
+and per azimuth ray gives $5.2$ at $\rho = 5.5$, $1.6$ at $7.5$, $0.80$ at $10$, and $0.33$ at $15$,
+within $3\%$ of $1/(F_s\Delta\rho)$. From $\rho = 6$ to $12$ the seafloor falls by $29.1$~dB. The
+image is shown as $20\log_{10}$ of a pixel, and a pixel is linear in the energies it sums. Over that
+span the returns per sample fall $6.4$-fold ($16.1$~dB), the spreading loss of
+(\ref{eq:sonar-energy}) falls $4$-fold ($12.0$~dB), and the energy of a return before spreading
+falls by $15\%$ ($1.2$~dB), $29.3$~dB in total. More than half of the fall-off is therefore the
+density of the rays rather than the spreading loss.
+
+The same thinning undersamples the far seafloor. At the range of the car,
+$\Delta\rho = 0.0096$ is half the $0.62/B_s = 0.019$ width of the pulse, so the returns overlap and
+the seafloor is smooth. $\Delta\rho$ reaches the pulse width at $\rho = 10$ and twice it at
+$\rho = 14$, and beyond $\rho \approx 10$ the seafloor breaks into concentric arcs centered on
+boresight. These are the rings of Figure \ref{fig:fsbw} at high $B_s$, now driven by range within a
+single image instead of by bandwidth. The arcs curve because a row of the fan at a fixed $\psi$
+meets the seafloor farther out at the edges of the azimuth fan than at its center. The standard
+deviation of the seafloor about its local mean, in dB over windows $0.5$ long, is at most $0.1$~dB
+out to $\rho = 9$, where $\Delta\rho$ is $0.79$ pulse widths. It is $0.36$~dB at $\rho = 10$, $1.2$
+at $11$, $2.7$ at $12$, and $6.8$~dB at $14$, where $\Delta\rho$ is $2.1$ pulse widths.
+
+The condition of Section \ref{sec:bw-ray-density} carries over with the sonar's spacing: the image
+is smooth when $\Delta\rho$ at its far edge stays below the pulse width, or
+$R_h > \Theta_h\,\rho_{far}\cot\gamma_{\min}\,B_s/0.62$, with $\Theta_h$ in radians. That is $3900$
+elevation rays for this window, $2.5$ times the rays used here. Since $\Delta\rho$ grows as
+$\rho^2$, the far edge of the window sets the rays needed, and most of the rays added to smooth it
+land at near range, where there are already $16$ times as many returns per sample as at
+$\rho = 15$. The elevation field of view enters the same way. A wide fan is needed to image near
+range, but at a fixed $R_h$ widening $\Theta_h$ raises $\Delta\psi$, and with it $\Delta\rho$, at
+every range. The default fan of Table \ref{tab:fls-params} spans $23^\circ$ with $550$ rays over a
+window from $\rho = 6.9$ to $8.1$, so its spacing at the far edge is $0.0078$, $0.40$ pulse widths.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.6\textwidth]{figs/fls_stitched_range_density.png}
+  \caption{Forward-looking sonar image from the sensor out to twice the range of the car, with a
+  $100^\circ$ elevation fan of $1600$ rays that reaches nadir. The image is in dB relative to its
+  peak at nadir, $\rho = 4.89$, with a floor of $-80$~dB. The seafloor darkens with range as the rays
+  of the fan thin out, and beyond $\rho \approx 10$, where its returns are spaced farther apart than
+  the pulse width, it breaks into concentric arcs.}
+  \label{fig:fls-range-density}
+\end{figure}
+
 \section{Conclusions}
 \label{sec:conclusion}
 In this paper, we presented an open-source, GPU-accelerated SAR and sonar simulator implemented
