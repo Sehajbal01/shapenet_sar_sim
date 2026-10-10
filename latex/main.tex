@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} forms images directly from geometry without simulating a received signal, while \emph{CVDomes} is limited to a few CAD models. Both depend on outdated software such as MATLAB and POV-Ray, and neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} forms images directly from geometry without simulating a received signal and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed data set of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
 
 \keyword{SAR; spotlight SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -46,7 +46,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 SAR and sonar simulators are crucial for developing and validating radar and sonar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. Open-source simulators like CVDomes \cite{cvdomes} and RaySAR \cite{raysar} lack flexibility, rely on outdated software, are each tied to a single SAR imaging mode, and do not simulate sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
+Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed data set of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} forms images from geometry with outdated POV-Ray and MATLAB software rather than simulating a received signal, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
 The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
@@ -121,43 +121,84 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
 \section{Related Works}
 \label{sec:related}
 
-To the best of our knowledge, there are only two other publicly available SAR data simulators.
-RaySAR \cite{raysar} is a MATLAB repository for simulating SAR images via ray
-tracing. CVDomes \cite{cvdomes} is a MATLAB repository that simulates spotlight-mode SAR images
-from a small set of CAD models. Neither simulates sonar, and neither lets the user choose the transmit waveform: RaySAR forms images directly from
-geometry without simulating a received signal, and CVDomes exports phase histories at a fixed band
-and center frequency.
+Most high-fidelity radar signature codes build on the shooting-and-bouncing-rays (SBR) method
+\cite{sbr}, and the best known of them, XPatch \cite{xpatch4}, is not publicly available.
+Openly available simulated data of vehicles comes mainly from two sources: CVDomes
+\cite{cvdomes}, a precomputed data set of phase histories, and RaySAR \cite{raysar}, a
+ray-tracing simulator of SAR images. Neither covers sonar, and neither lets the user choose the
+transmit waveform.
+
+\subsection{Shooting and Bouncing Rays}
+\label{sec:sbr}
+
+Ling, Chou, and Lee introduced SBR \cite{sbr} to compute the radar cross section (RCS) of
+arbitrarily shaped cavities, such as jet engine inlets, whose interior reflections are too
+numerous for closed-form solutions and too electrically large for full-wave solvers. The incident
+plane wave is represented by a dense grid of parallel rays shot into the opening of the cavity.
+Each ray is traced by geometrical optics as it bounces off the cavity walls, carrying its
+amplitude, phase, and polarization along its path until it leaves through the opening, and the
+scattered far field is then obtained by a physical-optics integration of the exiting ray fields
+over the opening. Since the ray grid only needs to be dense enough to sample the illuminated
+surface, the method scales to large, geometrically complex targets, and it became the core of
+high-frequency codes such as XPatch \cite{xpatch4} and the code behind CVDomes. Our ray tracer
+launches its rays the same way, as a grid of rays traced through multiple bounces. It differs in
+what each ray carries: rather than a polarized field integrated by physical optics frequency by
+frequency, each return keeps only its energy and total path length (Section
+\ref{sec:signal-simulation}), and the sampled signal at the sensor's bandwidth is formed from these
+returns by interposummation. This scalar formulation lets the same ray trace drive both radar and
+sonar.
 
 \subsection{CVDomes}
 \label{sec:cvdomes}
 
-CVDomes is a physics-calibrated pipeline where facet CADs are augmented with an explicit asphalt
-ground plane and per-facet material labels (PEC, absorber, glass, plastic, asphalt). Monostatic
-scattering is computed with a high-frequency SBR front end followed by a physical-optics
-surface-current integral. Sampling is co-designed in both frequency and angle. In frequency, 512
-bins span a bandwidth of $5.35$ GHz about a center frequency of $9.6$ GHz. In angle, azimuth is
-computed in $0.5^\circ$ sectors, each extrapolated by $\pm 0.25^\circ$, to yield an effective step
-of $0.0625^\circ$. The result is a dome-wide phase history covering $360^\circ$ of azimuth and
-$30^\circ$--$60^\circ$ of elevation, exported as MATLAB ``data domes'' with fully polarimetric
-channels (HH, HV, VV) for downstream imaging.
-
-
+CVDomes \cite{cvdomes,cvdomesreport} is not a simulator but a data set: $369$~GB of simulated
+X-band phase histories of ten civilian vehicle facet models, from a Toyota Camry to a Toyota
+Tacoma pickup, distributed by the Air Force Research Laboratory as MATLAB files. It was computed
+with the same proprietary high-frequency code as the earlier Backhoe data set \cite{backhoe}, which
+traces shooting and bouncing rays through up to four bounces at ten rays per wavelength to induce
+surface currents, and integrates those currents with physical optics into the monostatic far
+field. Each facet model was given an asphalt ground plane, since the double-bounce returns between
+the ground and the vehicle dominate measured signatures, and per-facet material labels: a perfect
+electric conductor for the body, a $0.25$-inch glass layer ($\epsilon_r = 5.9 - j0.15$) backed by
+air so that no rays enter the unmodeled interior, absorber for rubber and all interior fill, and an
+asphalt half-space ($\epsilon_r = 5.9 - j0.1$). The scattering is fully polarimetric (HH, HV, VV)
+over $360^\circ$ of azimuth and $30^\circ$--$60^\circ$ of elevation, with $512$ frequency samples
+spanning $5.35$~GHz about a center frequency of $9.6$~GHz, for a range resolution of about
+$2.8$~cm. To make this affordable, rays were traced once per $0.5^\circ \times 0.5^\circ$ sector of
+azimuth and elevation, and the fields across each sector were extrapolated from that single trace
+with a local point-scatterer approximation, giving a $0.0625^\circ$ angular step and a $14.3$~m
+unambiguous range. The extrapolation cut the run time about 75-fold, yet the data set still took
+over $72{,}000$ CPU hours on a $2048$-processor cluster. CVDomes is imaged with the far-field
+backprojection code of the MATLAB SAR image formation toolbox \cite{gorham2010sar}, and because it
+stores the whole dome of look angles, it supports 2D spotlight and circular SAR images as well as
+multi-pass 3D reconstruction \cite{cvdomes}. Its limits are those of a fixed data set: the ten
+vehicles, the band, and the far-field monostatic geometry cannot be changed, and since the
+electromagnetic code is not public, no new targets can be added. We reuse its Camry facet model
+and material labels in Section \ref{sec:per-triangle-materials}.
 
 \subsection{RaySAR}
 \label{sec:raysar}
 
-RaySAR \cite{raysar} is a 3D SAR simulation tool that generates SAR-like images from detailed 3D
-object models. The framework is built on a modified version of the POV-Ray tracer, using it to
-simulate interactions between electromagnetic waves and surfaces of objects. Instead of
-transmitting pulses or collecting real echoes, RaySAR performs geometric ray tracing to determine
-which surfaces are illuminated, and estimates the backscatter of each surface from its local
-incidence geometry relative to the radar sensor. This simulated backscatter is then projected into
-the SAR slant-range coordinate system, producing radar-like images that capture geometric effects
-such as layover, shadowing, and foreshortening. Multiple reflections are traced and separated into
-single-, double-, and higher-bounce image layers. Users can define synthetic flight paths and
-viewing geometries \cite{drozdowicz2021open} to analyze how different radar positions influence
-the resulting image. RaySAR is therefore a forward-modeling tool: it predicts how 3D scenes would
-appear in SAR imagery rather than simulating raw signal acquisition.
+RaySAR \cite{raysar,auer2011thesis} is an open-source SAR simulator built on a modified version of
+the POV-Ray ray tracer, with MATLAB scripts for image formation. It was developed for interpreting
+high-resolution SAR images of complex urban scenes. The sensor is modeled as an orthographic camera
+with a parallel light source at the same position, approximating a far-field plane wave. POV-Ray
+traces rays through the scene up to a chosen number of bounces, and for every ray and bounce
+writes a \emph{contribution}: its azimuth, slant range, and elevation coordinates, an intensity from
+diffuse and specular reflection models, its bounce level, and a flag marking specular paths. The
+MATLAB scripts bin these contributions into azimuth-range resolution cells to form reflectivity
+maps, which can be separated by bounce level to show layover, foreshortening, shadowing, and
+multiple-bounce effects, while the elevation coordinate supports 3D analysis of the scatterers.
+RaySAR never simulates a received signal: the resolution of the sensor enters only through the
+size of the resolution cells. A Python port \cite{raysarpython} re-implements the image formation
+step to generate training data for automatic target recognition, while still relying on POV-Ray for
+the contributions. It places each contribution in its azimuth-range cell with a phase of $-4\pi
+r/\lambda$ at a fixed wavelength of $3.1$~cm, optionally perturbed at random, and sums the complex
+values. The finite bandwidth is not modeled; instead, a star-shaped sidelobe pattern is imitated by
+adding an inverse-square decay along the row and column of every pixel above a threshold, before
+the image is clipped in dB and quantized to 8 bits. Both versions therefore form images directly
+from geometry, whereas our simulator turns each ray's returns into a band-limited, sampled, complex
+signal for a user-chosen waveform and forms the image from that signal.
 
 \section{Problem Statement}
 \label{sec:problem}
@@ -172,6 +213,7 @@ other analyses.
 \label{sec:method}
 
 \subsection{Signal Simulation}
+\label{sec:signal-simulation}
 
 
 The general process for simulating signals is shown in Figure \ref{fig:sig-sim}. We cast a grid of
@@ -905,8 +947,9 @@ in PyTorch that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray tra
 configurable sensor parameters such as wavelength, bandwidth, sample rate, transmit waveform, and
 material properties. From a single ray-traced signal model it renders three imaging modalities:
 spotlight-mode SAR, side-scan sonar, and forward-looking sonar. It addresses the
-limitations of existing open-source tools such as \emph{RaySAR} and \emph{CVDomes}, which do not
-simulate sonar and rely on outdated software such as MATLAB.
+limitations of existing open tools: \emph{RaySAR} relies on outdated software such as POV-Ray and
+MATLAB and simulates no received signal, \emph{CVDomes} is a fixed data set of ten vehicles, and
+neither simulates sonar.
 
 The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
 summation and interpolation of ray returns, accounting for the sensor's bandwidth and sampling
