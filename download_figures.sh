@@ -9,6 +9,7 @@ REMOTE_LOCAL_PAIRS=(
     # "/workspace/berian/sony-proposal/OurGeNVS/figures|$HOME/Documents/remote-figures/sony-proposal"
     # "/workspace/berian/realsimir/figures|$HOME/Documents/remote-figures/realsimir"
     "/workspace/berian/sar-sim/shapenet_sar_sim/figures|$HOME/Documents/remote-figures/sarsim"
+    "/workspace/berian/sar-sim/shapenet_sar_sim/latex|$HOME/Documents/remote-figures/sarsim-paper"
 )
 
 # optional filename substring, e.g. "./download_figures.sh stitched" gets only *stitched* files
