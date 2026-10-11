@@ -599,7 +599,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, the transmit waveform, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the beam width and bandwidth of the forward-looking and side-scan sonars. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the beam width and ray density of the forward-looking and side-scan sonars, and finally compare the transmit waveforms in SAR and side-scan sonar. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -1047,6 +1047,65 @@ window from $\rho = 6.9$ to $8.1$, so its spacing at the far edge is $0.0078$, $
   \label{fig:fls-range-density}
 \end{figure}
 
+\subsection{Transmit Waveform}
+\label{sec:waveform-experiment}
+
+In Figure \ref{fig:waveform}, we vary the transmit waveform of spotlight-mode SAR (top row) and
+side-scan sonar (bottom row), which replaces the ideal sinc of interposummation with the effective
+window $w(z)$ of the corresponding pulse-compression matched filter as described in Section
+\ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}. Within each row the ray
+trace is identical across the panels, and only the effective window changes. We compare an ideal
+sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase code, all designed for the same spatial
+bandwidth $B_s = 30$, and then the LFM chirp at $B_s = 60$, with $F_s = 2B_s$ throughout. The SAR
+images use the defaults of Table \ref{tab:params} and are shown linearly relative to their own
+peak. The side-scan images use the defaults of Table \ref{tab:sss-params} and, as in Figure
+\ref{fig:ss-beam-width}, are shown in dB relative to their own peak with a floor of $-60$~dB.
+
+In SAR, the sinc, LFM chirp, and Barker-13 reconstructions share a comparable range resolution, and
+their range sidelobes appear only as faint replicas alongside the strong scatterers. The background
+of the image is nearly unchanged by the waveform: its $10$th percentile lies between $-43.2$ and
+$-44.6$~dB relative to the peak across the four waveforms at $B_s = 30$. The Gaussian pulse
+produces no range sidelobes, but it does a poor job of suppressing out-of-bandwidth frequencies,
+leaving much of its energy outside the allotted band $\pm B_s/2$. Its gradual roll-off also tapers
+the in-band response, which costs coherent gain and yields the dimmer peak of its panel. Doubling
+the bandwidth of the chirp halves its mainlobe and sharpens the outline of the car.
+
+In side-scan sonar, the range sidelobes of the pulse-compression waveforms are far more intense.
+With the Gaussian pulse, the car casts a clean acoustic shadow at far range whose median amplitude
+lies $75$~dB below the seafloor beside it. Every other waveform fills that shadow, to $12.2$~dB
+below the seafloor for the sinc, $9.1$~dB for the LFM chirp, and $6.9$~dB for Barker-13, and
+doubling the bandwidth of the chirp still leaves it at $12.1$~dB. The sidelobes also ring through
+the car as bands of constant range, and trail streaks in range from its brightest glints across
+the full height of the image. Barker-13 further lifts the seafloor itself, from $31$~dB to $25$~dB
+below the peak.
+
+Three properties of the side-scan sonar make its sidelobes stronger than those of SAR. First, each
+column of a side-scan image is the matched-filter output of a single ping, so the range sidelobes
+of every return enter the image directly. In SAR, each pixel coherently sums $64$ pulses spread over
+$135^\circ$ of aspect. The sidelobes of a scatterer fall on a different iso-range arc in each
+pulse, so they spread thinly over the image, while the mainlobes add up at the scatterer. Second,
+the sidelobes are long compared with the $1.2$ range swath of the image. The sidelobes of the sinc
+decay as $1/(\pi B_s z)$ and stay above $-60$~dB out to $z \approx 10$, the LFM chirp with a
+time-bandwidth product of $100$ spreads over $100/B_s \approx 3.3$, and the flat $-22.3$~dB
+sidelobes of Barker-13 span $\pm 13/B_s \approx \pm 0.43$. Against the dB display, the sidelobes of
+the bright car therefore exceed the seafloor and the shadow over most of the image. Third, the
+side-scan sonar is given no carrier wavelength, so its returns add without their carrier phase and
+their sidelobes cannot cancel. The aperiodic autocorrelation sidelobes of Barker-13 are all
+non-negative, so across the densely sampled seafloor they accumulate rather than alternate in sign
+as those of the sinc do, which raises the seafloor relative to the peak. For these reasons the
+side-scan and forward-looking sonar defaults use the Gaussian pulse.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/waveform_stitched_sar_sss.png}
+  \caption{Varying the transmit waveform in spotlight-mode SAR (top) and side-scan sonar (bottom).
+  Each panel uses the effective interposummation window $w(z)$ of the labeled waveform, all with
+  $B_s = 30$ except the last column at $B_s = 60$. SAR panels are linear and side-scan panels are
+  in dB, each relative to its own peak, printed beneath its colorbar. In side-scan sonar, the range
+  sidelobes of every waveform but the Gaussian fill the acoustic shadow behind the car.}
+  \label{fig:waveform}
+\end{figure}
+
 \section{Conclusions}
 \label{sec:conclusion}
 In this paper, we presented an open-source, GPU-accelerated SAR and sonar simulator implemented
@@ -1073,7 +1132,7 @@ glint of a flat plate.
 
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
 sonar, and forward-looking sonar, while varying key parameters such as bandwidth, sampling rate, and beam width, with
-further SAR examples varying the aperture, transmit waveform, wavelength, and sensor trajectory in
+further SAR examples varying the aperture, wavelength, and sensor trajectory in
 Appendix \ref{app:sar-examples}. These experiments demonstrate how system
 parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
 sonar that excessive oversampling of the energy-range scatter leads to poor signal quality and
@@ -1347,8 +1406,8 @@ $|\hat{\gamma}(\vec{x})|$.
 \section{SAR Image Examples}
 \label{app:sar-examples}
 This appendix shows spotlight-mode SAR images of the car of Figure \ref{fig:main-fig}.a as single parameters
-are varied from the defaults of Table \ref{tab:params}: the aperture, the noise, the wavelength, the
-transmit waveform, and the sensor trajectory.
+are varied from the defaults of Table \ref{tab:params}: the aperture, the noise, the wavelength,
+and the sensor trajectory.
 
 \subsection{Aperture, Noise, and Wavelength}
 
@@ -1386,32 +1445,6 @@ In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength 
   \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
   \caption{Varying the wavelength in our simulation with coherent integration.}
   \label{fig:wavelength}
-\end{figure}
-
-\subsection{Transmit Waveform}
-
-In Figure \ref{fig:waveform}, we vary the transmit waveform, which replaces the
-ideal sinc of interposummation with the effective window $w(z)$ of the
-corresponding pulse-compression matched filter as described in Section
-\ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}.
-The ray trace is identical across the panels, and only the effective window
-changes. We
-compare an ideal sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase
-code, all designed for the same spatial bandwidth $B_s$. The sinc, LFM chirp,
-and Barker-13 reconstructions share a comparable range resolution but are
-accompanied by the range sidelobes characteristic of each waveform, which
-appear as faint replicas alongside the strong scatterers. The Gaussian pulse
-produces no range sidelobes, but it does a poor job of suppressing
-out-of-bandwidth frequencies, leaving much of its energy outside the allotted
-band $\pm B_s/2$. Its gradual roll-off also tapers the in-band response, which
-costs coherent gain and yields the visibly dimmer reconstruction in Figure
-\ref{fig:waveform}.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_waveform.png}
-  \caption{Varying the transmit waveform in our simulation. Each panel uses the effective interposummation window $w(z)$ of the labeled pulse-compression waveform, all with the same spatial bandwidth $B_s$.}
-  \label{fig:waveform}
 \end{figure}
 
 \subsection{Sensor Trajectory}
