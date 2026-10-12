@@ -1479,7 +1479,7 @@ does not change with $\beta$.
 
 \section{Default Parameters}
 \label{app:params}
-Tables \ref{tab:params}, \ref{tab:sss-params} and \ref{tab:fls-params} list the default parameters of spotlight-mode SAR, side-scan sonar and forward-looking sonar. All three baselines image the same srncars car, \texttt{obj\_id} 100715345ee54d7ae38b52b4ee9d36a3, at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
+Tables \ref{tab:params}, \ref{tab:fls-params} and \ref{tab:sss-params} list the default parameters of spotlight-mode SAR, forward-looking sonar and side-scan sonar. All three baselines image the same srncars car, \texttt{obj\_id} 100715345ee54d7ae38b52b4ee9d36a3, at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
 \begin{table}[H]
 \centering
 \caption{Default SAR experiment parameters, matching \texttt{sar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
@@ -1524,6 +1524,44 @@ $\alpha$                  & --                     & $5$ \\
 
 \begin{table}[H]
 \centering
+\caption{Default forward-looking sonar parameters, matching \texttt{forward\_looking\_sonar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
+\label{tab:fls-params}
+\begin{tabular}{lll}
+\toprule
+\textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
+\midrule
+$(a,e)$                    & pose\_num                & 000000 $(281.0^\circ, 40.6^\circ)$ \\
+$\lVert\vec{v}\rVert$      & sensor\_distance         & $7.5$ \\
+$P$                        & num\_pings               & $128$ \\
+$M$                        & num\_range\_values       & $128$ \\
+$\Theta_p$                 & image\_azimuth\_range    & $9.15^\circ$ \\
+$\Theta_w$                 & ray\_fov\_az             & $10^\circ$ \\
+$\Theta_h$                 & ray\_fov\_el             & $23^\circ$ \\
+$\beta$                    & azimuth\_beam\_width\_deg & $0.1^\circ$ \\
+$R_w$                      & num\_ray\_width          & $350$ \\
+$R_h$                      & num\_ray\_height         & $550$ \\
+$S_\rho$                   & image\_range\_swath      & $1.2$ \\
+$\lambda$                  & wavelength               & None \\
+$B_s$                      & spatial\_bw              & $32$ \\
+$F_s$                      & spatial\_fs              & $64$ \\
+$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
+$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
+$\alpha$                  & --                     & $5$ \\
+\multicolumn{1}{c}{--}     & waveform                 & gaussian \\
+\multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
+\multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
+\multicolumn{1}{c}{--}     & compression              & dB \\
+\multicolumn{1}{c}{--}     & db\_floor                & $-60$~dB \\
+\multicolumn{1}{c}{--}     & make\_ground             & True \\
+\multicolumn{1}{c}{--}     & level\_with\_ground      & True \\
+\multicolumn{1}{c}{--}     & object\_x\_flip          & False \\
+\multicolumn{1}{c}{--}     & object\_rotate\_xyz      & $(90^\circ, 0^\circ, 0^\circ)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
 \caption{Default side-scan sonar parameters, matching \texttt{side\_scan\_sonar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
 \label{tab:sss-params}
 \begin{tabular}{lll}
@@ -1552,44 +1590,6 @@ $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.
 $\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--}     & waveform                 & gaussian \\
 \multicolumn{1}{c}{--}     & spherical\_spread        & False \\
-\multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
-\multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
-\multicolumn{1}{c}{--}     & compression              & dB \\
-\multicolumn{1}{c}{--}     & db\_floor                & $-60$~dB \\
-\multicolumn{1}{c}{--}     & make\_ground             & True \\
-\multicolumn{1}{c}{--}     & level\_with\_ground      & True \\
-\multicolumn{1}{c}{--}     & object\_x\_flip          & False \\
-\multicolumn{1}{c}{--}     & object\_rotate\_xyz      & $(90^\circ, 0^\circ, 0^\circ)$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{Default forward-looking sonar parameters, matching \texttt{forward\_looking\_sonar\_baseline} in \texttt{config.json}. Lengths are in $\ell$ and $B_s$, $F_s$ in $\ell^{-1}$ (Section \ref{sec:units}); the materials are normalized as in Table \ref{tab:materials}.}
-\label{tab:fls-params}
-\begin{tabular}{lll}
-\toprule
-\textbf{Symbol} & \textbf{Code variable} & \textbf{Default value} \\
-\midrule
-$(a,e)$                    & pose\_num                & 000000 $(281.0^\circ, 40.6^\circ)$ \\
-$\lVert\vec{v}\rVert$      & sensor\_distance         & $7.5$ \\
-$P$                        & num\_pings               & $128$ \\
-$M$                        & num\_range\_values       & $128$ \\
-$\Theta_p$                 & image\_azimuth\_range    & $9.15^\circ$ \\
-$\Theta_w$                 & ray\_fov\_az             & $10^\circ$ \\
-$\Theta_h$                 & ray\_fov\_el             & $23^\circ$ \\
-$\beta$                    & azimuth\_beam\_width\_deg & $0.1^\circ$ \\
-$R_w$                      & num\_ray\_width          & $350$ \\
-$R_h$                      & num\_ray\_height         & $550$ \\
-$S_\rho$                   & image\_range\_swath      & $1.2$ \\
-$\lambda$                  & wavelength               & None \\
-$B_s$                      & spatial\_bw              & $32$ \\
-$F_s$                      & spatial\_fs              & $64$ \\
-$(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
-$(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
-$\alpha$                  & --                     & $5$ \\
-\multicolumn{1}{c}{--}     & waveform                 & gaussian \\
 \multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
 \multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
 \multicolumn{1}{c}{--}     & compression              & dB \\
