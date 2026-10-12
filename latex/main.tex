@@ -83,6 +83,20 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
 
 \begin{figure}[H]
     \centering
+    \includegraphics[width=\textwidth]{figs/modality_comparison.png}
+    \par\vspace{2pt}
+    \makebox[\textwidth]{%
+        \makebox[0.24\textwidth]{(\textbf{a})}\hfill
+        \makebox[0.24\textwidth]{(\textbf{b})}\hfill
+        \makebox[0.24\textwidth]{(\textbf{c})}\hfill
+        \makebox[0.24\textwidth]{(\textbf{d})}%
+    }
+    \caption{The three imaging modalities of our simulator, rendered for four ShapeNet \cite{shapenet} car models. (\textbf{a}) RGB image of each model, (\textbf{b}) spotlight-mode SAR image by convolution backprojection, (\textbf{c}) side-scan sonar image, and (\textbf{d}) forward-looking sonar image.}
+    \label{fig:modality-comparison}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/rgb.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview.png}}
@@ -95,20 +109,6 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
     \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of both bounces, (\textbf{f}) signal magnitude calculated via interposummation, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=\textwidth]{figs/modality_comparison.png}
-    \par\vspace{2pt}
-    \makebox[\textwidth]{%
-        \makebox[0.24\textwidth]{(\textbf{a})}\hfill
-        \makebox[0.24\textwidth]{(\textbf{b})}\hfill
-        \makebox[0.24\textwidth]{(\textbf{c})}\hfill
-        \makebox[0.24\textwidth]{(\textbf{d})}%
-    }
-    \caption{The three imaging modalities of our simulator, rendered for four ShapeNet \cite{shapenet} car models. (\textbf{a}) RGB image of each model, (\textbf{b}) spotlight-mode SAR image by convolution backprojection, (\textbf{c}) side-scan sonar image, and (\textbf{d}) forward-looking sonar image.}
-    \label{fig:modality-comparison}
 \end{figure}
 
 \begin{figure}[H]
@@ -599,7 +599,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -1373,10 +1373,19 @@ $|\hat{\gamma}(\vec{x})|$.
 \section{SAR Image Examples}
 \label{app:sar-examples}
 This appendix shows spotlight-mode SAR images of the car of Figure \ref{fig:main-fig}.a as single parameters
-are varied from the defaults of Table \ref{tab:params}: the aperture, the noise, the wavelength,
+are varied from the defaults of Table \ref{tab:params}: the wavelength, the aperture, the noise,
 and the sensor trajectory.
 
-\subsection{Aperture, Noise, and Wavelength}
+\subsection{Wavelength, Aperture, and Noise}
+
+In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
+  \caption{Varying the wavelength in our simulation with coherent integration.}
+  \label{fig:wavelength}
+\end{figure}
 
 In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
         
@@ -1405,14 +1414,6 @@ In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (S
   \label{fig:snr}
 \end{figure}
 
-In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray-grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
-  \caption{Varying the wavelength in our simulation with coherent integration.}
-  \label{fig:wavelength}
-\end{figure}
 
 \subsection{Sensor Trajectory}
 
@@ -1607,7 +1608,7 @@ The experimental figures and tables are produced by scripts in the code reposito
 The scripts read their defaults from \texttt{config.json} (Appendix \ref{app:params}), whose \texttt{srn\_cars\_dir} points to the srncars dataset \cite{srn}, and the conda environment is given in \texttt{environment.yml}. For example:
 \begin{itemize}
   \item Figure \ref{fig:main-fig}: \texttt{sar\_overview\_figure.py}
-  \item Figures \ref{fig:sphere-size} and \ref{fig:az-spread}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
   \item Figure \ref{fig:ss-az-rays}: \texttt{sss\_paper\_figures.py}
   \item Figures \ref{fig:fls-beam-width} and \ref{fig:ss-beam-width}: \texttt{fls\_paper\_figures.py} and \texttt{sss\_paper\_figures.py}
   \item Figure \ref{fig:validation}: \texttt{sar\_validation.py}
