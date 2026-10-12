@@ -122,8 +122,8 @@ DONE   E.g. B_s = 30 per metre ~ 4.5 GHz, not realistic.
   will ask why.
 DONE - Absolute peak values (1.2e-7, 7.6e2) mean nothing without calibration; invites R1's units
 DONE   complaint.
-- No Limitations section: no polarization, no physical-optics / EM modeling, required ray density,
-  material realism.
+DONE - No Limitations section: no polarization, no physical-optics / EM modeling, required ray density,
+DONE   material realism.
 - MDPI requires Author Contributions and Conflicts of Interest; both are commented out
   (main.tex:784, main.tex:792).
 - Typos / informal wording: "Jakowatz book", "match-filtered", "SONAR" vs "sonar",

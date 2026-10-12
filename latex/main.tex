@@ -1073,6 +1073,62 @@ side-scan and forward-looking sonar defaults use the Gaussian pulse.
   \label{fig:waveform}
 \end{figure}
 
+\section{Limitations}
+\label{sec:limitations}
+
+The simulator trades physical fidelity for speed and generality. Five simplifications bound what
+its images can be used for.
+
+\textbf{Scalar returns.} Each return keeps only its energy, path length, and round-trip phase.
+Unlike SBR (Section \ref{sec:sbr}), no polarization is carried along the ray, so the simulator
+produces a single channel and cannot form HH, VV, or HV images or polarimetric decompositions. The
+double-bounce returns between the car and the ground, which change the polarization of a real
+wave, differ from single-bounce returns only in their delay. Carrying a polarization vector with
+each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without
+changing the ray trace.
+
+\textbf{Geometrical optics.} Rays reflect into their next path by geometrical optics and return
+energy through the phenomenological lobe of Section \ref{sec:signal-simulation}. No surface
+currents are integrated, so edge and tip diffraction, creeping waves, and resonant scattering from
+features comparable in size to $\lambda$ are not modeled, and the model holds only for targets much
+larger than the wavelength. The wavelength enters only through the phase of each return, so the
+scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:validation}
+matches physical optics in the shape of its glint because the coherent sum reproduces the phase
+across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
+traced through two bounces, so higher-order multipath, such as returns that bounce three or more
+times inside a cavity, is missing. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and no
+antenna gain, transmit power, or noise figure is modeled (Section \ref{sec:units}), so image values
+are not calibrated radar cross sections. For sonar, the water is homogeneous: there is no
+sound-speed profile or refraction, no sea-surface multipath, and no volume reverberation, and the
+target scatters as a rigid surface without the elastic resonances of real objects. Returns lose
+energy only to spherical spreading and, in side-scan sonar, to a constant absorption $\kappa$.
+
+\textbf{Ray density.} The returns are a discrete sample of a continuous surface, and the signal is
+smooth only when the range spacing between them stays below the pulse width at the most grazing
+look, $R_h > 1.6\,B_sW_g\cot\theta_{\min}$ for SAR (Section \ref{sec:bw-ray-density}) and its
+analogue at the far edge of a sonar fan (Section \ref{sec:sonar-range-density}). Below this density
+the images break into combs, rings, and stripes rather than blurring. Meeting it is costly: the
+SAR rule asks for $375$ rays per side against the default $208$, imaging the forward-looking sonar
+out to $\rho = 15$ needs $3900$ elevation rays, and the ray tracing time grows as the square of the
+rays per side, from $117$ to $1909$~s between $1\times$ and $4\times$ the default SAR grid. The
+orthographic grid places the seafloor returns of each row at a single range, so a jittered or
+stratified grid would spread them apart and may lower the density required.
+
+\textbf{Materials.} The fractions $(R,A,I,D,S)$ and the exponent $\alpha$ are phenomenological.
+They are not derived from permittivity, conductivity, or surface roughness, and they do not vary
+with the angle of incidence or the frequency, as Fresnel reflection would. ShapeNet meshes carry
+no material labels, so our ShapeNet experiments use one material for the car and one for the
+ground (Table \ref{tab:materials}). Per-triangle materials require a mapping from labels to
+$(R,A,I,D,S)$ chosen by hand, as in the CVDomes conversion of Section
+\ref{sec:per-triangle-materials}, where glass is given a single band-averaged reflection. No ray is
+transmitted through a surface, so the interior of a vehicle is never seen through its windows.
+
+\textbf{Validation.} The forward model is validated against point scatterers and the
+physical-optics glint of a flat plate (Section \ref{sec:validation}), but its images are not
+compared against measured SAR or sonar data, or quantitatively against CVDomes. Its images should
+therefore be read as reproducing the geometry of real sensors, including shadows and two-bounce
+multipath, rather than their calibrated intensities.
+
 \section{Conclusions}
 \label{sec:conclusion}
 In this paper, we presented an open-source, GPU-accelerated SAR and sonar simulator implemented
@@ -1088,8 +1144,9 @@ The proposed \emph{interposummation} technique enables efficient low-pass filter
 summation and interpolation of ray returns, accounting for the sensor's bandwidth and sampling
 rate. Rather than range-compressing an already sampled signal, it evaluates the band-limited
 response directly at the sample points from the off-grid ray returns, so interpolation and summation
-happen in one step. This allows the simulator to generate physically meaningful signals without aliasing or
-distortion due to improper interpolation. Interposummation extends to arbitrary transmit waveforms
+happen in one step. This keeps the signal band-limited at the sensor's bandwidth instead of
+interpolating returns onto the sample grid, as long as the rays are dense enough to sample the
+surface (Section \ref{sec:limitations}). Interposummation extends to arbitrary transmit waveforms
 by replacing its ideal sinc with the effective window of the waveform's matched filter, so sinc,
 Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
 the same cost, with the range sidelobes of a real pulse-compression system. When a carrier wavelength is given,
@@ -1102,12 +1159,13 @@ sonar, and forward-looking sonar, while varying key parameters such as bandwidth
 further SAR examples varying the aperture, wavelength, and sensor trajectory in
 Appendix \ref{app:sar-examples}. These experiments demonstrate how system
 parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
-sonar that excessive oversampling of the energy-range scatter leads to poor signal quality and
-numerical artifacts. This can be mitigated either by reducing the effective bandwidth, which lowers
-the required sampling rate, or by increasing the ray density to maintain consistent energy
-coverage across the target surface.
-Future work will extend the simulator to support arbitrary flight paths and synthetic aperture
-SONAR, broadening its applicability to a wider set of radar and sonar scenarios.
+sonar that once the pulse is narrower than the range spacing between ray returns, the signal
+resolves the individual returns and the images break into artifacts. This can be avoided either by
+reducing the effective bandwidth, which widens the pulse, or by increasing the ray density, which
+moves the returns closer together.
+Future work will extend the simulator to arbitrary flight paths and synthetic aperture sonar, carry
+polarization along each ray, randomize the ray grid to lower the ray density required, and compare
+its images against measured data.
 
 
 
