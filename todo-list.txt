@@ -1,12 +1,6 @@
 
 === Paper Todo List ===
 - read over the rest of the paper and fix anything that might need fixing
-- create outline for experiment section
-- experiment comparing spotlight mode sar, strip map mode sar, sss, fls
-- add sss to the waveforms experiment
-- add sss to the fs bw ray density experiment
-
-- sehaj needs to get these plots under way
 
 
 
