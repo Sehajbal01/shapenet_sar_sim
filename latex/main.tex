@@ -883,26 +883,27 @@ them fixed and choose $R_w$ by (\ref{eq:ss-az-rays}). When the beam covers about
 boresight ray suffices, which is why the defaults of Table \ref{tab:sss-params} use $R_w = 1$ with
 $\beta = 0.1^\circ$, where $\rho\beta$ is $1.4$ pixels.
 
-In Figure \ref{fig:ss-az-rays}, we hold a wide beam of $\beta = 10^\circ$ and vary $R_w$ from $9$
-to $2049$, with the other parameters at the defaults of Table \ref{tab:sss-params}. The fan then
-spans $30^\circ$, and (\ref{eq:ss-az-rays}) asks for $R_w > 450$. At the range of the car, the
-copies are $52$, $13$, $3.3$, $0.8$, and $0.2$ pixels apart. Each panel is in dB relative to its own
+In Figure \ref{fig:ss-az-rays}, we hold a wide beam of $\beta = 4^\circ$ and vary $R_w$ from $9$
+to $501$, with the other parameters at the defaults of Table \ref{tab:sss-params}. The fan then
+spans $12^\circ$, and (\ref{eq:ss-az-rays}) asks for $R_w > 182$. At the range of the car, the
+copies are $21$, $7.0$, $2.6$, $0.9$, and $0.3$ pixels apart. Each panel is in dB relative to its own
 peak, with a floor of $-60$~dB.
 
-At $9$ rays, the beam does not smear the car but repeats it: three copies of the car sit side by
-side along the track, and the along-track autocorrelation of its rows peaks at a lag of $50$
-pixels, against the $52$ predicted. At $33$ rays the copies overlap into a comb of faint repeats,
-and at $129$ they persist as fine vertical stripes across the car and its shadow. At $513$, above
-the bound of (\ref{eq:ss-az-rays}), the image is a smooth smear along the track. Relative to the
-$2049$-ray image, the $L_2$ error falls from $56\%$ at $9$ rays to $11\%$, $2.8\%$, and $0.4\%$ at $513$. Too few
+At $9$ rays, the beam does not smear the car but repeats it: copies of the car sit side by side
+along the track, $1.5^\circ$ of the fan apart and dimmer the farther they are from boresight, and the
+along-track autocorrelation of its rows peaks at a lag of $19$ pixels, against the $21$ predicted.
+At $25$ rays the copies overlap into a comb of faint repeats, and at $65$ they persist as fine
+vertical stripes across the car and its shadow. At $181$, at the bound of (\ref{eq:ss-az-rays}),
+the image is a smooth smear along the track. Relative to the $501$-ray image, the $L_2$ error falls
+from $25\%$ at $9$ rays to $7.5\%$, $2.9\%$, and $0.8\%$ at $181$. Too few
 rays thus do not produce a blurrier image, but a wrong one whose repeats could be mistaken for
 real targets, and the number of rays needed grows with both the beam width and the range.
 
 \begin{figure}[H]
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_num_ray_width.png}
-  \caption{Side-scan sonar images of a car with a $10^\circ$ beam as the number of azimuth rays
-  $R_w$ grows from $9$ to $2049$. Along-track position runs horizontally and slant range
+  \caption{Side-scan sonar images of a car with a $4^\circ$ beam as the number of azimuth rays
+  $R_w$ grows from $9$ to $501$. Along-track position runs horizontally and slant range
   vertically, with near range at the bottom. With few rays, each ray images the scene separately,
   and the beam repeats the car along the track instead of smearing it. Each panel is in dB relative
   to its own peak, printed beneath its colorbar.}
