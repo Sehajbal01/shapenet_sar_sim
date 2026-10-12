@@ -40,9 +40,12 @@ def _sss_experiments():
         custom_title_strings=['Beam Width: %.2f deg' % b for b in beam_width_vals],
     )
 
-    # Azimuth ray count sweep at a fixed 10 deg beam, to test whether beam width is ray-starved
+    # Azimuth ray count sweep at a fixed 10 deg beam. The fan's rays sit at fixed, evenly spaced
+    # angles over 3 beam widths, so each one images the scene once, shifted along track by range *
+    # its angle: too few rays and the beam spread is a few repeats of the scene, not a smear.
+    # 2*4**p + 1 keeps one ray on boresight; at range 7.5 the copies are 52, 13, 3.3, 0.8, 0.2 pixels apart
     ray_width_beam_deg = 10.0
-    ray_width_vals = [3 ** p for p in range(1, 7)]  # 3 .. 729, odd so one ray stays on boresight
+    ray_width_vals = [2 * 4 ** p + 1 for p in range(1, 6)]  # 9 .. 2049 -> spacings 3.75 .. 0.015 deg
     num_ray_width = dict(
         name='num_ray_width',
         vary={'num_ray_width': ray_width_vals},
@@ -152,13 +155,13 @@ def _sss_experiments():
     )
 
     return [
-        # beam_width,
-        # num_ray_width,
+        beam_width,
+        num_ray_width,
         # tvg,
         # compression,
         # asinh_k,
         # elevation_fov,
-        num_ray_height,
+        # num_ray_height,
         # spatial_bw,
         # waveform,
         # poses,

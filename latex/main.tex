@@ -599,7 +599,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the beam width and ray density of the forward-looking and side-scan sonars, and finally compare the transmit waveforms in SAR and side-scan sonar. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the aperture, the noise, the wavelength, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -850,94 +850,63 @@ small mesh at $32^2$ rays to $306\times$ for the large mesh at $128^2$ rays. The
 with $30 \times 128^2 \approx 4.9 \times 10^5$ rays over a $1.3$~M-triangle mesh, renders in under $7$~s on the GPU and needs $2.5$~GB
 of GPU memory, compared with $35$~min on the CPU.
 
-\subsection{Forward-Looking Sonar Beam Width}
+\subsection{Side-Scan Sonar Azimuth Rays}
+\label{sec:ss-az-rays}
 
 The remaining experiments test the two sonar modalities of Section \ref{sec:modalities-overview}
-(Appendices \ref{sec:forward-looking} and \ref{sec:side-scan}) on a second car from the ShapeNet
-cars dataset. They use the same ray tracer, material model, and interposummation as the SAR
-experiments above. The car scatters almost entirely into the directional lobe and the
-seafloor mostly diffusely, so the surfaces of the car that face the sensor return brightly, while
-the rest of the car and its acoustic shadow are dark against the seafloor.
+(Appendices \ref{sec:forward-looking} and \ref{sec:side-scan}) on the car of Figure
+\ref{fig:main-fig}.a, with the same ray tracer, material model, and interposummation as the SAR
+experiments. The car scatters almost entirely into the directional lobe and the seafloor mostly
+diffusely, so the surfaces of the car that face the sensor return brightly against the seafloor,
+and the car casts a dark acoustic shadow.
 
-In Figure \ref{fig:fls-beam-width}, we vary the azimuth beam width $\beta$ of the forward-looking
-sonar of Appendix \ref{sec:forward-looking} logarithmically from $0.1^\circ$ to $10^\circ$, with the
-other parameters at their defaults (Table \ref{tab:fls-params}). The sensor sits at a range of
-$\lVert\vec{v}\rVert = 7.5$ and an elevation of $e = 40.6^\circ$, and steers $P = 128$ pings across
-$\Theta_p = 9.15^\circ$, one every $0.072^\circ$. Its fan of $R_h \times R_w = 550 \times 350$ rays
-spans $\Theta_h = 23^\circ$ in elevation and $\Theta_w = 10^\circ$ in azimuth. The $M = 128$ rows
-span $S_\rho = 1.2$, from $\rho_{near} = 6.9$ to $\rho_{far} = 8.1$, the pulse is Gaussian with
-$B_s = 32$, and no wavelength is given. Each panel is shown in dB relative to its own peak, with a
-floor of $-60$~dB.
+A side-scan sonar resolves the scene along the track with its beam, but the simulator can only
+apply the beam to a finite fan of rays. We place the $R_w$ azimuth rays of each ping at uniform
+angles $\phi_j$ over $\Theta_w = 3\beta$ (\ref{eq:ray-fan}), which covers the two-way beam out to
+where it falls to $0.002$, and use an odd $R_w$ so that one ray lies on boresight. Uniform angles
+give every ray an equal share of the fan, so the beam pattern (\ref{eq:beam-pattern}) alone sets
+the weight of each ray. The fan is fixed to the sensor, so every ping casts its rays at the same
+angles, and ray $j$ reaches a scatterer at slant range $\rho$ a distance $\rho\tan\phi_j$ along the
+track from the ping that cast it. Over the pass, each ray therefore forms the image that a single
+boresight ray would, shifted along the track by $\rho\tan\phi_j$ and weighted by the two-way beam
+at $\phi_j$. The image is the sum of these $R_w$ copies, a sampling of the smear of a continuous
+beam at a spacing of $\rho\Delta\phi$, with $\Delta\phi = 3\beta/(R_w-1)$. The copies blend into a
+smear only when that spacing is below one along-track pixel, $S_\ell/W$, which at the far edge of
+the image requires
+\begin{equation}
+    R_w > 1 + \frac{3\beta\,\rho_{far}\,W}{S_\ell}
+    .
+    \label{eq:ss-az-rays}
+\end{equation}
+Randomizing the angles from ping to ping would trade the copies for along-track noise, so we keep
+them fixed and choose $R_w$ by (\ref{eq:ss-az-rays}). When the beam covers about a pixel, a single
+boresight ray suffices, which is why the defaults of Table \ref{tab:sss-params} use $R_w = 1$ with
+$\beta = 0.1^\circ$, where $\rho\beta$ is $1.4$ pixels.
 
-At $0.1^\circ$, the car and its shadow form a sharp silhouette on the seafloor: the near side of the
-car is bright, and its roof and the shadow behind it are dark. Even the narrowest beam spans
-$1.4$ ping spacings, so the beam rather than the pings sets the azimuth resolution at every width,
-and the $10$--$90\%$ width of the edge of the shadow grows with it, from $0.15^\circ$, two pings, at
-$0.1^\circ$ to $0.36^\circ$ at $0.32^\circ$ and $1.06^\circ$ at $1^\circ$. At $3.16^\circ$ the beam
-is wider than the $3^\circ$ shadow, whose darkest point rises to $42\%$ of the amplitude of the
-seafloor, and at $10^\circ$ the shadow is gone and the returns of the car spread into streaks of
-constant range across the image. Range is unaffected, since it is resolved by $B_s$. The peak, on
-the near side of the car, grows roughly in proportion to $\beta$ up to $1^\circ$, from
-$6.8\times10^{-9}$ to $5.6\times10^{-8}$. The fan is the same at every width, and the beam pattern
-peaks at $1$ rather than integrating to $1$, so a wider beam sums the returns of more rays into
-each ping. Beyond $1^\circ$ the growth slows, to $1.0\times10^{-7}$ at $10^\circ$, as the beam comes
-to cover most of the $10^\circ$ fan.
+In Figure \ref{fig:ss-az-rays}, we hold a wide beam of $\beta = 10^\circ$ and vary $R_w$ from $9$
+to $2049$, with the other parameters at the defaults of Table \ref{tab:sss-params}. The fan then
+spans $30^\circ$, and (\ref{eq:ss-az-rays}) asks for $R_w > 450$. At the range of the car, the
+copies are $52$, $13$, $3.3$, $0.8$, and $0.2$ pixels apart. Each panel is in dB relative to its own
+peak, with a floor of $-60$~dB.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/fls_stitched_beam_width.png}
-  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
-  colorbar.}
-  \label{fig:fls-beam-width}
-\end{figure}
-
-\subsection{Side-Scan Sonar Beam Width}
-
-In Figure \ref{fig:ss-beam-width}, we vary the azimuth beam width $\beta$ of the side-scan sonar of
-Appendix \ref{sec:side-scan} logarithmically from $0.1^\circ$ to $10^\circ$, with the other
-parameters at their defaults (Table \ref{tab:sss-params}) except the number of azimuth rays. The
-platform passes the car of Figure \ref{fig:fls-beam-width} from a steeper pose, at a range of
-$\lVert\bar{\vec{v}}\rVert = 7.5$ and an elevation of $e = 59.3^\circ$. The $P = 128$ pings are
-spaced over a track of length $L = 1.2$, and each $128 \times 128$ image covers
-$S_\ell = S_\rho = 1.2$. Each ping casts a fan of $R_h \times R_w = 550 \times 250$ rays over
-$\Theta_h = 23^\circ$ in elevation and $\Theta_w = 3\beta$ in azimuth, in place of the default single
-boresight ray, which would leave the beam nothing to weight. The $250$ azimuth rays are enough for
-the image to converge even at $10^\circ$, where they are spread the most sparsely. The pulse is
-Gaussian with $B_s = 30$, there is no time-varying gain, spreading, or absorption, and no
-wavelength is given, so the returns add without their carrier phase. Each panel is shown in dB
-relative to its own peak, with a floor of $-60$~dB.
-
-At the range of the car, $\rho \approx 7.5$, a $0.1^\circ$ beam covers $\rho\beta \approx 0.013$ of
-the track, about $1.4$ pixels, and the image resolves the outline of the car. The returns of the car
-lie at near range, and behind them the car casts an acoustic shadow in which the seafloor returns
-almost nothing. As the beam widens, each return is smeared along the track over $\rho\beta$ while
-its range is unchanged. The ends of the car soften by $1^\circ$, where $\rho\beta \approx 0.13$, and
-at $3.16^\circ$ the beam covers a third of the image and the car stretches into streaks across it.
-At $10^\circ$, $\rho\beta \approx 1.3$ exceeds the width of the image, so every ping hears nearly
-the whole car and each row is nearly constant: across the rows of the car and its shadow, the
-standard deviation of a row averages $14\%$ of its mean, against $102\%$ at $0.1^\circ$. The streaks
-stay at the same ranges as the car in the $0.1^\circ$ panel, since range resolution is set by $B_s$
-rather than $\beta$. The shadow fills in as well, since a ping whose beam reaches past the ends of
-the car hears unshadowed seafloor at the ranges of the shadow. Its mean amplitude rises from
-$0.4\%$ of the seafloor beside it at $0.1^\circ$ to $28\%$ at $3.16^\circ$ and $69\%$ at $10^\circ$.
-
-Unlike the fixed fan of Figure \ref{fig:fls-beam-width}, this fan widens with the beam, so the same
-number of rays falls under the beam at every width. Widening the beam therefore averages the
-brightest returns of the car with their darker surroundings, and the peak falls from
-$8.7\times10^{-4}$ at $0.1^\circ$ to $2.2\times10^{-4}$ at $10^\circ$. The seafloor is uniform along
-the track, so the averaging leaves it unchanged, and its median amplitude agrees to within about
-$1\%$ across the panels. Relative to the falling peak, it brightens into the gray background of the
-$10^\circ$ panel.
+At $9$ rays, the beam does not smear the car but repeats it: three copies of the car sit side by
+side along the track, and the along-track autocorrelation of its rows peaks at a lag of $50$
+pixels, against the $52$ predicted. At $33$ rays the copies overlap into a comb of faint repeats,
+and at $129$ they persist as fine vertical stripes across the car and its shadow. At $513$, above
+the bound of (\ref{eq:ss-az-rays}), the image is a smooth smear along the track. Relative to the
+$2049$-ray image, the $L_2$ error falls from $56\%$ at $9$ rays to $11\%$, $2.8\%$, and $0.4\%$ at $513$. Too few
+rays thus do not produce a blurrier image, but a wrong one whose repeats could be mistaken for
+real targets, and the number of rays needed grows with both the beam width and the range.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
-  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$. Along-track position runs horizontally and slant range vertically,
-  with near range at the bottom. Each panel is in dB relative to its own peak, printed beneath its
-  colorbar.}
-  \label{fig:ss-beam-width}
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_num_ray_width.png}
+  \caption{Side-scan sonar images of a car with a $10^\circ$ beam as the number of azimuth rays
+  $R_w$ grows from $9$ to $2049$. Along-track position runs horizontally and slant range
+  vertically, with near range at the bottom. With few rays, each ray images the scene separately,
+  and the beam repeats the car along the track instead of smearing it. Each panel is in dB relative
+  to its own peak, printed beneath its colorbar.}
+  \label{fig:ss-az-rays}
 \end{figure}
 
 \subsection{Sonar Ray Density Across Range}
@@ -1059,7 +1028,7 @@ sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase code, all designed f
 bandwidth $B_s = 30$, and then the LFM chirp at $B_s = 60$, with $F_s = 2B_s$ throughout. The SAR
 images use the defaults of Table \ref{tab:params} and are shown linearly relative to their own
 peak. The side-scan images use the defaults of Table \ref{tab:sss-params} and, as in Figure
-\ref{fig:ss-beam-width}, are shown in dB relative to their own peak with a floor of $-60$~dB.
+\ref{fig:ss-az-rays}, are shown in dB relative to their own peak with a floor of $-60$~dB.
 
 In SAR, the sinc, LFM chirp, and Barker-13 reconstructions share a comparable range resolution, and
 their range sidelobes appear only as faint replicas alongside the strong scatterers. The background
@@ -1467,6 +1436,48 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
   \label{fig:trajectory-noise}
 \end{figure}
 
+\section{Sonar Beam Width}
+\label{app:sonar-beam-width}
+
+Figures \ref{fig:fls-beam-width} and \ref{fig:ss-beam-width} vary the azimuth beam width $\beta$ of
+the two sonars logarithmically from $0.1^\circ$ to $10^\circ$, with the other parameters at the
+defaults of Tables \ref{tab:fls-params} and \ref{tab:sss-params}. Each panel is in dB relative to its
+own peak, with a floor of $-60$~dB.
+
+In forward-looking sonar, the beam rather than the $0.072^\circ$ ping spacing sets the azimuth
+resolution at every width. The edge of the shadow widens with $\beta$, the shadow fills in once the
+beam is wider than its $3^\circ$ span, and at $10^\circ$ the returns of the car spread into arcs of
+constant range. The fan is fixed, so a wider beam sums the returns of more rays into each ping, and
+the peak grows about in proportion to $\beta$ up to $1^\circ$.
+
+In side-scan sonar, a beam covers $\rho\beta$ of the track, $1.4$ pixels at $0.1^\circ$ and more than
+the whole image at $10^\circ$. As it widens, the car smears along the track into streaks at constant
+range, and its shadow fills in with the seafloor heard past the ends of the car. The fan spans
+$3\beta$ with $R_w = 250$ azimuth rays, so the same number of rays falls under the beam at every
+width, and the peak falls rather than rises as the brightest returns are averaged with their
+surroundings. At $10^\circ$, $250$ rays fall short of the $450$ of (\ref{eq:ss-az-rays}), and faint
+stripes of Section \ref{sec:ss-az-rays} remain. In both sonars, range resolution is set by $B_s$ and
+does not change with $\beta$.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/fls_stitched_beam_width.png}
+  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
+  colorbar.}
+  \label{fig:fls-beam-width}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
+  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
+  $0.1^\circ$ to $10^\circ$, with $R_w = 250$ azimuth rays. Along-track position runs horizontally
+  and slant range vertically, with near range at the bottom. Each panel is in dB relative to its
+  own peak, printed beneath its colorbar.}
+  \label{fig:ss-beam-width}
+\end{figure}
+
 \section{Default Parameters}
 \label{app:params}
 Tables \ref{tab:params}, \ref{tab:sss-params} and \ref{tab:fls-params} list the default parameters of spotlight-mode SAR, side-scan sonar and forward-looking sonar. All three baselines image the same srncars car, \texttt{obj\_id} 100715345ee54d7ae38b52b4ee9d36a3, at the pose of the srncars view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
@@ -1599,6 +1610,7 @@ The scripts read their defaults from \texttt{config.json} (Appendix \ref{app:par
 \begin{itemize}
   \item Figure \ref{fig:main-fig}: \texttt{sar\_overview\_figure.py}
   \item Figures \ref{fig:sphere-size} and \ref{fig:az-spread}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figure \ref{fig:ss-az-rays}: \texttt{sss\_paper\_figures.py}
   \item Figures \ref{fig:fls-beam-width} and \ref{fig:ss-beam-width}: \texttt{fls\_paper\_figures.py} and \texttt{sss\_paper\_figures.py}
   \item Figure \ref{fig:validation}: \texttt{sar\_validation.py}
   \item Figures \ref{fig:fsbw}--\ref{fig:scatter-closeup}: \texttt{fsbw\_and\_raydensity\_exp.py}, which saves each render's signal, scatters, and images to \texttt{figures/fsbw\_and\_raydensity/}, and with \texttt{-replot} redraws the figures from them without rendering
