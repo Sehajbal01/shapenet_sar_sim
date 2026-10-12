@@ -4,7 +4,7 @@ sonar image as the spatial bandwidth falls, and as the ray grid densifies, plus 
 the SAR energy-range scatter under the signal it is interposummed into.
 
   fsbw_and_raydensity_fsbw.png      B_s falling over BW_VALS, F_s = 2 B_s, baseline rays
-  fsbw_and_raydensity_rays.png      rays per side x RAY_SCALES, at B_s = RAY_BW
+  fsbw_and_raydensity_rays.png      SAR signal only, rays per side x RAY_SCALES[:RAY_COLS], at B_s = RAY_BW
   fsbw_and_raydensity_scatters.png  (a) the middle pulse's energy-range scatter, (b) its zoom
                                     under the signal at CLOSEUP_BWS, (c) the sparsest grid's
                                     scatters under the signal of every grid at RAY_BW
@@ -37,10 +37,11 @@ from render_images import _find_split_dir, sar_render_image
 from sar_paper_figures import SAR_PAPER_BASELINE
 
 
-BW_VALS     = (512, 256, 128, 64, 32)  # falling, so the panels clear up left to right
+BW_VALS     = (512, 256, 128, 64)      # falling, so the panels clear up left to right
 RAY_BW      = 64                       # the ray sweep's B_s; the track ends' sparse rows still ring here
-RAY_SCALES  = (0.25, 0.5, 1, 2, 4)     # rays per side, relative to each baseline
-CLOSEUP_BWS = (512, 128, 32)           # signals drawn over the scatter zoom
+RAY_SCALES  = (0.125, 0.25, 0.5, 1, 2, 4)  # rays per side, relative to each baseline
+RAY_COLS    = 4                        # columns drawn; 2x and 4x only feed the paper's SAR image numbers
+CLOSEUP_BWS = (512, 128, 64)           # signals drawn over the scatter zoom
 ZOOM        = (-0.66, -0.625)          # seafloor short of the car, as range - sensor distance
 RAY_ZOOM    = (-0.70, -0.47)           # wider, to hold several of the sparsest grid's clusters
 SAR_OVERRIDES = dict(snr_db=None)
@@ -63,7 +64,7 @@ def _columns():
         n_az  = round(scale * FLS_PAPER_BASELINE['num_ray_width'])
         n_el  = round(scale * FLS_PAPER_BASELINE['num_ray_height'])
         bw = dict(spatial_bw=RAY_BW, spatial_fs=2 * RAY_BW)
-        rays.append(('rays%g' % scale, r'$%g\times$ rays' % scale,
+        rays.append(('rays%g' % scale, r'$%d \times %d$ rays' % (n_sar, n_sar),
                      dict(bw, n_ray_width=n_sar, n_ray_height=n_sar),
                      dict(bw, num_ray_width=n_az, num_ray_height=n_el)))
     return dict(fsbw=fsbw, rays=rays)
@@ -150,34 +151,38 @@ def _colorbar_label(display):
     return 'dB re peak' if display['compression'] == 'db' else 'amplitude / peak'
 
 
-def save_sweep_figure(sweep, cols, path):
-    '''Rows: SAR signal, SAR image, FLS image. One column per sweep value.'''
+def save_sweep_figure(sweep, cols, path, images=True):
+    '''Rows: SAR signal, SAR image, FLS image, or the signal alone. One column per sweep value.'''
     n = len(cols)
     sar_display, fls_display = _display(SAR_PAPER_BASELINE), _display(FLS_PAPER_BASELINE)
     with plt.rc_context({'font.size': FONT_SIZE}):
-        fig, axes = plt.subplots(3, n, figsize=(1.75 * n + 0.9, 5.6), squeeze=False,
-                                 layout='constrained')
+        fig, axes = plt.subplots(3 if images else 1, n, figsize=(1.75 * n + 0.9, 5.6 if images else 2.1),
+                                 squeeze=False, layout='constrained')
         for j, (name, title, _, _) in enumerate(cols):
-            sar, fls = load(sweep, name, 'sar'), load(sweep, name, 'fls')
-            w, h = sar['plane']
+            sar = load(sweep, name, 'sar')
             _draw_signal(axes[0, j], sar)
+            axes[0, j].set_title(title, fontsize=FONT_SIZE)
+            axes[0, j].set_xlabel(r'range $-$ $d$ ($\ell$)')
+            if j > 0:
+                for ax in axes[:, j]:
+                    ax.set_yticklabels([])
+            if not images:
+                continue
+            fls = load(sweep, name, 'fls')
+            w, h = sar['plane']
             sar_im = _draw_image(axes[1, j], sar['image'], (-w / 2, w / 2, -h / 2, h / 2), 'upper',
                                  sar_display)
             a, r = fls['ping_azimuths'], fls['row_ranges']
             fls_im = _draw_image(axes[2, j], fls['image'], (a[0], a[-1], r[-1], r[0]), 'upper',
                                  fls_display)
-            axes[0, j].set_title(title, fontsize=FONT_SIZE)
-            axes[0, j].set_xlabel(r'range $-$ $d$ ($\ell$)')
             axes[1, j].set_xlabel(r'cross-range ($\ell$)')
             axes[2, j].set_xlabel('azimuth (deg)')
-            if j > 0:
-                for ax in axes[:, j]:
-                    ax.set_yticklabels([])
         axes[0, 0].set_ylabel('SAR\n' + r'$|s(z)|$ / peak')
-        axes[1, 0].set_ylabel('SAR\n' + r'range ($\ell$)')
-        axes[2, 0].set_ylabel('FLS\n' + r'range ($\ell$)')
-        for row, im, display in ((1, sar_im, sar_display), (2, fls_im, fls_display)):
-            fig.colorbar(im, ax=axes[row, :], label=_colorbar_label(display), shrink=0.9, pad=0.01)
+        if images:
+            axes[1, 0].set_ylabel('SAR\n' + r'range ($\ell$)')
+            axes[2, 0].set_ylabel('FLS\n' + r'range ($\ell$)')
+            for row, im, display in ((1, sar_im, sar_display), (2, fls_im, fls_display)):
+                fig.colorbar(im, ax=axes[row, :], label=_colorbar_label(display), shrink=0.9, pad=0.01)
         fig.savefig(path, dpi=300)
         plt.close(fig)
     print('Saved: %s' % path)
@@ -202,7 +207,7 @@ def _draw_zoom(ax, sar, signals, labels, zoom, scatter_label):
 
 
 def save_scatter_figure(cols, path):
-    fsbw, rays = cols['fsbw'], cols['rays']
+    fsbw, rays = cols['fsbw'], cols['rays'][:RAY_COLS]
     base = load('fsbw', fsbw[0][0], 'sar')
     d, h = float(base['sensor_distance']), float(base['half_window'])
     with plt.rc_context({'font.size': FONT_SIZE}):
@@ -231,8 +236,8 @@ def save_scatter_figure(cols, path):
 
         # (c) the sparsest grid under the ray sweep's signals, all at RAY_BW
         sparse = load('rays', rays[0][0], 'sar')
-        _draw_zoom(axes[2], sparse, [load('rays', name, 'sar') for name, _, _, _ in rays],
-                   [title for _, title, _, _ in rays], RAY_ZOOM,
+        grids = [load('rays', name, 'sar') for name, _, _, _ in rays]
+        _draw_zoom(axes[2], sparse, grids, [r'$%d^2$ rays' % g['n_ray_width'] for g in grids], RAY_ZOOM,
                    r'$R_w = %d$' % sparse['n_ray_width'])
 
         for ax, letter in zip(axes, 'abc'):
@@ -252,8 +257,9 @@ def main():
     columns = _columns()
     if not args.replot:
         render_all(columns)
-    for sweep, cols in columns.items():
-        save_sweep_figure(sweep, cols, os.path.join(OUTPUT_DIR, 'fsbw_and_raydensity_%s.png' % sweep))
+    save_sweep_figure('fsbw', columns['fsbw'], os.path.join(OUTPUT_DIR, 'fsbw_and_raydensity_fsbw.png'))
+    save_sweep_figure('rays', columns['rays'][:RAY_COLS],
+                      os.path.join(OUTPUT_DIR, 'fsbw_and_raydensity_rays.png'), images=False)
     save_scatter_figure(columns, os.path.join(OUTPUT_DIR, 'fsbw_and_raydensity_scatters.png'))
 
 

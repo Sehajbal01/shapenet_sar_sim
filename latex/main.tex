@@ -702,10 +702,11 @@ and interposummation low-pass filters it with a pulse whose amplitude full width
 $0.62/B_s$ for the default Gaussian waveform. A pulse that is wide against the range spacing of the
 returns gives a smooth estimate of the continuous response. A narrow one resolves the returns, and
 the gaps between them show up as nulls. In Figure \ref{fig:fsbw}, we lower the spatial bandwidth from
-$B_s = 512$ to $32$ with $F_s = 2B_s$ at the default ray grids. In Figure \ref{fig:raydensity}, we
-hold $B_s = 64$ and scale the rays per side of both the SAR grid and the forward-looking sonar fan
-from $0.25$ to $4$ times their defaults. Each column shows the interposummed signal of the middle SAR
-pulse, the SAR image, and the forward-looking sonar image. Both modalities image the same car from
+$B_s = 512$ to $64$ with $F_s = 2B_s$ at the default ray grids. Each column shows the interposummed
+signal of the middle SAR pulse, the SAR image, and the forward-looking sonar image. We then hold
+$B_s = 64$ and scale the rays per side of both the SAR grid and the forward-looking sonar fan from
+$0.125$ to $4$ times their defaults. Figure \ref{fig:raydensity} shows the signal of the middle SAR
+pulse from $0.125$ to $1$ times the default rays, where it is already smooth. Both modalities image the same car from
 the same pose, \texttt{pose\_num} 000000 at an elevation of $40.6^\circ$, the SAR sensor at the
 pose's distance of $1.3\ell$ and the sonar at $7.5\ell$. All other settings are the defaults of
 Tables \ref{tab:params} and \ref{tab:fls-params}, except that the SAR receiver noise is turned off
@@ -716,7 +717,7 @@ so that its floor does not hide the artifacts.
   \centering
   \includegraphics[width=\fulllength]{figs/fsbw_and_raydensity_fsbw.png}
   \end{adjustwidth}
-  \caption{Lowering the spatial bandwidth $B_s$ from $512$ to $32$, with $F_s = 2B_s$ and the
+  \caption{Lowering the spatial bandwidth $B_s$ from $512$ to $64$, with $F_s = 2B_s$ and the
   default rays. Top: interposummed signal magnitude of the middle SAR pulse against range from the
   sensor distance $d$, normalized to its peak, printed in each panel. Middle: spotlight-mode SAR
   image, normalized to its peak. Bottom: forward-looking sonar image, in dB relative to its peak.
@@ -729,9 +730,11 @@ so that its floor does not hide the artifacts.
   \centering
   \includegraphics[width=\fulllength]{figs/fsbw_and_raydensity_rays.png}
   \end{adjustwidth}
-  \caption{Scaling the rays per side from $0.25$ to $4$ times the defaults at $B_s = 64$,
-  $F_s = 128$: $52$ to $832$ rays per side for SAR, and $88 \times 138$ to $1400 \times 2200$ for the
-  forward-looking sonar fan. Rows as in Figure \ref{fig:fsbw}.}
+  \caption{Scaling the SAR ray grid from $0.125$ to $1$ times the default $208 \times 208$ rays at
+  $B_s = 64$, $F_s = 128$. Interposummed signal magnitude of the middle SAR pulse against range from
+  the sensor distance $d$, normalized to its peak, printed in each panel. Each column has the same
+  ratio of cluster spacing to pulse width as the same column of Figure \ref{fig:fsbw}. SAR receiver
+  noise is off.}
   \label{fig:raydensity}
 \end{figure}
 
@@ -744,12 +747,11 @@ pulse at elevation $\theta$, which is $0.0068\ell$ at the $40.6^\circ$ elevation
 No bandwidth separates the returns within a cluster, since they share a range. Interposummation does,
 however, resolve the gaps between clusters once the pulse is narrower than their spacing (Figure
 \ref{fig:scatter-closeup}b). Over the seafloor window of Figure \ref{fig:scatter-closeup}b, the
-ratio of the largest to the smallest signal sample is $0.0$, $0.0$, $5.6$, and $40$~dB at
-$B_s = 32$, $64$, $128$, and $256$, whose pulses are $0.019$, $0.0097$, $0.0048$, and $0.0024\ell$
-wide. At $B_s = 512$, the signal falls to zero between clusters, and its seafloor becomes a comb with
+ratio of the largest to the smallest signal sample is $0.0$, $5.6$, and $40$~dB at
+$B_s = 64$, $128$, and $256$, whose pulses are $0.0097$, $0.0048$, and $0.0024\ell$ wide. At $B_s = 512$, the signal falls to zero between clusters, and its seafloor becomes a comb with
 one peak per row of the ray grid.
 
-The images follow their signals. At $B_s = 32$ and $64$, the SAR image shows the outline of the car
+The images follow their signals. At $B_s = 64$, the SAR image shows the outline of the car
 over a dark seafloor. At $B_s = 128$ the outline breaks up, and at $256$ and $512$ the car is lost in
 grain. The forward-looking sonar fails the same way along its
 elevation fan. Its seafloor returns spread apart in range as the fan meets the seafloor at ever
@@ -767,8 +769,8 @@ ping, and a row that falls between them is dim along the whole track.
   \caption{(\textbf{a}) Energy-range scatter of the middle SAR pulse at the default
   $208 \times 208$ rays, normalized to its peak, with the windows of (\textbf{b},\textbf{c}) shaded.
   (\textbf{b}) The seafloor returns of (\textbf{a}) as stems, each a cluster of $R_w = 208$
-  coincident returns from one row of the ray grid, under the signal at $B_s = 512$, $128$, and $32$.
-  (\textbf{c}) The seafloor returns at $0.25\times$ rays ($R_w = 52$) under the signal of each ray
+  coincident returns from one row of the ray grid, under the signal at $B_s = 512$, $128$, and $64$.
+  (\textbf{c}) The seafloor returns at $0.125\times$ rays ($R_w = 26$) under the signal of each ray
   grid of Figure \ref{fig:raydensity}, all at $B_s = 64$. The clusters of the denser grids fall
   between the stems drawn. Each signal is normalized to its peak in the window.}
   \label{fig:scatter-closeup}
@@ -776,10 +778,11 @@ ping, and a row that falls between them is dim along the whole track.
 
 Raising the ray density closes the gaps from the other side: it moves the clusters together
 instead of widening the pulse. Doubling the rays per side halves $\Delta$, and with it the cluster
-spacing, so it has the same effect as halving $B_s$. At $B_s = 64$, the seafloor ripple of the
-middle SAR pulse is $41$~dB at $0.25\times$ rays and $5.7$~dB at $0.5\times$, against $40$ and
-$5.6$~dB at $B_s = 256$ and $128$ with the default rays (Figure \ref{fig:scatter-closeup}c shows the
-signals). On the seafloor on the far side of the car, the standard deviation of the forward-looking sonar image is
+spacing, so it has the same effect as halving $B_s$. At $B_s = 64$, the signal of the middle SAR
+pulse falls to zero between clusters at $0.125\times$ rays, as it does at $B_s = 512$, and its
+seafloor ripple is $41$~dB at $0.25\times$ rays and $5.7$~dB at $0.5\times$, against $40$ and
+$5.6$~dB at $B_s = 256$ and $128$ with the default rays (Figures \ref{fig:raydensity} and
+\ref{fig:scatter-closeup}c). On the seafloor on the far side of the car, the standard deviation of the forward-looking sonar image is
 $9.6$ and $1.6$~dB at $0.25\times$ and $0.5\times$ rays, against $8.7$ and $1.5$~dB at
 $B_s = 256$ and $128$ with the default fan. From $1\times$ rays on, both
 signals are smooth, and the sonar's rings are gone.
