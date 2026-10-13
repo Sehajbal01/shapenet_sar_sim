@@ -1677,18 +1677,23 @@ $\alpha$                  & --                     & $5$ \\
 
 \section{Reproducibility}
 \label{app:repro}
-The experimental figures and tables are produced by scripts in the code repository, each run with no arguments.
-The scripts read their defaults from \texttt{config.json} (Appendix \ref{app:params}), whose \texttt{srn\_cars\_dir} points to the srncars dataset \cite{srn}, and the conda environment is given in \texttt{environment.yml}. For example:
+The simulator is the \texttt{sarsonar} Python package in the code repository, installed from a clone with \texttt{pip install -e ".[experiments]"}.
+The experimental figures and tables are produced by the scripts in its \texttt{experiments/} folder, each run from that folder with no arguments.
+The scripts read their defaults from \texttt{experiments/config.json} (Appendix \ref{app:params}), whose \texttt{srn\_cars\_dir}, \texttt{shapenet\_cars\_dir} and \texttt{cvdomes\_dir} point to the srncars dataset \cite{srn}, the ShapeNet \cite{shapenet} car meshes and the CVDomes \cite{cvdomes} models, and write to \texttt{experiments/figures/}:
 \begin{itemize}
+  \item Figure \ref{fig:modality-comparison}: \texttt{modality\_comparison.py}
   \item Figure \ref{fig:main-fig}: \texttt{sar\_overview\_figure.py}
-  \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
-  \item Figure \ref{fig:ss-az-rays}: \texttt{sss\_paper\_figures.py}
-  \item Figures \ref{fig:fls-beam-width} and \ref{fig:ss-beam-width}: \texttt{fls\_paper\_figures.py} and \texttt{sss\_paper\_figures.py}
-  \item Figure \ref{fig:validation}: \texttt{sar\_validation.py}
-  \item Figures \ref{fig:fsbw}--\ref{fig:scatter-closeup}: \texttt{fsbw\_and\_raydensity\_exp.py}, which saves each render's signal, scatters, and images to \texttt{figures/fsbw\_and\_raydensity/}, and with \texttt{-replot} redraws the figures from them without rendering
+  \item Figure \ref{fig:effective-windows}: \texttt{window\_analysis.py}
   \item Figure \ref{fig:materials}: \texttt{convert\_cvdomes.py}, then \texttt{render\_cvdomes.py}
+  \item Figure \ref{fig:validation} and the validation numbers: \texttt{sar\_validation.py}
+  \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figures \ref{fig:fsbw}--\ref{fig:scatter-closeup}: \texttt{fsbw\_and\_raydensity\_exp.py}
   \item Table \ref{tab:compute-time}: \texttt{compute\_time\_experiment.py}
+  \item Figures \ref{fig:ss-az-rays} and \ref{fig:ss-beam-width}: \texttt{sss\_paper\_figures.py}
+  \item Figures \ref{fig:fls-range-density} and \ref{fig:fls-beam-width}: \texttt{fls\_paper\_figures.py}
+  \item Figure \ref{fig:waveform}: \texttt{waveform\_figure.py}
 \end{itemize}
+The sweep scripts \texttt{sar\_paper\_figures.py}, \texttt{sss\_paper\_figures.py} and \texttt{fls\_paper\_figures.py} take sweep names to render only those, and with \texttt{fsbw\_and\_raydensity\_exp.py} and \texttt{waveform\_figure.py} take \texttt{-replot} to redraw a figure from the outputs saved on an earlier run without rendering again.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{adjustwidth}{-\extralength}{0cm}
