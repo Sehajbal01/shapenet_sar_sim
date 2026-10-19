@@ -22,9 +22,9 @@
     - ask professor for how the data is made again...
 
 - Sehaj todo list
-    - make an updates slide show
-    - find capability to plot signal for RaySAR & CV Domes
-        - find any simulation parameters that might affect the signal
+    DONE - make an updates slide show
+    DONE - find capability to plot signal for RaySAR & CV Domes
+        DONE - find any simulation parameters that might affect the signal
     - Compare signal under various conditions
         - compare the frequency domain of the signals
         - signal power (add parameter to accumulate_scatters_rays to select total transmit energy)

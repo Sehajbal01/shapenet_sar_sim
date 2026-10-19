@@ -1,0 +1,44 @@
+section: abstract:
+- raysar does in fact simulate a signal, just not using waveforms
+- we need an experiment that calculates radar cross section, plot it over many az/el values in polar coordinates. theta=az, r = 90-el
+- we don't model different noise types. should we?
+
+section: intro:
+- throughout the paper, we can't say raysar or cv-domes don't simulate a signal. they do infact simulate a signal
+- also to the best of our knowledge we are the only publicly available simulator that allows arbitrary waveforms
+- we allow for as many bounces as we want, no need to specify we stick to 2. that info is only needed in experiments
+- figure 1 (examples of generated images) is too big, it occupies a whole page.
+- when talking about figure 2 (example of rgb, sar, depth map, energy map, scatters, signal) in the text, we don't need detailed descriptions. our goal is to quickly grab reader attention. we only need to say we showcase some examples of images produced by the simulator. techincal details and simulation parameters are for other sections of the paper.
+- make figure 3 (process for simulating received signals) the first plot seen in the paper. have an accompanying paragraph that talks through the process at a high level. This should be before we talk about the main contributions of the paper.
+
+section: method:
+- we don't need table 1 in the methods section. we can make a short subsection in the appendix about how r a i d s values are automatically normalized, with the table there.
+- remove the sentence "The size of the ray grid only needs to be big enough to cover the ground space desired for imaging."
+- put discussion of r a i d s into a material properties subsection
+- put discussion of returned energy into a returned energy subsection
+- "m I , m D are multipliers that conserve the scattered energy." should be "m I , m D are multipliers that conserve the law of conservation of energy for scattered energy."
+- clarify that a_r e_r a_l e_l are relative to the surface normal (if it has not already been clarified)
+- "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors" should be "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors that are integrated over" 
+- after the sentence "We only consider two-bounce returns, so each ray contributes at most two returns." we should also say how we only consider additional bounces from reflectivity, not scattering
+- put discussion of signal creation into a dedicated signal interposummation subsection
+- follow "We name the processing in (23) interposummation" with "it is different from standard interpolation because it is summing together multiple returns in addition to interpolation" or something like that
+- the subsection "units and scale" should be moved to the experiments section. it is out of place here.
+- remove this entire paragraph in the "units and scale" subsection that start with "The bandwidth corresponds to a high-resolution radar, and"
+- change s to s(n) in the sentence "adds the return weights as field amplitudes, and"
+- the sentence "No antenna gain, transmit power or receiver noise figure is modeled, so signal values are relative to the transmitted energy rather than calibrated in watts." is not correct, we utilize beam width which in sonar which is an antenna pattern
+- remove this clause after the comma "and the range sidelobes of the waveform shape the final image."
+- ", left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression." is completely wrong. the gaussian pulse window has no side lobes in the range domain, but it is costly in the frequency domain as it has much energy outside the spatial bandwidth, despite satisfying full width half max at the targetted +- bw/2. all the other pulses have a good limitation in the frequency domain but pay for it with range domain side lobes. lets also use "spatial domain" instead of "range domain"
+subsection: imaging modalities
+- get rid of the introductory paragraph. It is redundant and useless information.
+- we should have a dedicated paragraph for sss and fls just like spotlight mode sar.
+
+section: experiments:
+- delete and redo the introductory paragraph, it is outdated
+
+subsection: per-triangle materials
+- do not mention gamma.
+- the explanation of how r a i d s are selected and the creation of the .mp script is way too lengthy. simplify it to just how we took the various material descriptors (tires, glass, etc.) from the CV domes material labels and created our own material properties as we saw fit.
+- make a table in the appendix that maps the cv domes object properties to r a i d s values
+
+subsection: Validation Against Closed-Form References
+- get rid of sentence that starts with "Every target is imaged as a compact peak within", it has too much useless info
