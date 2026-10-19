@@ -11,7 +11,8 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
-from signal_simulation import interpolate_signal, apply_snr, load_mesh, generate_trajectory
+from signal_simulation import interpolate_signal, load_mesh, generate_trajectory
+from noise import apply_scatter_noise, apply_signal_noise
 from accumulate_scatters import accumulate_scatters
 
 from imaging_algorithms import projected_CBP, strip_map_imaging
@@ -30,6 +31,9 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
                         debug_gif_suffix = None,
                         return_pulses = False,
                         snr_db = None,
+                        noise_type = 'awgn',
+                        speckle_correlation_length = None,
+                        speckle_strength = 1.0,
                         wavelength = None,
                         use_sig_magnitude = True,
                         verbose = False,
@@ -82,6 +86,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         octree (Octree): a previously built octree for the mesh, built in the accumulator when
             None. Depends only on the mesh, so it is built once alongside preloaded_mesh
         return_pulses (bool): also return the per-pulse intermediates, as (image, pulses)
+        noise_type (str or sequence): 'none', 'awgn', 'speckle', or a list of them; see noise.py.
+            awgn is skipped while snr_db is None
+        speckle_correlation_length (float): speckle surface patch size, see noise.speckle_phase
+        speckle_strength (float): speckle phase spread, 1 = fully developed, see noise.speckle_phase
         remaining arguments: as documented on render_random_image
 
     outputs:
@@ -128,7 +136,7 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
 
     # (T,P,R)   (T,P,R)
     torch.cuda.empty_cache()
-    all_ranges, all_energies, debugging_maps = accumulate_scatters(
+    all_ranges, all_energies, debugging_maps, all_positions = accumulate_scatters(
         mesh, normals, material_properties, true_trajectory,
         wavelength     = wavelength,
         debug_gif      = debug_gif or return_pulses,
@@ -142,7 +150,10 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
         num_bounce = num_bounce,
         second_bounce_batch_size = 2**9,
         octree = octree,
+        return_positions = True,
     )
+    all_energies = apply_scatter_noise(all_energies, all_positions, noise_type,
+                                       speckle_correlation_length, speckle_strength)
     if verbose:
         print('done.')
 
@@ -173,10 +184,8 @@ def sar_render_image(   file_name, num_pulses, poses, az_spread,
     if verbose:
         print('done.')
 
-    # apply SNR
-    if snr_db is not None:
-        T,P,Z = signals.shape
-        signals = apply_snr(signals.reshape(T,P*Z), snr_db).reshape(T,P,Z)
+    # receiver noise
+    signals = apply_signal_noise(signals, noise_type, snr_db)
 
     # convert to signal magnitude if desired
     complex_signals = signals
@@ -300,6 +309,9 @@ def render_random_image(
         spatial_bw = 64,
         waveform = 'sinc',
         snr_db = None,
+        noise_type = 'awgn',
+        speckle_correlation_length = None,
+        speckle_strength = 1.0,
         wavelength = None,
         use_sig_magnitude=True,
         suffix = None,
@@ -403,6 +415,9 @@ def render_random_image(
                             spatial_fs = spatial_fs,
                             waveform = waveform,
                             snr_db = snr_db,
+                            noise_type = noise_type,
+                            speckle_correlation_length = speckle_correlation_length,
+                            speckle_strength = speckle_strength,
                             wavelength=wavelength,
                             use_sig_magnitude=use_sig_magnitude,
 

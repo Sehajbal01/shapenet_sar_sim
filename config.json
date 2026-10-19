@@ -31,6 +31,13 @@
         "spatial_fs": 60,
         "waveform": "gaussian",
         "use_sig_magnitude": true,
+        // "none", "awgn", "speckle", or a list like ["speckle", "awgn"]; see noise.py. awgn uses snr_db
+        "noise_type": "none",
+        "snr_db": null,
+        // speckle patch size: above the ray hit spacing, below the resolution cell
+        "speckle_correlation_length": 0.01,
+        // speckle phase spread: 1 = fully developed, lower leaves part of the return coherent
+        "speckle_strength": 1.0,
         "compression": "db",
         "db_floor": -60.0,
         "asinh_k_ratio": 0.005,
@@ -53,6 +60,12 @@
         "waveform": "gaussian",
         "use_sig_magnitude": true,
         "snr_db": 50,
+        // "none", "awgn", "speckle", or a list like ["speckle", "awgn"]; see noise.py. awgn uses snr_db
+        "noise_type": "awgn",
+        // speckle patch size: above the ray hit spacing, below the resolution cell
+        "speckle_correlation_length": 0.01,
+        // speckle phase spread: 1 = fully developed, lower leaves part of the return coherent
+        "speckle_strength": 1.0,
         "image_width": 128,
         "image_height": 128,
         "image_plane_width": 1.2,
@@ -105,6 +118,13 @@
         "spatial_fs": 64,
         "waveform": "gaussian",
         "use_sig_magnitude": true,
+        // "none", "awgn", "speckle", or a list like ["speckle", "awgn"]; see noise.py. awgn uses snr_db
+        "noise_type": "none",
+        "snr_db": null,
+        // speckle patch size: above the ray hit spacing, below the resolution cell
+        "speckle_correlation_length": 0.01,
+        // speckle phase spread: 1 = fully developed, lower leaves part of the return coherent
+        "speckle_strength": 1.0,
         "compression": "db",
         "db_floor": -60.0,
         "asinh_k_ratio": 0.005,

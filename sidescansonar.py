@@ -15,6 +15,7 @@ import torch
 from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import extract_pose_info
 from signal_simulation import interpolate_signal, load_mesh
+from noise import apply_scatter_noise, apply_signal_noise
 from accumulate_scatters import accumulate_scatters_side_scan, centered_linspace
 from signal_visualization import signal_gif, signal_column_image
 from imaging_algorithms import to_db_uint8, to_asinh, compute_dataset_reference
@@ -91,6 +92,10 @@ def side_scan_sonar_image(
     spatial_fs = 64,
     waveform = 'sinc',
     use_sig_magnitude = True,
+    noise_type = 'awgn',
+    snr_db = None,
+    speckle_correlation_length = None,
+    speckle_strength = 1.0,
     debug_gif = False,
     debug_columns = False,
     debug_gif_suffix = None,
@@ -149,7 +154,7 @@ def side_scan_sonar_image(
     fan_elevation_fov_deg = elevation_fov_deg
 
     # use accumulate_scatters to ray trace on the object for each camera matrix
-    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, debugging_maps = accumulate_scatters_side_scan(
+    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, debugging_maps, scatter_positions = accumulate_scatters_side_scan(
         object_mesh, face_normals, material_properties,
         poses.unsqueeze(0),                      # (1,P,4,4), one scene
         wavelength     = wavelength,
@@ -163,7 +168,10 @@ def side_scan_sonar_image(
         water_absorption = water_absorption,
         debug_gif      = debug_gif,
         octree         = octree,
+        return_positions = True,
     )  # list[T][P] of (R',) each
+    scatter_energies = apply_scatter_noise(scatter_energies, scatter_positions, noise_type,
+                                           speckle_correlation_length, speckle_strength)
 
     # two-way beam pattern: transmit at the launch azimuth, receive at the arrival azimuth
     scatter_energies = [
@@ -201,6 +209,9 @@ def side_scan_sonar_image(
     signals  = torch.stack(signals)   # (T,P,Z)
     sample_z = torch.stack(sample_z)  # (T,P,Z)
     T = signals.shape[0]
+
+    # receiver noise, ahead of the time varying gain that amplifies it with range
+    signals = apply_signal_noise(signals, noise_type, snr_db)
 
     # time varying gain: a receiver ramp of R^n against the seafloor's fall with range. Absolute
     # rather than referenced to a range, so it rescales the image as well as tilting it. n=0 turns it off.
@@ -307,6 +318,12 @@ def render_side_scan_image(
         waveform = 'sinc',
         use_sig_magnitude = True,
 
+        # noise, see noise.py
+        noise_type = 'awgn',
+        snr_db = None,
+        speckle_correlation_length = None,
+        speckle_strength = 1.0,
+
         # debug
         debug_gif = False,
         debug_columns = False,
@@ -367,6 +384,10 @@ def render_side_scan_image(
             False turns the spreading loss off, which is useful for telling how much of the
             near-range dominance is spreading and how much is geometry
         water_absorption (float): two-way absorption in nepers per unit length, 0 = off
+        noise_type (str or sequence): 'none', 'awgn', 'speckle', or a list of them; see noise.py
+        snr_db (float): awgn SNR, applied ahead of the tvg; None skips the awgn
+        speckle_correlation_length (float): speckle surface patch size, see noise.speckle_phase
+        speckle_strength (float): speckle phase spread, 1 = fully developed, see noise.speckle_phase
         tvg_exponent (float): time varying gain, a receiver ramp of (R/R_ref)^n applied per
             range sample against the seafloor's fall with range, referenced to the window
             center so the target's own level is unchanged. 0 = off
@@ -476,6 +497,10 @@ def render_side_scan_image(
         spatial_fs = spatial_fs,
         waveform = waveform,
         use_sig_magnitude = use_sig_magnitude,
+        noise_type = noise_type,
+        snr_db = snr_db,
+        speckle_correlation_length = speckle_correlation_length,
+        speckle_strength = speckle_strength,
         debug_gif = debug_gif,
         debug_columns = debug_columns,
         debug_gif_suffix = suffix,

@@ -513,6 +513,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
                         surface_bias = 1e-3,
                         debug_gif = False,
                         octree = None,
+                        return_positions = False,
                     ):
     '''
     returns the energy and range for a bunch of rays for each pulse
@@ -535,10 +536,13 @@ def accumulate_scatters(mesh, face_normals, material_properties,
         octree (Octree): a previously built octree for this mesh, built here when None. The
             octree depends only on the mesh, so a caller rendering many poses of one object
             builds it once and passes it back in instead of paying the rebuild every call
+        return_positions (bool): also return each scatter's world position, as a last output
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
         energy (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
+        positions (T,)[P,][R',3]: list of lists of each scatter's world position; only with
+            return_positions, after debugging_maps
         debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None
     '''
     device = trajectory.device
@@ -563,9 +567,11 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
     scatter_ranges = []
     scatter_energies = []
+    scatter_positions = []
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
+        scatter_positions.append([])
         for p in range(P):
 
             t_setup_start = sync_time()
@@ -592,7 +598,7 @@ def accumulate_scatters(mesh, face_normals, material_properties,
 
             # the rays are spread across the sensor plane, so the sensor is not where they
             # start -- it has to be named explicitly for the planar line of sight to be right
-            ranges_p, energies_p, _, _, first_bounce = accumulate_scatters_from_rays(
+            ranges_p, energies_p, positions_p, _, first_bounce = accumulate_scatters_from_rays(
                 mesh, face_normals, material_properties,
                 ray_origins, ray_directions,
                 sensor_positions = trajectory[t, p],
@@ -611,6 +617,8 @@ def accumulate_scatters(mesh, face_normals, material_properties,
             # aperture.
             scatter_ranges[t].append(ranges_p)
             scatter_energies[t].append(energies_p/n_ray_width/n_ray_height)
+            if return_positions:
+                scatter_positions[t].append(positions_p)
 
             if first_bounce is not None:
                 debugging_maps[(t, p)] = {
@@ -621,6 +629,8 @@ def accumulate_scatters(mesh, face_normals, material_properties,
     _print_stats('accumulate_scatters', stats,
                  sync_time() - t_overall_start, t_octree_build, t_setup_total)
 
+    if return_positions:
+        return scatter_ranges, scatter_energies, debugging_maps if debug_gif else None, scatter_positions
     return scatter_ranges, scatter_energies, debugging_maps if debug_gif else None
     #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse), dict (t,p)->(H,W) or None
 
@@ -635,6 +645,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
                                     surface_bias = 1e-3,
                                     debug_gif = False,
                                     octree = None,
+                                    return_positions = False,
                                 ):
     '''
     Perspective wrapper around accumulate_scatters_from_rays: the sensor is a *point* rather
@@ -659,6 +670,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
         octree (Octree): a previously built octree for this mesh, built here when None. The
             octree depends only on the mesh, so a caller rendering many poses of one object
             builds it once and passes it back in instead of paying the rebuild every call
+        return_positions (bool): also return each scatter's world position, as a last output
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only).
@@ -672,6 +684,8 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
         arrival_azimuth (T,)[P,][R']: like azimuth, but of the direction from the sensor to the
             scatter, i.e. where the receiver hears it from. Equal to azimuth on a first bounce;
             this is the receive beam pattern's angle
+        positions (T,)[P,][R',3]: list of lists of each scatter's world position; only with
+            return_positions, after debugging_maps
         debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None. The energy map
             is the raw first-bounce energy, before the spreading loss and ray-count normalization
     '''
@@ -699,11 +713,13 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
     scatter_energies = []
     scatter_azimuths = []
     scatter_arrival_azimuths = []
+    scatter_positions = []
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
         scatter_azimuths.append([])
         scatter_arrival_azimuths.append([])
+        scatter_positions.append([])
         for p in range(P):
 
             t_setup_start = sync_time()
@@ -751,6 +767,8 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
             # aperture.
             scatter_ranges[t].append(ranges_p)
             scatter_energies[t].append(energies_p/n_ray_width/n_ray_height)
+            if return_positions:
+                scatter_positions[t].append(positions_p)
             scatter_azimuths[t].append(azimuths_p)
             scatter_arrival_azimuths[t].append(arrival_azimuths_p)
 
@@ -763,8 +781,9 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
     _print_stats('accumulate_scatters_perspective', stats,
                  sync_time() - t_overall_start, t_octree_build, t_setup_total)
 
-    return (scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths,
-            debugging_maps if debug_gif else None)
+    outputs = (scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths,
+               debugging_maps if debug_gif else None)
+    return outputs + (scatter_positions,) if return_positions else outputs
     #      list[T][P] of 1-D tensors (R' hit rays, varies per pulse) x4, dict (t,p)->(H,W) or None
 
 
@@ -780,6 +799,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
                                   water_absorption = 0.0,
                                   debug_gif = False,
                                   octree = None,
+                                  return_positions = False,
                               ):
     '''
     Broadside wrapper around accumulate_scatters_from_rays: like the perspective wrapper, but
@@ -814,6 +834,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
         octree (Octree): a previously built octree for this mesh, built here when None. The
             octree depends only on the mesh, so a caller rendering many poses of one object
             builds it once and passes it back in instead of paying the rebuild every call
+        return_positions (bool): also return each scatter's world position, as a last output
 
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per ping (hit rays only).
@@ -828,6 +849,8 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
         arrival_azimuth (T,)[P,][R']: like azimuth, but of the direction from the sensor to the
             scatter, i.e. where the receiver hears it from. Equal to azimuth on a first bounce;
             this is the receive beam pattern's angle
+        positions (T,)[P,][R',3]: list of lists of each scatter's world position; only with
+            return_positions, after debugging_maps
         debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None. The energy map
             is the raw first-bounce energy, before the spreading loss and ray-count normalization
     '''
@@ -855,11 +878,13 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     scatter_energies = []
     scatter_azimuths = []
     scatter_arrival_azimuths = []
+    scatter_positions = []
     for t in range(T):
         scatter_ranges.append([])
         scatter_energies.append([])
         scatter_azimuths.append([])
         scatter_arrival_azimuths.append([])
+        scatter_positions.append([])
         for p in range(P):
 
             t_setup_start = sync_time()
@@ -914,6 +939,8 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
             # count, not the per-ping hit count, which would vary with aspect and taper the track.
             scatter_ranges[t].append(ranges_p)
             scatter_energies[t].append(energies_p/n_ray_width/n_ray_height)
+            if return_positions:
+                scatter_positions[t].append(positions_p)
             scatter_azimuths[t].append(azimuths_p)
             scatter_arrival_azimuths[t].append(arrival_azimuths_p)
 
@@ -926,8 +953,9 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     _print_stats('accumulate_scatters_side_scan', stats,
                  sync_time() - t_overall_start, t_octree_build, t_setup_total)
 
-    return (scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths,
-            debugging_maps if debug_gif else None)
+    outputs = (scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths,
+               debugging_maps if debug_gif else None)
+    return outputs + (scatter_positions,) if return_positions else outputs
     #      list[T][P] of 1-D tensors (R' hit rays, varies per ping) x4, dict (t,p)->(H,W) or None
 
 

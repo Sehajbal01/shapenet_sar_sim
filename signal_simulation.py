@@ -19,8 +19,9 @@ import math
 import time
 from utils import get_next_path, extract_pose_info, spherical_to_cartesian, generate_pose_mat, cartesian_to_spherical
 from ray_tracer_v2 import ray_trace, build_octree
-# re-exported for callers that reach it through this module rather than importing it directly
+# re-exported for callers that reach them through this module rather than importing them directly
 from accumulate_scatters import accumulate_scatters
+from noise import apply_snr
 
 
 
@@ -390,46 +391,6 @@ def resample_signal(self, signal, out_samples, dim = -1):
     return resampled_signal  # (shape_prefix, out_samples, shape_suffix)
 
 
-
-
-def apply_snr(signal, snr_db, dim=-1):
-    """
-    Apply a signal-to-noise ratio (SNR) to the input signal.
-
-    Args:
-        signal (torch.Tensor): The input signal tensor.
-        snr_db (float): The desired SNR in decibels.
-        dim (int): The dimension along which to compute the SNR.
-
-    Returns:
-        torch.Tensor: The signal with the applied SNR.
-    """
-
-    # N = Ni + Nr # real and imaginary parts are iid
-    # SNR = Ps/Pn = E[|S|^2]/E[|N|^2]
-    # E[|N|^2] = E[|S|^2]/SNR
-
-    # E[|N|^2] = E[Nr^2 + Ni^2] = 2 * E[Nr^2]
-    # E[|N|^2]/2 = E[Nr^2] = sigma^2
-    # sigma = sqrt( E[|N|^2]/2 ) = sqrt( E[|S|^2]/(2*SNR) )
-
-    # Convert SNR from dB to linear scale
-    snr_linear = 10 ** (snr_db / 10)
-
-    # Compute the signal power
-    signal_power = torch.mean(signal.abs() ** 2, dim=dim, keepdim=True)
-    noise_std_dev = torch.sqrt(signal_power / (2 * snr_linear)).cpu().numpy()
-
-    # Generate noise
-    noise = torch.tensor(
-             np.random.normal(scale=noise_std_dev, size=signal.shape) + \
-        1j * np.random.normal(scale=noise_std_dev, size=signal.shape)
-    ).to(signal.device, dtype=signal.dtype)
-
-    # Add noise to the signal
-    noisy_signal = signal + noise
-
-    return noisy_signal
 
 
 def load_mesh(  file_name,

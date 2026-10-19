@@ -31,6 +31,7 @@ import torch
 from config import SHAPENET_CARS_DIR, srn_split_dir
 from utils import extract_pose_info
 from signal_simulation import interpolate_signal, load_mesh
+from noise import apply_scatter_noise, apply_signal_noise
 from accumulate_scatters import accumulate_scatters_perspective, centered_linspace
 from sidescansonar import apply_beam_pattern
 from paper_figure_layout import panel_display
@@ -59,6 +60,10 @@ def forward_looking_sonar_image(
     spatial_fs = 64,
     waveform = 'sinc',
     use_sig_magnitude = True,
+    noise_type = 'awgn',
+    snr_db = None,
+    speckle_correlation_length = None,
+    speckle_strength = 1.0,
 
     # a previously built octree for this mesh, built inside the accumulator when None. Only
     # the mesh decides it, so a caller rendering many poses of one object builds it once
@@ -81,6 +86,10 @@ def forward_looking_sonar_image(
             image_range_swath/2 in the bottom row to sensor_distance + image_range_swath/2 in the
             top row, so moving the sensor moves the window with it
         wavelength (float): when given, scatter energies are complex and sum coherently
+        noise_type (str or sequence): 'none', 'awgn', 'speckle', or a list of them; see noise.py
+        snr_db (float): awgn SNR over all of a view's pings; None skips the awgn
+        speckle_correlation_length (float): speckle surface patch size, see noise.speckle_phase
+        speckle_strength (float): speckle phase spread, 1 = fully developed, see noise.speckle_phase
         remaining arguments: as in sidescansonar.side_scan_sonar_image
     outputs:
         images (T,H,W): the sonar image(s), H = num_range_values, W = num_pings
@@ -91,7 +100,7 @@ def forward_looking_sonar_image(
     T = sensor_positions.shape[0]
 
     # ray trace once: a single perspective view per sensor position, boresight on the origin
-    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, _ = accumulate_scatters_perspective(
+    scatter_ranges, scatter_energies, scatter_azimuths, scatter_arrival_azimuths, _, scatter_positions = accumulate_scatters_perspective(
         object_mesh, face_normals, material_properties,
         sensor_positions.reshape(T, 1, 3),       # (T,1,3), one view per sensor position
         wavelength     = wavelength,
@@ -102,7 +111,10 @@ def forward_looking_sonar_image(
         num_bounce     = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
         octree         = octree,
+        return_positions = True,
     )  # list[T][1] of (R',) each
+    scatter_energies = apply_scatter_noise(scatter_energies, scatter_positions, noise_type,
+                                           speckle_correlation_length, speckle_strength)
 
     # the range swath brackets the scene origin along the line of sight
     sensor_distance = torch.linalg.norm(sensor_positions, dim=-1).mean().item()
@@ -144,6 +156,9 @@ def forward_looking_sonar_image(
         signals.append(torch.stack(signals_t))     # (P,Z)
     signals  = torch.stack(signals)  # (T,P,Z)
     sample_z = sample_z.squeeze(0)   # (Z,) every ping shares the one window
+
+    # receiver noise
+    signals = apply_signal_noise(signals, noise_type, snr_db)
 
     if use_sig_magnitude:
         signals = signals.abs()  # project the envelope; a complex image is not displayable
@@ -202,6 +217,12 @@ def render_forward_looking_sonar_image(
         spatial_fs = 64,
         waveform = 'sinc',
         use_sig_magnitude = True,
+
+        # noise, see noise.py
+        noise_type = 'awgn',
+        snr_db = None,
+        speckle_correlation_length = None,
+        speckle_strength = 1.0,
 
         # display
         compression = 'db',
@@ -330,6 +351,10 @@ def render_forward_looking_sonar_image(
         spatial_fs = spatial_fs,
         waveform = waveform,
         use_sig_magnitude = use_sig_magnitude,
+        noise_type = noise_type,
+        snr_db = snr_db,
+        speckle_correlation_length = speckle_correlation_length,
+        speckle_strength = speckle_strength,
     )  # (T,H,W), (H,), (W,)
 
     # one set of files per sensor position, so a multi-position run keeps every one

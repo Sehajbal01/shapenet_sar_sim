@@ -87,6 +87,19 @@ def _sar_experiments():
         custom_title_strings=['SNR: %.1f dB' % s for s in snr_db_vals],
     )
 
+    # Noise model comparison — the noise-free image, then two levels each of receiver noise
+    # (AWGN on the signal) and speckle (a random surface phase per scatter, see noise.py).
+    # A speckle level is its phase spread: 1 is fully developed, 0.75 leaves part of the return coherent.
+    noise_types = ['none', 'awgn', 'awgn', 'speckle', 'speckle']
+    noise_snr_db = [None, 10.0, 0.0, None, None]
+    noise_strengths = [1.0, 0.75, 1.0, 0.75, 1.0]
+    noise_model = dict(
+        name='noise_model',
+        vary={'noise_type': noise_types, 'snr_db': noise_snr_db, 'speckle_strength': noise_strengths},
+        custom_title_strings=['No Noise', 'AWGN, SNR: 10 dB', 'AWGN, SNR: 0 dB',
+                              'Speckle, Strength: 0.75', 'Speckle, Strength: 1'],
+    )
+
     # Wavelength sweep with magnitude-only CBP — how carrier wavelength shapes the image.
     wavelength_vals = [0.01, 0.05, 0.2, 0.5, 2]
     wavelength = dict(
@@ -166,10 +179,11 @@ def _sar_experiments():
     return [
         # az_spread,
         # num_pulse,
-        n_ray,
+        # n_ray,
         # fsbw,
         # fsbw_stripmap,
         # snrdb,
+        noise_model,
         # wavelength,
         # trajectory_type,
         # az_spread_linear_stripmap,
