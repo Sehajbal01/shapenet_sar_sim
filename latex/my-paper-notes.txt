@@ -41,4 +41,63 @@ subsection: per-triangle materials
 - make a table in the appendix that maps the cv domes object properties to r a i d s values
 
 subsection: Validation Against Closed-Form References
-- get rid of sentence that starts with "Every target is imaged as a compact peak within", it has too much useless info
+- add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
+- remove this sentence "At the default Fs = 2Bs , magnitude aliasing narrows this impulse response by up to 42% relative to an analytic backprojection; at Fs ≥ 8Bs the two agree within 4%."
+- when talking about the sphere figure, mention that the azimuth spread in this sim is 90 degrees
+- move the discussion about the plate to before the discussion about the sphere
+- in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
+- the flat plat results look wrong. rcs vs azimuth shouldn't have lobes.
+- the flate plate discussion onle needs to talk about the error from theoretical.
+
+subsection: Bandwidth and Ray Density
+- the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
+- This section has too many numerical descriptions in the text. Slim it down significantly
+
+subsection: Compute Time
+- need citation when talking about srncars, should also be "SRN Cars" thorughout the paper
+
+subsection: Side-Scan Sonar Azimuth Rays
+- remove the first sentence, it is unecessary information to the reader "The remaining experiments test the two sonar modalities"
+- effecively delete the entire text of this subsection, it has too much unecessary detail. we only need to talk about how when we want to see a beam width in sonar we need a lot of rays, otherwise it looks like multiple ghost images of the scene overlayed with each other. With our 7.5 sensor distance and a beam width of 4 degrees, the image looks smooth after 501 azimuth rays.
+- the figure description can be one short sentence: "sweeping the number of azimuth rays with a 7.5 l sensor distance and 4 degree beam width" or something like that
+- the equation is totally unecessary
+
+subsection: Sonar Ray Density Across Range
+- equation is totally unecessary
+- again, this section is way too long
+- delete the current text, and follow my outline below
+    - we render a sonar image with a long range and azimuth swath and (whatever sensor distance was for this)
+    - the rays for sonar fan out in elevation from a fixes point
+    - so the ray density that hits the ground at close ranges is more than at far ranges
+    - this makes us see strange patterns at far ranges
+    - refer the reader to the subsection on bandwidth and ray density, it is the same effect
+    - we also note that the top of the image is darker because there is less returned energy
+    - this effect is like the inverse square law, but now it's due to the physical spread of the rays
+    - we also note that at close ranges the image is black
+    - this is because the sensor is off the ground, and there is literally no returns for those ranges
+
+subsection: transmit waveform
+- add a sentence to the first paragraph about how the sonar images are in db scale and the sar images are linear scale
+- keep first paragraph, delete the rest, then follow my outline. again, this needs to be brief, but still enough detail for an academic paper
+    - in the sar images the difference between different waveforms is minimal because of the linear scaling
+    - the side lobes as observed in figure (whatever the waveform figure is) (a) are at least 6db down
+    - although the sidelobes are small, we can still see some repeating of the stronger lines in the sar images.
+    - in the sonar images we observe a vertical smearing effect
+    - this is because the beam width is narrow, but the db scaling really showcases the side lobes
+    - only gaussian waveform gives a clear sonar image because it has no side lobes
+
+section: Limitations
+- remove sentence "Carrying a polarization vector with each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without changing the ray trace."
+- the last sentence in the paragraph for "Geometrical optics" should be "The wavelength enters only through the phase of each return, so the scattering of a surface does not depend on frequency." everything after that deleted
+- in "Geometrical optics" also mention that we only consider directly reflected rays according to the R material property, whereas in real life energy would be scattered in all directions.
+- in "Geometrical optics" also mention that there is no diffraction effects, such as knife edge diffraction
+- delete the current "Ray Density" paragraph. replace it with a paragraph about "Ray density and signal bandwidth". replace it with a new paragraph that follows this outline. no equations
+    - the modeling of returns are discrete samples of a continuous surface
+    - these discrete discontinuities can be visible in the signal if the bandwidth is too high relative to the density of rays cast
+    - To get high bandwidth signals, one needs to also increase the ray density which is computationally costly
+- Remove the Materials paragraph's currenty text. replace it with something that follows this outline
+    - the material property values R A I D S and the exponenet alpha do not comprehensively capture the behaviors of radio energy
+    - the two forms of scattered energy (diffuse and directional scatter) do not perfectly model the pattern of energy scattered by real radio waves.
+
+
+
