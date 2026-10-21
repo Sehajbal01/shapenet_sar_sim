@@ -1,6 +1,6 @@
 general stuff:
 DONE - remove any reference to the outdated claim that we only consider 2 bounces. It is now actually configurable
-- ensure naming conventions throughout the paper are consistent. example: "SRN Cars" and "srncars" should just be "SRN Cars" with a reference
+DONE - ensure naming conventions throughout the paper are consistent. example: "SRN Cars" and "srncars" should just be "SRN Cars" with a reference
 
 DONE - scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
 
