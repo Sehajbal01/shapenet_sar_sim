@@ -650,8 +650,9 @@ $e^{j4\pi R/\lambda}$ to numerical precision, so the pulses integrate coherently
   \centering
   \includegraphics[width=\textwidth]{figs/sar_validation.png}
   \caption{(\textbf{a}) A single point scatterer and (\textbf{b}) a $5\times5$ grid of point
-  scatterers imaged in spotlight-mode SAR at the default parameters, in dB. (\textbf{c}) Glint pattern of a ray-traced flat plate ($L = 0.4$,
-  range $1.3$, $512 \times 512$ rays) against physical optics (\ref{eq:plate-rcs}) at two wavelengths.}
+  scatterers imaged in spotlight-mode SAR at the default parameters, in dB. (\textbf{c}) RCS of a
+  $1 \times 1$ flat plate from $80$ to $90^\circ$ elevation, simulated (solid) and physical optics
+  (dotted), each normalized to its peak.}
   \label{fig:validation}
 \end{figure}
 
@@ -669,21 +670,12 @@ its sidelobes spread symmetrically into concentric rings around the target.
 \end{figure}
 
 Where the point targets bypass the ray tracer, the flat plate tests the phase of ray-traced returns.
-We ray-trace a square plate of side $L$ and area $A = L^2$ facing the sensor, sweep the sensor
-azimuth $\phi$, and compare the squared magnitude of the coherent sum of its returns,
-$\big|\sum_k E_k e^{j2\pi z_k/\lambda}\big|^2$, with the physical-optics radar cross section
-\begin{equation}
-    \sigma(\phi) = \frac{4\pi A^2}{\lambda^2}\cos^2\phi \,
-    \sinc^2\!\bigg(\frac{2L\sin\phi}{\lambda}\bigg)
-    .
-    \label{eq:plate-rcs}
-\end{equation}
-The simulated glint pattern overlays (\ref{eq:plate-rcs}) at both wavelengths
-(Figure \ref{fig:validation}c): the $-3$~dB widths agree within $0.2\%$, the peak sidelobes within
-$0.15$~dB, and at normal incidence $\sigma$ grows as $A^{1.98}$ against $A^2$. The match holds as
-long as the ray spacing $\Delta$ samples the phase across the plate, $\Delta < \lambda/(4\sin\phi)$,
-and is up to the aperture gain $4\pi/\lambda^2$, since the simulated $\sigma$ does not depend on
-$\lambda$.
+We ray-trace a $1 \times 1$ plate on the ground, sweep the sensor elevation at azimuth $0^\circ$,
+and compare the squared magnitude of the coherent sum of its returns with the physical-optics radar
+cross section of a square plate (Figure \ref{fig:validation}c). At both wavelengths the lobes and
+nulls fall where physical optics puts them. The envelope falls faster away from normal, by about
+$0.4$~dB at $80$--$85^\circ$ elevation, since the directional scattering lobe of the material is
+narrower than that of physical optics.
 
 \subsection{Bandwidth and Ray Density}
 \label{sec:bw-ray-density}
@@ -1084,7 +1076,7 @@ currents are integrated, so edge and tip diffraction, creeping waves, and resona
 features comparable in size to $\lambda$ are not modeled, and the model holds only for targets much
 larger than the wavelength. The wavelength enters only through the phase of each return, so the
 scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:validation}
-matches physical optics in the shape of its glint because the coherent sum reproduces the phase
+matches physical optics in its lobes and nulls because the coherent sum reproduces the phase
 across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
 traced through two bounces, so higher-order multipath, such as returns that bounce three or more
 times inside a cavity, is missing. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and no

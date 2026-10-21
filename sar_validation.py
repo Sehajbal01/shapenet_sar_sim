@@ -6,8 +6,9 @@ subsection. Reuses the harnesses in validation_point_target.py (A1) and validati
                   bypassing the ray tracer: phase history vs exp(j 4 pi R / lambda), image peak
                   position over a grid of targets, and the impulse response vs the same filtered
                   backprojection evaluated without sampling
-    flat plate    a ray-traced square plate vs the physical-optics RCS: area law, glint pattern,
-                  absolute level vs wavelength, and the ray spacing that samples the phase across it
+    flat plate    a ray-traced square plate vs the physical-optics RCS: area law, absolute level vs
+                  wavelength, the ray spacing that samples the phase across it, and (panel c) the
+                  elevation sweep of a 1 x 1 plate on the ground plane from calculate_rcs.py
 
 Prints every number the paper quotes and writes figures/sar_validation_NN.png.
 
@@ -28,6 +29,7 @@ from imaging_algorithms import projected_CBP
 from render_images import pose_az_el
 from signal_simulation import make_transmit_waveform
 from utils import get_next_path
+import calculate_rcs
 import validation_plate as plate
 from validation_point_target import (
     aperture_phase_residual,
@@ -61,6 +63,13 @@ WAVEFORMS = ('sinc', 'gaussian', 'lfm', 'barker13')
 GRID_SPAN = 0.8          # 5 x 5 targets over +/- 0.4, inside the 1.2 image plane
 IRF_PLANE = 0.3          # zoomed image for impulse-response cuts
 IRF_PIXELS = 601
+
+# panel (c): a PLATE_SIDE plate on the xy plane, azimuth 0, elevation swept 0..90
+PLATE_SIDE = 1.0
+PLATE_WAVELENGTHS = (0.05, 0.025)
+PLATE_EL_STEP = 0.05
+PLATE_DB_RANGE = 40
+PLATE_EL_SHOWN = (80, 90)   # panel (c) zooms to the lobes near normal
 
 
 # --------------------------------------------------------------------------------
@@ -198,6 +207,35 @@ def run_phase_history(device='cuda'):
 
 
 # --------------------------------------------------------------------------------
+# flat plate elevation sweep
+# --------------------------------------------------------------------------------
+
+def run_plate_elevation_sweep(device='cuda'):
+    '''RCS of the panel (c) plate at each wavelength, with its physical-optics reference.'''
+    baseline = calculate_rcs.flat_plate_baseline(PLATE_SIDE, calculate_rcs.RCS_BASELINE)
+    el = np.arange(0.0, 90.0 + 1e-6, PLATE_EL_STEP)
+    az = np.zeros_like(el)
+    sigmas = [calculate_rcs.calculate_rcs(az, el, baseline={**baseline, 'wavelength': lam},
+                                          flatplate=PLATE_SIDE, device=device)
+              for lam in PLATE_WAVELENGTHS]
+    theories = [calculate_rcs.po_flat_plate(az, el, PLATE_SIDE, lam) for lam in PLATE_WAVELENGTHS]
+    # rays dx apart land dx/sin(el) apart on the plate, so the phase aliases below this elevation
+    dx = baseline['grid_width'] / (baseline['n_ray_width'] - 1)
+    alias_el = [float(np.degrees(np.arctan(2 * dx / lam))) for lam in PLATE_WAVELENGTHS]
+    return dict(el=el, sigma=sigmas, po=theories, alias_el=alias_el, baseline=baseline)
+
+
+def plate_lobe_errors(sweep, bands=((85, 90), (80, 85))):
+    '''Mean simulated - PO level at the PO lobe peaks in each elevation band, per wavelength (dB).'''
+    el, out = sweep['el'], []
+    for s, p in zip(sweep['sigma'], sweep['po']):
+        sdb, pdb = 10 * np.log10(s / s.max() + 1e-30), 10 * np.log10(p / p.max() + 1e-30)
+        peaks = np.where((p[1:-1] > p[:-2]) & (p[1:-1] > p[2:]))[0] + 1
+        out.append([float(np.mean([sdb[k] - pdb[k] for k in peaks if lo <= el[k] < hi])) for lo, hi in bands])
+    return bands, out
+
+
+# --------------------------------------------------------------------------------
 # figure
 # --------------------------------------------------------------------------------
 
@@ -206,7 +244,7 @@ def _db(a):
     return 20 * np.log10(np.clip(a / a.max(), 1e-12, None))
 
 
-def plot_validation(single, grid, glint, out_path):
+def plot_validation(single, grid, sweep, out_path):
     fig, ax = plt.subplots(1, 3, figsize=(16, 4.6))
 
     # (a) one point target, (b) grid of point targets
@@ -219,18 +257,12 @@ def plot_validation(single, grid, glint, out_path):
         a.set_ylabel('range')
         fig.colorbar(im, ax=a, label='dB')
 
-    # (c) plate glint pattern vs physical optics
-    for i, c in enumerate(glint['curves']):
-        lab = r'$\lambda$ = %.3g' % c['wavelength']
-        ax[2].plot(c['phi_deg'], _db(c['sigma']) / 2, 'C%d-' % i, lw=1.5, label=lab + ', simulator')
-        ax[2].plot(c['phi_deg'], _db(c['po']) / 2, 'k--', lw=0.9,
-                   label='physical optics' if i == 0 else None)
-    ax[2].set_ylim(-45, 2)
-    ax[2].set_xlabel('aspect off normal (deg)')
-    ax[2].set_ylabel('normalized RCS (dB)')
-    ax[2].set_title('(c) flat plate, L = %.2f' % glint['side'])
-    ax[2].legend(fontsize=8)
-    ax[2].grid(alpha=0.3)
+    # (c) plate elevation sweep vs physical optics, dotted
+    calculate_rcs.draw_cut(ax[2], sweep['el'], sweep['sigma'], PLATE_WAVELENGTHS, PLATE_DB_RANGE,
+                           theories=sweep['po'], xlabel='elevation (deg)')
+    ax[2].set_title('(c) flat plate, L = %g' % PLATE_SIDE)
+    ax[2].set_xlim(*PLATE_EL_SHOWN)
+    ax[2].legend(fontsize=10, loc='upper left')
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
@@ -292,13 +324,14 @@ def main():
     area = plate.run_area_sweep(device=device)
     print('RCS vs area: log-log slope %.4f   (physical optics 2)' % area['slope'])
 
-    glint = plate.run_glint_sweep(device=device)
-    print('\nglint pattern       -3 dB width (deg)      first null (deg)       PSLR (dB)')
-    for c in glint['curves']:
-        print('  lambda %.4f   %7.4f vs %7.4f     %7.4f vs %7.4f     %6.2f vs %6.2f'
-              % (c['wavelength'], c['measured']['width_deg'], c['reference']['width_deg'],
-                 c['measured']['null_deg'], c['po_null_deg'],
-                 c['measured']['pslr_db'], c['reference']['pslr_db']))
+    sweep = run_plate_elevation_sweep(device=device)
+    bands, errs = plate_lobe_errors(sweep)
+    print('\n%g x %g plate on the ground, azimuth 0, %dx%d rays: simulated - PO at the lobe peaks (dB)'
+          % (PLATE_SIDE, PLATE_SIDE, sweep['baseline']['n_ray_width'], sweep['baseline']['n_ray_height']))
+    for lam, e, a in zip(PLATE_WAVELENGTHS, errs, sweep['alias_el']):
+        print('  lambda %.4f   ' % lam
+              + '   '.join('el %d-%d: %+.2f' % (lo, hi, v) for (lo, hi), v in zip(bands, e))
+              + '   phase aliases below el %.1f' % a)
 
     wav = plate.run_wavelength_sweep(device=device)
     print('\nspecular RCS vs wavelength: log-log slope %.4f   (physical optics %.1f)'
@@ -312,7 +345,7 @@ def main():
         print('%10.5f %12.2f %10.2f' % (r['wavelength'], r['rays_per_cycle'], r['error_db']))
 
     out = get_next_path('figures/sar_validation.png')
-    plot_validation(single, grid, glint, out)
+    plot_validation(single, grid, sweep, out)
     print('\nfigure written to %s' % out)
 
 
