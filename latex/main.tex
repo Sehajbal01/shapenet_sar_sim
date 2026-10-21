@@ -46,10 +46,10 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 SAR and sonar simulators are crucial for developing and validating radar and sonar algorithms when real-world data is unavailable or not feasible to process. By providing controlled, repeatable environments, simulators allow researchers to test imaging techniques, evaluate performance under different conditions, and benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed data set of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} forms images from geometry with outdated POV-Ray and MATLAB software rather than simulating a received signal, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
+Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed data set of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} simulates signals from ray-traced contributions but does not model a transmit waveform and depends on outdated POV-Ray and MATLAB software, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with a band-limited \emph{accumulation and interpolation} of the ray returns to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
+The primary functionality of the simulator is to use ray tracing combined with a band-limited \emph{accumulation and interpolation} of the ray returns to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. The number of bounces traced for each ray is configurable. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
 \begin{itemize}
     \item \textbf{Accumulation and interpolation of ray returns}, a low-pass filter that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging. Unlike standard range compression, which filters a signal already sampled on a uniform grid, it evaluates the band-limited response directly from irregularly spaced ray returns, so one step both interpolates each return onto the sample grid and accumulates all returns into each sample.
     \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system.
@@ -64,13 +64,13 @@ centered on an azimuth angle of $210.8^\circ$ and an elevation angle of $32.2^\c
 construct the SAR image we aggregate $64$ pulses along a linear track spanning $135^\circ$ of
 azimuth, at the default parameters of Table \ref{tab:params}. The depth (Figure
 \ref{fig:main-fig}.c) and energy (Figure \ref{fig:main-fig}.d) maps shown are only for the first
-bounce of each ray; the actual simulation uses $2$ bounces for realism.
+bounce of each ray; the full simulation traces a configurable number of bounces, $2$ by default.
 The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim}. Our simulation
 functions by simulating a grid of parallel rays with equal energy. The rays hit a triangle on the
 \texttt{.obj} mesh. When a ray hits the mesh, some of the energy is reflected, some energy is
-scattered back to the sensor, and some energy is lost to absorption. The reflected energy is part
-of a second bounce ray that once again hits another triangle on the mesh with reflectivity,
-scattering, and absorption. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its
+scattered back to the sensor, and some energy is lost to absorption. The reflected energy continues
+along the next path of the ray, which once again hits another triangle on the mesh with reflectivity,
+scattering, and absorption, up to the configured number of bounces. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its
 corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range scatter plot
 (Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width
 corresponding to the radar system bandwidth, to accumulate and interpolate the
@@ -107,7 +107,7 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_scatters.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
-    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of both bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
+    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of all bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
 \end{figure}
 
@@ -124,8 +124,8 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
 Most high-fidelity radar signature codes build on the shooting-and-bouncing-rays (SBR) method
 \cite{sbr}, and the best known of them, XPatch \cite{xpatch4}, is not publicly available.
 Openly available simulated data of vehicles comes mainly from two sources: CVDomes
-\cite{cvdomes}, a precomputed data set of phase histories, and RaySAR \cite{raysar}, a
-ray-tracing simulator of SAR images. Neither covers sonar, and neither lets the user choose the
+\cite{cvdomes}, a precomputed data set of simulated phase histories, and RaySAR \cite{raysar}, a
+ray-tracing simulator of SAR signals and images. Neither covers sonar, and neither lets the user choose the
 transmit waveform.
 
 \subsection{Shooting and Bouncing Rays}
@@ -151,7 +151,7 @@ sonar.
 \subsection{CVDomes}
 \label{sec:cvdomes}
 
-CVDomes \cite{cvdomes,cvdomesreport} is not a simulator but a data set: $369$~GB of simulated
+CVDomes \cite{cvdomes,cvdomesreport} is a data set of simulated signals rather than a public simulator: $369$~GB of simulated
 X-band phase histories of ten civilian vehicle facet models, from a Toyota Camry to a Toyota
 Tacoma pickup, distributed by the Air Force Research Laboratory as MATLAB files. It was computed
 with the same proprietary high-frequency code as the earlier Backhoe data set \cite{backhoe}, which
@@ -189,16 +189,17 @@ diffuse and specular reflection models, its bounce level, and a flag marking spe
 MATLAB scripts bin these contributions into azimuth-range resolution cells to form reflectivity
 maps, which can be separated by bounce level to show layover, foreshortening, shadowing, and
 multiple-bounce effects, while the elevation coordinate supports 3D analysis of the scatterers.
-RaySAR never simulates a received signal: the resolution of the sensor enters only through the
-size of the resolution cells. A Python port \cite{raysarpython} re-implements the image formation
+RaySAR thus simulates the signal directly on the azimuth-range grid of the image, without a transmit
+waveform: the resolution of the sensor enters only through the size of the resolution cells. A Python port \cite{raysarpython} re-implements the image formation
 step to generate training data for automatic target recognition, while still relying on POV-Ray for
 the contributions. It places each contribution in its azimuth-range cell with a phase of $-4\pi
 r/\lambda$ at a fixed wavelength of $3.1$~cm, optionally perturbed at random, and sums the complex
 values. The finite bandwidth is not modeled; instead, a star-shaped sidelobe pattern is imitated by
 adding an inverse-square decay along the row and column of every pixel above a threshold, before
-the image is clipped in dB and quantized to 8 bits. Both versions therefore form images directly
-from geometry, whereas our simulator turns each ray's returns into a band-limited, sampled, complex
-signal for a user-chosen waveform and forms the image from that signal.
+the image is clipped in dB and quantized to 8 bits. Both versions therefore simulate the signal
+on the image grid without modeling a transmit waveform, whereas our simulator turns each ray's returns
+into a band-limited, sampled, complex received signal for a user-chosen waveform and forms the image
+from that signal.
 
 \section{Problem Statement}
 \label{sec:problem}
@@ -381,8 +382,8 @@ path of each ray is set to unity, and (\ref{eq:reflected-energy}) supplies $E_{i
 thereafter. Every modality divides its returns by the number of transmitted rays $R_hR_w$, so the
 sensor transmits a total energy of 1 (Section \ref{sec:units}). This is illustrated in Figure \ref{fig:terminology}.
 If the next path of a ray hits a location that is out of the line-of-sight, it is not considered
-for returned energy. If a ray has no intersections, it is also not considered. We only consider
-two-bounce returns, so each ray contributes at most two returns.
+for returned energy. If a ray has no intersections, it is also not considered. The number of
+bounces is set by \texttt{num\_bounce} (Tables \ref{tab:params}, \ref{tab:fls-params}, and \ref{tab:sss-params}), and each ray contributes at most one return per bounce.
 
 \begin{figure}[H]
   \centering
@@ -809,7 +810,7 @@ its most grazing look stays below the pulse width, $\Delta\cot\theta_{\min} < 0.
 $R_h > 1.6\,B_s W_g \cot\theta_{\min}$, which is $375$ here, between the $1\times$ and $2\times$ grids.
 
 Both remedies have a cost. Lowering $B_s$ coarsens the range resolution $1/B_s$. Scaling the rays
-per side by $k$ scales the ray tracing time by $k^2$. On one NVIDIA L40S, tracing both bounces of
+per side by $k$ scales the ray tracing time by $k^2$. On one NVIDIA L40S, tracing two bounces of
 the $64$ SAR pulses of this car takes $117$, $468$, and $1909$~s at $208$, $416$, and $832$ rays per
 side.
 
@@ -823,7 +824,7 @@ $20{,}000$-triangle ground plane. All other parameters are the defaults of Table
 except for $P = 30$ pulses and the ray grid $R_w = R_h \in \{32, 64, 128\}$. The code is the same on
 both devices, only the PyTorch device changes. The GPU is one NVIDIA L40S, and the CPU is an AMD EPYC
 7763 with PyTorch running $128$ threads. Each time is the wall-clock time from the trajectory to the
-final image, which includes both bounces of the ray trace, accumulation and interpolation of the returns, and CBP. GPU times are
+final image, which includes the two-bounce ray trace, accumulation and interpolation of the returns, and CBP. GPU times are
 the median of three runs after a warm-up run, and CPU times are from a single run after a warm-up.
 The machine was shared with other jobs during the CPU runs, so the CPU times are indicative. Loading
 the mesh and building its octree are done once per object and are not included in the table. They
@@ -1111,8 +1112,9 @@ larger than the wavelength. The wavelength enters only through the phase of each
 scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:rcs}
 matches physical optics in its lobes and nulls because the coherent sum reproduces the phase
 across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
-traced through two bounces, so higher-order multipath, such as returns that bounce three or more
-times inside a cavity, is missing. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and no
+traced through a fixed number of bounces, two in our experiments, so multipath of higher order than
+\texttt{num\_bounce}, such as returns that bounce many times inside a cavity, is missing, and each
+added bounce adds another pass of the ray trace. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and no
 antenna gain, transmit power, or noise figure is modeled (Section \ref{sec:units}), so image values
 are not calibrated radar cross sections. For sonar, the water is homogeneous: there is no
 sound-speed profile or refraction, no sea-surface multipath, and no volume reverberation, and the
@@ -1142,7 +1144,7 @@ transmitted through a surface, so the interior of a vehicle is never seen throug
 \textbf{Validation.} The forward model is validated against point scatterers (Section \ref{sec:validation}) and the
 physical-optics glint of a flat plate (Section \ref{sec:rcs}), but its images are not
 compared against measured SAR or sonar data, or quantitatively against CVDomes. Its images should
-therefore be read as reproducing the geometry of real sensors, including shadows and two-bounce
+therefore be read as reproducing the geometry of real sensors, including shadows and
 multipath, rather than their calibrated intensities.
 
 \section{Conclusions}
@@ -1153,7 +1155,8 @@ configurable sensor parameters such as wavelength, bandwidth, sample rate, trans
 material properties. From a single ray-traced signal model it renders three imaging modalities:
 spotlight-mode SAR, side-scan sonar, and forward-looking sonar. It addresses the
 limitations of existing open tools: \emph{RaySAR} relies on outdated software such as POV-Ray and
-MATLAB and simulates no received signal, \emph{CVDomes} is a fixed data set of ten vehicles, and
+MATLAB and does not model a transmit waveform, \emph{CVDomes} is a fixed data set of ten vehicles
+whose simulation code is not public, and
 neither simulates sonar.
 
 The proposed band-limited \emph{accumulation and interpolation} of ray returns is an efficient
@@ -1285,9 +1288,9 @@ azimuth of the point $\vec{p}_k$ that scattered it back to the sensor,
     .
     \label{eq:rx-azimuth}
 \end{equation}
-The two are equal for a first-bounce return. For a second-bounce return, $\phi^{tx}_k$ is the
-direction of the ray's first path, while $\phi^{rx}_k$ is the direction of its second point of
-contact, which is where a real receiver hears the energy arrive from.
+The two are equal for a first-bounce return. For a return from a later bounce, $\phi^{tx}_k$ is the
+direction of the ray's first path, while $\phi^{rx}_k$ is the direction of the point of contact
+that scattered it back, which is where a real receiver hears the energy arrive from.
 
 The sensor cannot resolve the bearing of a single return, so each return is weighted by the beam
 pattern on both transmit and receive. We model the one-way beam as a Gaussian with full width at

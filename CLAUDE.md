@@ -3,3 +3,5 @@ whenever committing, also push.
 keep commit messages very brief.
 when edits are made to the latex paper, also compile it (run pdflatex main.tex twice).
 ensure all figures in the paper are at less than or equal to text width
+the paper is in latex/main.tex
+in latex/my-paper-notes.txt when a task is completed prefix it with "DONE "
