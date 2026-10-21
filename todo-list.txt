@@ -12,7 +12,7 @@ DONE - throughout the paper, we can't say raysar or cv-domes don't simulate a si
 DONE - also to the best of our knowledge we are the only publicly available simulator that allows arbitrary waveforms
 DONE - we allow for as many bounces as we want, no need to specify we stick to 2. that info is only needed in experiments
 DONE - figure 1 (examples of generated images) is too big, it occupies a whole page. make it 1/3rd that size
-- when talking about figure 2 (example of rgb, sar, depth map, energy map, scatters, signal) in the text, we don't need detailed descriptions. our goal is to quickly grab reader attention. we only need to say we showcase some examples of images produced by the simulator. techincal details and simulation parameters are for other sections of the paper.
+DONE - when talking about figure 2 (example of rgb, sar, depth map, energy map, scatters, signal) in the text, we don't need detailed descriptions. our goal is to quickly grab reader attention. we only need to say we showcase some examples of images produced by the simulator. techincal details and simulation parameters are for other sections of the paper.
 - make figure 3 (process for simulating received signals) the first plot seen in the paper. have an accompanying paragraph that talks through the process at a high level. This should be before we talk about the main contributions of the paper.
 
 section: method:

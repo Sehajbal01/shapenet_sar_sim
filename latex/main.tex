@@ -57,29 +57,22 @@ The primary functionality of the simulator is to use ray tracing combined with a
 \end{itemize}
 Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a spotlight-mode SAR image by convolution backprojection (CBP), an SSS image, and an FLS image of four different ShapeNet car models with the same simulator.
 
-Figure \ref{fig:main-fig} showcases an example of our simulator on a ShapeNet \cite{shapenet} car
-model. The spotlight-mode SAR image is shown in Figure \ref{fig:main-fig}.b, with the aperture
-centered on an azimuth angle of $210.8^\circ$ and an elevation angle of $32.2^\circ$. Figures
-\ref{fig:main-fig}.(c,d,e,f) are examples from just the middle pulse of the aperture, but to
-construct the SAR image we aggregate $64$ pulses along a linear track spanning $135^\circ$ of
-azimuth, at the default parameters of Table \ref{tab:params}. The depth (Figure
-\ref{fig:main-fig}.c) and energy (Figure \ref{fig:main-fig}.d) maps shown are only for the first
-bounce of each ray; the full simulation traces a configurable number of bounces, $2$ by default.
+Figure \ref{fig:main-fig} showcases examples of what our simulator produces for a ShapeNet \cite{shapenet} car model: a spotlight-mode SAR image, together with the depth map, energy map, energy-range scatter plot, and received signal of a single pulse.
+
 The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim}. Our simulation
 functions by simulating a grid of parallel rays with equal energy. The rays hit a triangle on the
 \texttt{.obj} mesh. When a ray hits the mesh, some of the energy is reflected, some energy is
 scattered back to the sensor, and some energy is lost to absorption. The reflected energy continues
 along the next path of the ray, which once again hits another triangle on the mesh with reflectivity,
-scattering, and absorption, up to the configured number of bounces. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its
-corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range scatter plot
-(Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width
+scattering, and absorption, up to the configured number of bounces. We gather the scattered energy and its
+corresponding traveled range into an energy-range scatter plot. From the energy-range scatter plot we use a sinc pulse, with width
 corresponding to the radar system bandwidth, to accumulate and interpolate the
-scatters into each sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing
+scatters into each sample of the received signal. The spacing
 between each sinc pulse corresponds to the sample rate of the radar system. Unlike conventional
 filtering of a sampled signal, this single step places every off-grid return at its exact range and
 sums it with its neighbors, without first binning the returns onto a discrete range grid. Once there is a
 received signal for each pulse at different azimuth and elevation angles, further analysis or
-imaging (Figure \ref{fig:main-fig}.b) can be done.
+imaging can be done.
 
 \begin{figure}[H]
     \centering
