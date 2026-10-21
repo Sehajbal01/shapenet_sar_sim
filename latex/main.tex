@@ -434,59 +434,6 @@ where $E_{out}$ is the energy carried into the next path of the ray after the bo
 the reflectivity of the triangle in the object mesh that has been hit.
 
 
-\subsection{Units and Scale}
-\label{sec:units}
-
-Every length in the simulator, including the mesh, the ray grid, the sensor distance, the
-wavelength $\lambda$ and the range axis, is expressed in one arbitrary unit $\ell$, and $B_s$ and
-$F_s$ are in cycles per $\ell$. The ShapeNet meshes are normalized so that a car is about
-$0.9\ell$ long. Time never enters the simulation, so the propagation speed $c$ appears only when
-converting $B_s$ and $F_s$ to temporal frequencies. The simulated signals depend only on ratios of
-lengths, such as the range resolution $1/B_s$ to the size of the car or $\lambda$ to the ray
-spacing, so a scene in $\ell$ maps to any physical scale. Table \ref{tab:units} converts the
-defaults for a car about $4.5$~m long, or $1\ell \approx 5$~m.
-\begin{table}[H]
-\centering
-\caption{Default lengths and frequencies converted at $1\ell \approx 5$~m, with
-$B_t = cB_s/2$ and $F_t = cF_s/2$.}
-\label{tab:units}
-\begin{tabular}{lllll}
-\toprule
-\textbf{Quantity} & \textbf{Simulator} & \textbf{At $1\ell \approx 5$~m} & \textbf{Radar} & \textbf{Sonar} \\
-\midrule
-Car length               & $0.9\ell$          & $4.5$~m        & -- & -- \\
-SAR ray grid $W_g$       & $1.2\ell$          & $6$~m          & -- & -- \\
-Sonar distance $\lVert\vec{v}\rVert$ & $7.5\ell$ & $37.5$~m    & -- & -- \\
-Bandwidth $B_s$          & $30\,\ell^{-1}$    & $6$~m$^{-1}$   & $B_t = 900$~MHz & $B_t = 4.5$~kHz \\
-Range resolution $1/B_s$ & $0.033\ell$        & $17$~cm        & -- & -- \\
-Sample rate $F_s$        & $60\,\ell^{-1}$    & $12$~m$^{-1}$  & $F_t = 1.8$~GHz & $F_t = 9$~kHz \\
-SAR wavelength $\lambda$ & $0.5\ell$          & $2.5$~m        & $120$~MHz & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The bandwidth corresponds to a high-resolution radar, and to a low-frequency sonar. The SAR
-wavelength does not: an X-band radar at this scale has $\lambda \approx 3$~cm $\approx 0.006\ell$.
-A short wavelength needs the ray spacing to sample its phase, $\Delta < \lambda/(4\sin\phi)$
-(Section \ref{sec:validation}), or the returns of neighboring rays interfere at random within each
-pulse. At the default $208 \times 208$ rays ($\Delta \approx 0.006\ell$) the images break down at
-$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength} of Appendix \ref{app:sar-examples}), and X-band would need about four
-times the ray density along each axis, or $15$ times the rays. Coherent integration across pulses
-would also need about $15$ times the $64$ default pulses to sample the aperture without aliasing.
-We therefore use a wavelength much longer than a physical radar's for the same scene, which keeps
-the phase well sampled at an affordable ray count.
-
-Energy is also unitless. The sensor transmits a total energy of 1, split equally among its rays,
-so a return weight $E_k$ is the fraction of the transmitted energy that the $k^{th}$ return brings
-back to the sensor, and a signal or image value is a sum of such fractions. The coherent sum
-(\ref{eq:coherent-scatters}) adds the return weights as field amplitudes, and $|s|^2$ is taken as
-received power, as in the flat-plate validation of Section \ref{sec:rcs}. The physically
-consistent amplitude would be $\sqrt{E_k}$. Using $E_k$ instead preserves where returns fall and
-their phases, but squares their relative amplitudes, which doubles the dynamic range of the images
-in dB. No antenna gain, transmit power or
-receiver noise figure is modeled, so signal values are relative to the transmitted energy rather
-than calibrated in watts.
-
 \subsection{Arbitrary Transmit Waveforms}
 \label{sec:waveforms}
 
@@ -624,7 +571,60 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers and a sphere. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales, then compare a constant material with per-triangle materials on a CVDomes car, and validate the SAR forward model on point scatterers and a sphere. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+
+\subsection{Units and Scale}
+\label{sec:units}
+
+Every length in the simulator, including the mesh, the ray grid, the sensor distance, the
+wavelength $\lambda$ and the range axis, is expressed in one arbitrary unit $\ell$, and $B_s$ and
+$F_s$ are in cycles per $\ell$. The ShapeNet meshes are normalized so that a car is about
+$0.9\ell$ long. Time never enters the simulation, so the propagation speed $c$ appears only when
+converting $B_s$ and $F_s$ to temporal frequencies. The simulated signals depend only on ratios of
+lengths, such as the range resolution $1/B_s$ to the size of the car or $\lambda$ to the ray
+spacing, so a scene in $\ell$ maps to any physical scale. Table \ref{tab:units} converts the
+defaults for a car about $4.5$~m long, or $1\ell \approx 5$~m.
+\begin{table}[H]
+\centering
+\caption{Default lengths and frequencies converted at $1\ell \approx 5$~m, with
+$B_t = cB_s/2$ and $F_t = cF_s/2$.}
+\label{tab:units}
+\begin{tabular}{lllll}
+\toprule
+\textbf{Quantity} & \textbf{Simulator} & \textbf{At $1\ell \approx 5$~m} & \textbf{Radar} & \textbf{Sonar} \\
+\midrule
+Car length               & $0.9\ell$          & $4.5$~m        & -- & -- \\
+SAR ray grid $W_g$       & $1.2\ell$          & $6$~m          & -- & -- \\
+Sonar distance $\lVert\vec{v}\rVert$ & $7.5\ell$ & $37.5$~m    & -- & -- \\
+Bandwidth $B_s$          & $30\,\ell^{-1}$    & $6$~m$^{-1}$   & $B_t = 900$~MHz & $B_t = 4.5$~kHz \\
+Range resolution $1/B_s$ & $0.033\ell$        & $17$~cm        & -- & -- \\
+Sample rate $F_s$        & $60\,\ell^{-1}$    & $12$~m$^{-1}$  & $F_t = 1.8$~GHz & $F_t = 9$~kHz \\
+SAR wavelength $\lambda$ & $0.5\ell$          & $2.5$~m        & $120$~MHz & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The bandwidth corresponds to a high-resolution radar, and to a low-frequency sonar. The SAR
+wavelength does not: an X-band radar at this scale has $\lambda \approx 3$~cm $\approx 0.006\ell$.
+A short wavelength needs the ray spacing to sample its phase, $\Delta < \lambda/(4\sin\phi)$
+(Section \ref{sec:validation}), or the returns of neighboring rays interfere at random within each
+pulse. At the default $208 \times 208$ rays ($\Delta \approx 0.006\ell$) the images break down at
+$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength} of Appendix \ref{app:sar-examples}), and X-band would need about four
+times the ray density along each axis, or $15$ times the rays. Coherent integration across pulses
+would also need about $15$ times the $64$ default pulses to sample the aperture without aliasing.
+We therefore use a wavelength much longer than a physical radar's for the same scene, which keeps
+the phase well sampled at an affordable ray count.
+
+Energy is also unitless. The sensor transmits a total energy of 1, split equally among its rays,
+so a return weight $E_k$ is the fraction of the transmitted energy that the $k^{th}$ return brings
+back to the sensor, and a signal or image value is a sum of such fractions. The coherent sum
+(\ref{eq:coherent-scatters}) adds the return weights as field amplitudes, and $|s|^2$ is taken as
+received power, as in the flat-plate validation of Section \ref{sec:rcs}. The physically
+consistent amplitude would be $\sqrt{E_k}$. Using $E_k$ instead preserves where returns fall and
+their phases, but squares their relative amplitudes, which doubles the dynamic range of the images
+in dB. No antenna gain, transmit power or
+receiver noise figure is modeled, so signal values are relative to the transmitted energy rather
+than calibrated in watts.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
