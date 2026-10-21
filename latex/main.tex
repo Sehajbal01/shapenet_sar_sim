@@ -281,12 +281,14 @@ samples with their position in space. Then with the sifting property $s(z_o)$ is
 \end{equation}
 The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc
 function acts as both a low-pass interpolation filter and a summation over nearby samples in the
-energy-range scatter. This differs from standard interpolation, which resamples a signal already
-given on a uniform grid, and from standard range compression, which filters such a sampled signal.
-Here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample
-spacing, and (\ref{eq:accum-interp}) interpolates each of them onto the sample grid and
-accumulates them in a single step. We therefore refer to (\ref{eq:accum-interp}) as the
-\emph{accumulation and interpolation} of the returns. Since it is linear in $E_k$, it applies unchanged to complex returns that carry their
+energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumulation and
+interpolation} of the returns. It differs from standard interpolation because it sums together
+multiple returns in addition to interpolating them. Standard interpolation resamples a signal
+already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous
+ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates each of
+them onto the sample grid and accumulates them in a single step. For the same reason it differs
+from standard range compression, which filters a signal already sampled on a uniform grid.
+Since it is linear in $E_k$, it applies unchanged to complex returns that carry their
 carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
 imaging.
 
