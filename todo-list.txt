@@ -25,7 +25,7 @@ DONE - "The θ/2 in the numerator of (16) refers to the angle between the direct
 DONE - after the sentence "We only consider two-bounce returns, so each ray contributes at most two returns." we should also say how we only consider additional bounces from reflectivity, not scattering
 DONE - follow "We name the processing in (23) interposummation" with "it is different from standard interpolation because it is summing together multiple returns in addition to interpolation" or something like that
 DONE - the subsection "units and scale" should be moved to the experiments section. it is out of place here.
-- remove this entire paragraph in the "units and scale" subsection that start with "The bandwidth corresponds to a high-resolution radar, and"
+DONE - remove this entire paragraph in the "units and scale" subsection that start with "The bandwidth corresponds to a high-resolution radar, and"
 - change s to s(n) in the sentence "adds the return weights as field amplitudes, and"
 MAYBE DON"T DO THIS ONE - the sentence "No antenna gain, transmit power or receiver noise figure is modeled, so signal values are relative to the transmitted energy rather than calibrated in watts." is not correct, we utilize beam width which in sonar which is an antenna pattern
 - remove this clause after the comma "and the range sidelobes of the waveform shape the final image."

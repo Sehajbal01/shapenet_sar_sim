@@ -604,17 +604,6 @@ SAR wavelength $\lambda$ & $0.5\ell$          & $2.5$~m        & $120$~MHz & -- 
 \end{tabular}
 \end{table}
 
-The bandwidth corresponds to a high-resolution radar, and to a low-frequency sonar. The SAR
-wavelength does not: an X-band radar at this scale has $\lambda \approx 3$~cm $\approx 0.006\ell$.
-A short wavelength needs the ray spacing to sample its phase, $\Delta < \lambda/(4\sin\phi)$
-(Section \ref{sec:validation}), or the returns of neighboring rays interfere at random within each
-pulse. At the default $208 \times 208$ rays ($\Delta \approx 0.006\ell$) the images break down at
-$\lambda = 0.02\ell$ and below (Figure \ref{fig:wavelength} of Appendix \ref{app:sar-examples}), and X-band would need about four
-times the ray density along each axis, or $15$ times the rays. Coherent integration across pulses
-would also need about $15$ times the $64$ default pulses to sample the aperture without aliasing.
-We therefore use a wavelength much longer than a physical radar's for the same scene, which keeps
-the phase well sampled at an affordable ray count.
-
 Energy is also unitless. The sensor transmits a total energy of 1, split equally among its rays,
 so a return weight $E_k$ is the fraction of the transmitted energy that the $k^{th}$ return brings
 back to the sensor, and a signal or image value is a sum of such fractions. The coherent sum
