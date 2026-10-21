@@ -1,10 +1,11 @@
-general stuff:
-- scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
+when a task is completed prefix it with "DONE "
 
-section: abstract:
-- raysar does in fact simulate a signal, just not using waveforms
-- we need an experiment that calculates radar cross section, plot it over many az/el values in polar coordinates. theta=az, r = 90-el
-- we don't model different noise types. should we?
+general stuff:
+DONE - scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
+- much of the paper is lengthy with unecessary information. need to slim it.
+
+DONE section: abstract:
+DONE - raysar does in fact simulate a signal, just not using waveforms
 
 section: intro:
 - throughout the paper, we can't say raysar or cv-domes don't simulate a signal. they do infact simulate a signal

@@ -23,7 +23,7 @@
 \DeclareMathOperator{\sinc}{sinc}
 
 %=================================================================
-\Title{Open-Source SAR and Sonar Simulator in PyTorch Via Interposummation}
+\Title{Open-Source SAR and Sonar Simulator in PyTorch Via Accumulation and Interpolation of Ray Returns}
 
 \Author{Alex Berian *, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac and Abhijit Mahalanobis}
 
@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} forms images directly from geometry without simulating a received signal and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed data set of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique for summation and interpolation of ray returns, termed \emph{interposummation}, which accounts for the effective bandwidth and sample rate of the sensor. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. Interposummation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} simulates signals from ray-traced contributions but does not model a transmit waveform, and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed data set of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique that \emph{accumulates and interpolates} ray returns onto the sample grid of the sensor in a single step, accounting for its effective bandwidth and sample rate. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
 
 \keyword{SAR; spotlight SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -49,11 +49,11 @@ SAR and sonar simulators are crucial for developing and validating radar and son
 Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed data set of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} forms images from geometry with outdated POV-Ray and MATLAB software rather than simulating a received signal, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with an interpolation/summation technique we call \emph{interposummation} to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
+The primary functionality of the simulator is to use ray tracing combined with a band-limited \emph{accumulation and interpolation} of the ray returns to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. We use two bounces from each ray. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
 \begin{itemize}
-    \item \textbf{Interposummation}, a low-pass summation and interpolation of ray returns that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging. Unlike standard range compression, which filters a signal already sampled on a uniform grid, interposummation evaluates the band-limited response directly from irregularly spaced ray returns, so one step both interpolates each return onto the sample grid and sums all returns into each sample.
+    \item \textbf{Accumulation and interpolation of ray returns}, a low-pass filter that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging. Unlike standard range compression, which filters a signal already sampled on a uniform grid, it evaluates the band-limited response directly from irregularly spaced ray returns, so one step both interpolates each return onto the sample grid and accumulates all returns into each sample.
     \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system.
-    \item \textbf{Three imaging modalities} from one simulator: spotlight-mode SAR \cite{spotlightmodesar}, side-scan sonar (SSS), and forward-looking sonar (FLS). Every quantity in the simulator is expressed in spatial units, so radar and sonar share the same ray tracer, material model, and interposummation, and differ only in how rays are launched, how returns are weighted by the beam and the medium, and how the signals are formed into an image.
+    \item \textbf{Three imaging modalities} from one simulator: spotlight-mode SAR \cite{spotlightmodesar}, side-scan sonar (SSS), and forward-looking sonar (FLS). Every quantity in the simulator is expressed in spatial units, so radar and sonar share the same ray tracer, material model, and accumulation and interpolation of returns, and differ only in how rays are launched, how returns are weighted by the beam and the medium, and how the signals are formed into an image.
 \end{itemize}
 Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a spotlight-mode SAR image by convolution backprojection (CBP), an SSS image, and an FLS image of four different ShapeNet car models with the same simulator.
 
@@ -73,8 +73,8 @@ of a second bounce ray that once again hits another triangle on the mesh with re
 scattering, and absorption. We gather scattered energy (Figure \ref{fig:main-fig}.d) and its
 corresponding traveled range (Figure \ref{fig:main-fig}.c) into an energy-range scatter plot
 (Figure \ref{fig:main-fig}.e). From the energy-range scatter plot we use a sinc pulse, with width
-corresponding to the radar system bandwidth, to sum and interpolate (interposummation) the
-scatters into a single sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing
+corresponding to the radar system bandwidth, to accumulate and interpolate the
+scatters into each sample of the received signal (Figure \ref{fig:main-fig}.f). The spacing
 between each sinc pulse corresponds to the sample rate of the radar system. Unlike conventional
 filtering of a sampled signal, this single step places every off-grid return at its exact range and
 sums it with its neighbors, without first binning the returns onto a discrete range grid. Once there is a
@@ -107,7 +107,7 @@ imaging (Figure \ref{fig:main-fig}.b) can be done.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_scatters.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
-    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of both bounces, (\textbf{f}) signal magnitude calculated via interposummation, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
+    \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of both bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
 \end{figure}
 
@@ -144,8 +144,8 @@ high-frequency codes such as XPatch \cite{xpatch4} and the code behind CVDomes. 
 launches its rays the same way, as a grid of rays traced through multiple bounces. It differs in
 what each ray carries: rather than a polarized field integrated by physical optics frequency by
 frequency, each return keeps only its energy and total path length (Section
-\ref{sec:signal-simulation}), and the sampled signal at the sensor's bandwidth is formed from these
-returns by interposummation. This scalar formulation lets the same ray trace drive both radar and
+\ref{sec:signal-simulation}), and the sampled signal at the sensor's bandwidth is formed by accumulating
+and interpolating these returns. This scalar formulation lets the same ray trace drive both radar and
 sonar.
 
 \subsection{CVDomes}
@@ -438,16 +438,16 @@ samples with their position in space. Then with the sifting property $s(z_o)$ is
 \begin{equation}
     s(z_o) = \sum_{k=1}^{N}E_k\sinc\Bigg(B_s\bigg(z_o-\frac{z_k}{2}\bigg)\Bigg)
     .
-    \label{eq:interposummation}
+    \label{eq:accum-interp}
 \end{equation}
 The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc
 function acts as both a low-pass interpolation filter and a summation over nearby samples in the
 energy-range scatter. This differs from standard interpolation, which resamples a signal already
 given on a uniform grid, and from standard range compression, which filters such a sampled signal.
 Here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample
-spacing, and (\ref{eq:interposummation}) interpolates each of them onto the sample grid and sums
-them in a single step. We name the processing in (\ref{eq:interposummation}) \emph{interposummation}.
-Since interposummation is linear in $E_k$, it applies unchanged to complex returns that carry their
+spacing, and (\ref{eq:accum-interp}) interpolates each of them onto the sample grid and
+accumulates them in a single step. We therefore refer to (\ref{eq:accum-interp}) as the
+\emph{accumulation and interpolation} of the returns. Since it is linear in $E_k$, it applies unchanged to complex returns that carry their
 carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
 imaging.
 
@@ -508,10 +508,10 @@ than calibrated in watts.
 \subsection{Arbitrary Transmit Waveforms}
 \label{sec:waveforms}
 
-Interposummation as written in (\ref{eq:interposummation}) simulates an ideal band-limited pulse.
+The accumulation and interpolation in (\ref{eq:accum-interp}) simulates an ideal band-limited pulse.
 Real radar and sonar systems instead transmit pulse-compression waveforms and match-filter the
 echoes, and the range sidelobes of the waveform shape the final image. We therefore generalize
-interposummation to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatters model in
+it to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatters model in
 (\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
 \begin{equation}
     r(z) = x(z) * g(z)
@@ -540,16 +540,16 @@ $ is then given by
     =\sum_{k=1}^{N}E_kw\bigg(z_o-\frac{z_k}{2}\bigg)
     ,
 \end{equation}
-where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. Although $w(z)*g(z)$ has the form of conventional matched filtering, it is never computed by convolving a sampled received signal. Since $g(z)$ is a sum of off-grid delta functions, the matched-filter output is evaluated in closed form at each sample $z_o$, so the same sum performs both the interpolation and the summation of the returns. One may view the ideal band-limited digital signal in (\ref{eq:interposummation}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
+where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. Although $w(z)*g(z)$ has the form of conventional matched filtering, it is never computed by convolving a sampled received signal. Since $g(z)$ is a sum of off-grid delta functions, the matched-filter output is evaluated in closed form at each sample $z_o$, so the same sum performs both the interpolation and the summation of the returns. One may view the ideal band-limited digital signal in (\ref{eq:accum-interp}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain side-lobes.
 
-Each transmit waveform therefore replaces the ideal sinc of interposummation with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
+Each transmit waveform therefore replaces the ideal sinc of (\ref{eq:accum-interp}) with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
 
-In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because interposummation is agnostic to the choice of $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform. The waveform is not limited to these four: any transmit waveform $x(z)$ sampled on a fine range grid is supported, since its effective window is computed once as the autocorrelation of $x(z)$ and then linearly interpolated at the range offset of every return. The waveform therefore adds no ray tracing, and every return costs the same as with the ideal sinc. The effective window is shared by all three imaging modalities.
+In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because the returns are accumulated and interpolated the same way for any $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform. The waveform is not limited to these four: any transmit waveform $x(z)$ sampled on a fine range grid is supported, since its effective window is computed once as the autocorrelation of $x(z)$ and then linearly interpolated at the range offset of every return. The waveform therefore adds no ray tracing, and every return costs the same as with the ideal sinc. The effective window is shared by all three imaging modalities.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{figs/window_analysis_bw10_fs2000.png}
-  \caption{Effective interposummation windows $w(z) = h(z) * x(z)$ for a sinc, Gaussian, LFM chirp, and Barker-13 transmit waveform, all with spatial bandwidth $B_s = 10$. Left: range impulse response (linear, normalized). Right: spectrum in dB, with dashed lines marking $\pm B_s/2$.}
+  \caption{Effective windows $w(z) = h(z) * x(z)$, used to accumulate and interpolate the returns, for a sinc, Gaussian, LFM chirp, and Barker-13 transmit waveform, all with spatial bandwidth $B_s = 10$. Left: range impulse response (linear, normalized). Right: spectrum in dB, with dashed lines marking $\pm B_s/2$.}
   \label{fig:effective-windows}
 \end{figure}
 
@@ -560,7 +560,7 @@ The RCS of a target is the power it scatters back toward the sensor, as a functi
 direction, expressed as an equivalent area independent of range. It is the standard measure of how
 visible a target is to a radar.
 
-We compute it from one ray trace per look direction, without interposummation. The ray grid of
+We compute it from one ray trace per look direction, without forming a sampled range signal. The ray grid of
 Figure \ref{fig:sig-sim} is aimed at the origin from azimuth $a$ and elevation $e$, and its returns
 are summed coherently,
 \begin{equation}
@@ -602,7 +602,7 @@ elevation, since the scattering lobe of the material is narrower than that of ph
 The simulated signals are independent of how they are imaged, and the simulator forms images in
 three modalities, summarized in Table \ref{tab:modalities} and detailed in Appendix
 \ref{sec:modalities}. All three share the ray tracer, the material model of
-(\ref{eq:returned-energy}), and interposummation with any effective window $w(z)$, so the range
+(\ref{eq:returned-energy}), and the accumulation and interpolation of returns with any effective window $w(z)$, so the range
 resolution of every modality is set by the spatial bandwidth $B_s$ of the transmit waveform. They
 differ in how the rays are launched, how the returns are weighted, and how the signals are formed
 into an image.
@@ -623,7 +623,7 @@ after ray tracing, and all $P$ pings share a single ray trace.
 
 \begin{table}[H]
 \caption{The three imaging modalities of the simulator. All share the ray tracer, the material model,
-and interposummation with an arbitrary transmit waveform, so range resolution is set by $B_s$ in
+and the accumulation and interpolation of returns with an arbitrary transmit waveform, so range resolution is set by $B_s$ in
 every modality.}
 \label{tab:modalities}
 \centering
@@ -679,7 +679,7 @@ the first-bounce energy, and the SAR peak drops by $4.7$~dB.
 \label{sec:validation}
 
 We first image ideal point scatterers in spotlight-mode SAR at the default parameters of
-Table \ref{tab:params}, injecting each directly into interposummation (\ref{eq:interposummation}) at
+Table \ref{tab:params}, injecting each directly as a return in (\ref{eq:accum-interp}) at
 its true range and phase, bypassing the ray tracer. A single scatterer at the scene origin
 (Figure \ref{fig:validation}a) shows the expected X-shaped sidelobes from the ends of the aperture,
 and along range its return takes the shape of the effective window $w(z)$ of
@@ -714,11 +714,11 @@ its sidelobes spread symmetrically into concentric rings around the target.
 \label{sec:bw-ray-density}
 
 The returned signal (\ref{eq:returned-scatters}) is a sum of delta functions, one per ray return,
-and interposummation low-pass filters it with a pulse whose amplitude full width at half maximum is
+and accumulating and interpolating the returns low-pass filters it with a pulse whose amplitude full width at half maximum is
 $0.62/B_s$ for the default Gaussian waveform. A pulse that is wide against the range spacing of the
 returns gives a smooth estimate of the continuous response. A narrow one resolves the returns, and
 the gaps between them show up as nulls. In Figure \ref{fig:fsbw}, we lower the spatial bandwidth from
-$B_s = 512$ to $64$ with $F_s = 2B_s$ at the default ray grids. Each column shows the interposummed
+$B_s = 512$ to $64$ with $F_s = 2B_s$ at the default ray grids. Each column shows the sampled
 signal of the middle SAR pulse, the SAR image, and the forward-looking sonar image. We then hold
 $B_s = 64$ and scale the rays per side of both the SAR grid and the forward-looking sonar fan from
 $0.125$ to $4$ times their defaults. Figure \ref{fig:raydensity} shows the signal of the middle SAR
@@ -732,7 +732,7 @@ so that its floor does not hide the artifacts.
   \centering
   \includegraphics[width=\textwidth]{figs/fsbw_and_raydensity_fsbw.png}
   \caption{Lowering the spatial bandwidth $B_s$ from $512$ to $64$, with $F_s = 2B_s$ and the
-  default rays. Top: interposummed signal magnitude of the middle SAR pulse against range from the
+  default rays. Top: sampled signal magnitude of the middle SAR pulse against range from the
   sensor distance $d$, normalized to its peak, printed in each panel. Middle: spotlight-mode SAR
   image, normalized to its peak. Bottom: forward-looking sonar image, in dB relative to its peak.
   SAR receiver noise is off.}
@@ -743,7 +743,7 @@ so that its floor does not hide the artifacts.
   \centering
   \includegraphics[width=\textwidth]{figs/fsbw_and_raydensity_rays.png}
   \caption{Scaling the SAR ray grid from $0.125$ to $1$ times the default $208 \times 208$ rays at
-  $B_s = 64$, $F_s = 128$. Interposummed signal magnitude of the middle SAR pulse against range from
+  $B_s = 64$, $F_s = 128$. Sampled signal magnitude of the middle SAR pulse against range from
   the sensor distance $d$, normalized to its peak, printed in each panel. Each column has the same
   ratio of cluster spacing to pulse width as the same column of Figure \ref{fig:fsbw}. SAR receiver
   noise is off.}
@@ -756,8 +756,8 @@ distance and return at the same range, to within $1.1\times10^{-6}\ell$. The sea
 energy-range scatter is therefore a set of clusters of $208$ coincident returns, one per row. Rows
 are $\Delta = W_g/R_h = 0.0058\ell$ apart on the grid, and $\Delta\cot\theta$ apart in range for a
 pulse at elevation $\theta$, which is $0.0068\ell$ at the $40.6^\circ$ elevation of the middle pulse.
-No bandwidth separates the returns within a cluster, since they share a range. Interposummation does,
-however, resolve the gaps between clusters once the pulse is narrower than their spacing (Figure
+No bandwidth separates the returns within a cluster, since they share a range. The pulse does,
+however, resolve the gaps between clusters once it is narrower than their spacing (Figure
 \ref{fig:scatter-closeup}b). Over the seafloor window of Figure \ref{fig:scatter-closeup}b, the
 ratio of the largest to the smallest signal sample is $0.0$, $5.6$, and $40$~dB at
 $B_s = 64$, $128$, and $256$, whose pulses are $0.0097$, $0.0048$, and $0.0024\ell$ wide. At $B_s = 512$, the signal falls to zero between clusters, and its seafloor becomes a comb with
@@ -823,7 +823,7 @@ $20{,}000$-triangle ground plane. All other parameters are the defaults of Table
 except for $P = 30$ pulses and the ray grid $R_w = R_h \in \{32, 64, 128\}$. The code is the same on
 both devices, only the PyTorch device changes. The GPU is one NVIDIA L40S, and the CPU is an AMD EPYC
 7763 with PyTorch running $128$ threads. Each time is the wall-clock time from the trajectory to the
-final image, which includes both bounces of the ray trace, interposummation, and CBP. GPU times are
+final image, which includes both bounces of the ray trace, accumulation and interpolation of the returns, and CBP. GPU times are
 the median of three runs after a warm-up run, and CPU times are from a single run after a warm-up.
 The machine was shared with other jobs during the CPU runs, so the CPU times are indicative. Loading
 the mesh and building its octree are done once per object and are not included in the table. They
@@ -852,7 +852,7 @@ Large ($1.32$M) & $32^2$  & $34.3$   & $0.55$ & $62\times$  & $0.84$ \\
 \end{table}
 
 Ray tracing takes at least $94\%$ of the time in every setting, and over $97\%$ at $128^2$ rays.
-Interposummation of all $30$ pulses takes $0.01$~s on the GPU, and CBP takes under $0.01$~s, so the
+Accumulating and interpolating the returns of all $30$ pulses takes $0.01$~s on the GPU, and CBP takes under $0.01$~s, so the
 cost of the simulator is set by the number of rays and not by the bandwidth, sample rate, or
 transmit waveform. On the GPU, $16\times$ more rays cost $9\times$ more time on the small mesh and
 $12.5\times$ more on the large mesh. The large mesh has about $100\times$ more triangles than the small
@@ -868,7 +868,7 @@ of GPU memory, compared with $35$~min on the CPU.
 
 The remaining experiments test the two sonar modalities of Section \ref{sec:modalities-overview}
 (Appendices \ref{sec:forward-looking} and \ref{sec:side-scan}) on the car of Figure
-\ref{fig:main-fig}.a, with the same ray tracer, material model, and interposummation as the SAR
+\ref{fig:main-fig}.a, with the same ray tracer, material model, and accumulation and interpolation of returns as the SAR
 experiments. The car scatters almost entirely into the directional lobe and the seafloor mostly
 diffusely, so the surfaces of the car that face the sensor return brightly against the seafloor,
 and the car casts a dark acoustic shadow.
@@ -1034,7 +1034,7 @@ window from $\rho = 6.9$ to $8.1$, so its spacing at the far edge is $0.0078$, $
 \label{sec:waveform-experiment}
 
 In Figure \ref{fig:waveform}, we vary the transmit waveform of spotlight-mode SAR (top row) and
-side-scan sonar (bottom row), which replaces the ideal sinc of interposummation with the effective
+side-scan sonar (bottom row), which replaces the ideal sinc of (\ref{eq:accum-interp}) with the effective
 window $w(z)$ of the corresponding pulse-compression matched filter as described in Section
 \ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}. Within each row the ray
 trace is identical across the panels, and only the effective window changes. We compare an ideal
@@ -1082,7 +1082,7 @@ side-scan and forward-looking sonar defaults use the Gaussian pulse.
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/waveform_stitched_sar_sss.png}
   \caption{Varying the transmit waveform in spotlight-mode SAR (top) and side-scan sonar (bottom).
-  Each panel uses the effective interposummation window $w(z)$ of the labeled waveform, all with
+  Each panel uses the effective window $w(z)$ of the labeled waveform, all with
   $B_s = 30$ except the last column at $B_s = 60$. SAR panels are linear and side-scan panels are
   in dB, each relative to its own peak, printed beneath its colorbar. In side-scan sonar, the range
   sidelobes of every waveform but the Gaussian fill the acoustic shadow behind the car.}
@@ -1156,13 +1156,13 @@ limitations of existing open tools: \emph{RaySAR} relies on outdated software su
 MATLAB and simulates no received signal, \emph{CVDomes} is a fixed data set of ten vehicles, and
 neither simulates sonar.
 
-The proposed \emph{interposummation} technique enables efficient low-pass filtering during the
-summation and interpolation of ray returns, accounting for the sensor's bandwidth and sampling
+The proposed band-limited \emph{accumulation and interpolation} of ray returns is an efficient
+low-pass filter that accounts for the sensor's bandwidth and sampling
 rate. Rather than range-compressing an already sampled signal, it evaluates the band-limited
 response directly at the sample points from the off-grid ray returns, so interpolation and summation
 happen in one step. This keeps the signal band-limited at the sensor's bandwidth instead of
 interpolating returns onto the sample grid, as long as the rays are dense enough to sample the
-surface (Section \ref{sec:limitations}). Interposummation extends to arbitrary transmit waveforms
+surface (Section \ref{sec:limitations}). The technique extends to arbitrary transmit waveforms
 by replacing its ideal sinc with the effective window of the waveform's matched filter, so sinc,
 Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
 the same cost, with the range sidelobes of a real pulse-compression system. When a carrier wavelength is given,
@@ -1231,7 +1231,7 @@ the energy-range scatter of (\ref{eq:returned-scatters}) becomes complex,
     .
     \label{eq:coherent-scatters}
 \end{equation}
-Interposummation is unchanged by this, so the digital signal of the $i^{th}$ pulse, sampled on the
+The returns are accumulated and interpolated as before, so the digital signal of the $i^{th}$ pulse, sampled on the
 one-way range axis, is
 \begin{equation}
     s_i(z_o) = \sum_{k=1}^{N}E_ke^{j 4 \pi \zeta_k / \lambda}w\big(z_o-\zeta_k\big)
@@ -1306,7 +1306,7 @@ widening the beam spreads a return over more pings without dividing its energy a
 
 Ping $i$ steers both beams to an azimuth $\phi_i$, where the $P$ values of $\phi_i$ are spaced
 uniformly over $[-\Theta_p/2,\Theta_p/2]$. Steering shifts both patterns by $\phi_i$, and the
-digital signal of the $i^{th}$ ping is the interposummation of the weighted returns,
+digital signal of the $i^{th}$ ping is the accumulation and interpolation of the weighted returns,
 \begin{equation}
     s_i(z_o) = \sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k-\phi_i\big)\,b\big(\phi^{rx}_k-\phi_i\big)\,w\big(z_o-\zeta_k\big)
     ,
@@ -1315,7 +1315,7 @@ digital signal of the $i^{th}$ ping is the interposummation of the weighted retu
 where $\zeta_k = z_k/2$ is the one-way range of the $k^{th}$ return. The beam is applied after ray
 tracing rather than during it, and the sensor does not move between pings, so every ping shares
 the same returns and differs only in their weights. The fan is therefore ray traced once, and the
-$P$ signals cost $P$ interposummations but a single ray trace.
+$P$ signals each need their own accumulation and interpolation but share a single ray trace.
 
 The image has $M$ rows at one-way ranges $\rho_m$, spaced uniformly from $\rho_{near}$ in the
 bottom row to $\rho_{far}$ in the top row, and one column per ping, with $\phi_i$ increasing from
