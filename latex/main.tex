@@ -48,8 +48,25 @@ SAR and sonar simulators are crucial for developing and validating radar and son
 
 Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed dataset of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} simulates signals from ray-traced contributions but does not model a transmit waveform and depends on outdated POV-Ray and MATLAB software, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
+Figure \ref{fig:sig-sim} gives an overview of how our simulator produces a received signal. A grid
+of parallel rays with equal energy is cast from the sensor toward an \texttt{.obj} mesh. Each time a
+ray hits a triangle, part of its energy is scattered back to the sensor, part is lost to absorption,
+and the rest is reflected along a new path that can hit the mesh again, up to a configurable number
+of bounces. Every return to the sensor is recorded with its energy and the range it traveled,
+forming an energy-range scatter plot. These irregularly spaced returns are then accumulated and
+interpolated onto the sample grid of the sensor with a band-limited window set by the sensor's
+bandwidth and transmit waveform, giving the received signal of one pulse. Repeating this for every
+pulse along the sensor trajectory gives the signals from which SAR and sonar images are formed.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[trim=0 241 289 0, clip, width=\textwidth]{figs/ray-trace-sim.pdf}
+  \caption{Process for simulating the received signal from object meshes.}
+  \label{fig:sig-sim}
+\end{figure}
+
 To the best of our knowledge, we provide the first scalable PyTorch-based SAR and sonar simulation framework that allows for any 3D \texttt{.obj} model. Our simulator allows users to specify sample rate, bandwidth, transmit waveform, material properties (reflectivity, scatter, absorption), and sensor trajectory.
-The primary functionality of the simulator is to use ray tracing combined with a band-limited \emph{accumulation and interpolation} of the ray returns to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. The number of bounces traced for each ray is configurable. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
+The primary functionality of the simulator is to use ray tracing combined with a band-limited \emph{accumulation and interpolation} of the ray returns to simulate signals that correspond to the sensor's wavelength, bandwidth, sample rate, and transmit waveform. When a carrier wavelength is given, every ray return carries its round-trip phase, so the signals are complex-valued and SAR images are formed by coherent integration. Our main contributions are:
 \begin{itemize}
     \item \textbf{Accumulation and interpolation of ray returns}, a low-pass filter that produces signals matched to the bandwidth and sample rate of the sensor and preserves the carrier phase of every return for coherent imaging. Unlike standard range compression, which filters a signal already sampled on a uniform grid, it evaluates the band-limited response directly from irregularly spaced ray returns, so one step both interpolates each return onto the sample grid and accumulates all returns into each sample.
     \item \textbf{Arbitrary transmit waveforms.} Any transmit waveform enters the simulation through the effective window of its matched filter, so an ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other sampled waveform is simulated from the same ray trace, with the range sidelobes of the corresponding pulse-compression system. To the best of our knowledge, ours is the only publicly available SAR or sonar simulator that supports arbitrary transmit waveforms.
@@ -58,21 +75,6 @@ The primary functionality of the simulator is to use ray tracing combined with a
 Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a spotlight-mode SAR image by convolution backprojection (CBP), an SSS image, and an FLS image of four different ShapeNet car models with the same simulator.
 
 Figure \ref{fig:main-fig} showcases examples of what our simulator produces for a ShapeNet \cite{shapenet} car model: a spotlight-mode SAR image, together with the depth map, energy map, energy-range scatter plot, and received signal of a single pulse.
-
-The overall process of our signal simulation is shown in Figure \ref{fig:sig-sim}. Our simulation
-functions by simulating a grid of parallel rays with equal energy. The rays hit a triangle on the
-\texttt{.obj} mesh. When a ray hits the mesh, some of the energy is reflected, some energy is
-scattered back to the sensor, and some energy is lost to absorption. The reflected energy continues
-along the next path of the ray, which once again hits another triangle on the mesh with reflectivity,
-scattering, and absorption, up to the configured number of bounces. We gather the scattered energy and its
-corresponding traveled range into an energy-range scatter plot. From the energy-range scatter plot we use a sinc pulse, with width
-corresponding to the radar system bandwidth, to accumulate and interpolate the
-scatters into each sample of the received signal. The spacing
-between each sinc pulse corresponds to the sample rate of the radar system. Unlike conventional
-filtering of a sampled signal, this single step places every off-grid return at its exact range and
-sums it with its neighbors, without first binning the returns onto a discrete range grid. Once there is a
-received signal for each pulse at different azimuth and elevation angles, further analysis or
-imaging can be done.
 
 \begin{figure}[H]
     \centering
@@ -102,13 +104,6 @@ imaging can be done.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/sar_overview_signal.png}}
     \caption{Example of the simulation. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image of the model from our simulation, in range and cross-range about the scene center with the sensor below the image, normalized to its peak, (\textbf{c}) range to the first hit of each ray, in $\ell$, (\textbf{d}) return weight $E_k$ of each ray's first bounce, as a fraction of the transmitted energy, clipped at its 99.9th percentile, (\textbf{e}) energy-range scatter of the returns of all bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns, with (\textbf{e},\textbf{f}) cropped to the sensor distance $\pm 0.7\ell$, the inner half of the simulated window of $\pm$\texttt{region\_radius} $= \pm 1.4\ell$ (Table \ref{tab:params}). Panels (\textbf{c}--\textbf{f}) are the middle pulse of the aperture, with lengths in $\ell$ (Section \ref{sec:units}) and $(x, y)$ the position of each ray on the ray grid.}
     \label{fig:main-fig}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 241 289 0, clip, width=\textwidth]{figs/ray-trace-sim.pdf}
-  \caption{Process for simulating the received signal from object meshes.}
-  \label{fig:sig-sim}
 \end{figure}
 
 \section{Related Works}
