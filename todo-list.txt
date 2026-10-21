@@ -17,7 +17,7 @@ DONE - make figure 3 (process for simulating received signals) the first plot se
 
 section: method:
 DONE - we don't need table 1 in the methods section. we can make a short subsection in the appendix about how r a i d s values are automatically normalized, with the table there.
-- remove the sentence "The size of the ray grid only needs to be big enough to cover the ground space desired for imaging."
+DONE - remove the sentence "The size of the ray grid only needs to be big enough to cover the ground space desired for imaging."
 - put discussion of r a i d s into a dedicated material properties subsection
 - "m I , m D are multipliers that conserve the scattered energy." should be "m I , m D are multipliers that conserve the law of conservation of energy for scattered energy."
 - clarify that a_r e_r a_l e_l are relative to the surface normal (if it has not already been clarified)
