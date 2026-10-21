@@ -1,3 +1,6 @@
+general stuff:
+- scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
+
 section: abstract:
 - raysar does in fact simulate a signal, just not using waveforms
 - we need an experiment that calculates radar cross section, plot it over many az/el values in polar coordinates. theta=az, r = 90-el
@@ -31,6 +34,10 @@ section: method:
 subsection: imaging modalities
 - get rid of the introductory paragraph. It is redundant and useless information.
 - we should have a dedicated paragraph for sss and fls just like spotlight mode sar.
+
+subsection: Radar Cross Section
+- use $\sigma$ instead of $\sigma_{RCS}$, this is the only sigma in the paper isn't it?
+- replace "physical optics" with "theoretical $\sigma$
 
 section: experiments:
 - delete and redo the introductory paragraph, it is outdated

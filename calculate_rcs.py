@@ -213,7 +213,6 @@ def plot_map(az, el, sigma, db_range, out_path, cartesian=False):
         ax.set_yticklabels(['%d°' % (90 - r) for r in r_ticks], fontsize=8)
         ax.set_rlim(0, 90 - el.min())
         ax.set_rlabel_position(22.5)
-        ax.set_title('RCS, r = 90° − elevation, θ = azimuth', fontsize=10)
     fig.colorbar(mesh, ax=ax, pad=0.1 if not cartesian else 0.02, label='RCS (dB, arb.)')
     fig.tight_layout()
     fig.savefig(out_path, dpi=200)

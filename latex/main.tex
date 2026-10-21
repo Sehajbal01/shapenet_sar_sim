@@ -498,7 +498,7 @@ Energy is also unitless. The sensor transmits a total energy of 1, split equally
 so a return weight $E_k$ is the fraction of the transmitted energy that the $k^{th}$ return brings
 back to the sensor, and a signal or image value is a sum of such fractions. The coherent sum
 (\ref{eq:coherent-scatters}) adds the return weights as field amplitudes, and $|s|^2$ is taken as
-received power, as in the flat-plate validation of Section \ref{sec:validation}. The physically
+received power, as in the flat-plate validation of Section \ref{sec:rcs}. The physically
 consistent amplitude would be $\sqrt{E_k}$. Using $E_k$ instead preserves where returns fall and
 their phases, but squares their relative amplitudes, which doubles the dynamic range of the images
 in dB. No antenna gain, transmit power or
@@ -553,6 +553,49 @@ In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc win
   \label{fig:effective-windows}
 \end{figure}
 
+\subsection{Radar Cross Section}
+\label{sec:rcs}
+
+The RCS of a target is the power it scatters back toward the sensor, as a function of look
+direction, expressed as an equivalent area independent of range. It is the standard measure of how
+visible a target is to a radar.
+
+We compute it from one ray trace per look direction, without interposummation. The ray grid of
+Figure \ref{fig:sig-sim} is aimed at the origin from azimuth $a$ and elevation $e$, and its returns
+are summed coherently,
+\begin{equation}
+    \sigma_{\mathrm{RCS}}(a,e) = \Bigg|\sum_{k=1}^{N}E_ke^{j 2 \pi z_k / \lambda}\Bigg|^2
+    ,
+    \label{eq:rcs}
+\end{equation}
+where $E_k$ and $z_k$ are the return weights and two-way ranges of the $N$ returns traced at
+$(a,e)$. Since $E_k$ is a fraction of the transmitted energy (Section \ref{sec:units}),
+(\ref{eq:rcs}) is a relative RCS in arbitrary units.
+
+Figure \ref{fig:rcs} shows (\ref{eq:rcs}) on a $2^\circ$ grid for a $1 \times 1$ flat plate and for
+the car of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$. The plate
+returns a lattice of sinc lobes around its normal. The car is strongest near the zenith and
+broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $13$~dB less than
+its sides at low elevation. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns
+against the physical-optics RCS of the plate: at both wavelengths the lobes and nulls fall where
+physical optics puts them, and the envelope falls about $0.4$~dB faster at $80$--$85^\circ$
+elevation, since the scattering lobe of the material is narrower than that of physical optics.
+
+\begin{figure}[H]
+  \centering
+    \subfloat[\centering]{\includegraphics[trim=0 0 0 27bp, clip, height=0.25\textwidth]{figs/rcs_flatplate_polar.png}}
+    \hfill
+    \subfloat[\centering]{\includegraphics[height=0.25\textwidth]{figs/rcs_polar.png}}
+    \hfill
+    \subfloat[\centering]{\includegraphics[trim=767bp 0 0 20bp, clip, height=0.25\textwidth]{figs/sar_validation.png}}
+  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate and (\textbf{b}) the car
+  of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$, with the azimuth $a$ as
+  the angle and $90^\circ - e$ as the radius, so the zenith is at the center. (\textbf{c}) The plate
+  at $a = 0^\circ$ from $80$ to $90^\circ$ elevation, simulated (solid) and physical optics (dotted),
+  each normalized to its peak.}
+  \label{fig:rcs}
+\end{figure}
+
 \subsection{Imaging Modalities}
 \label{sec:modalities-overview}
 
@@ -599,7 +642,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers, a sphere, and a flat plate. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first compare a constant material with per-triangle materials on a CVDomes car, then validate the SAR forward model on point scatterers and a sphere. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -648,11 +691,9 @@ $e^{j4\pi R/\lambda}$ to numerical precision, so the pulses integrate coherently
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\textwidth]{figs/sar_validation.png}
+  \includegraphics[trim=0 0 377bp 0, clip, width=0.67\textwidth]{figs/sar_validation.png}
   \caption{(\textbf{a}) A single point scatterer and (\textbf{b}) a $5\times5$ grid of point
-  scatterers imaged in spotlight-mode SAR at the default parameters, in dB. (\textbf{c}) RCS of a
-  $1 \times 1$ flat plate from $80$ to $90^\circ$ elevation, simulated (solid) and physical optics
-  (dotted), each normalized to its peak.}
+  scatterers imaged in spotlight-mode SAR at the default parameters, in dB.}
   \label{fig:validation}
 \end{figure}
 
@@ -668,14 +709,6 @@ its sidelobes spread symmetrically into concentric rings around the target.
   \caption{SAR reconstruction of a sphere at decreasing scale ($256$ pulses), shown in dB, with the scale factor labeled above each subplot.}
   \label{fig:sphere-size}
 \end{figure}
-
-Where the point targets bypass the ray tracer, the flat plate tests the phase of ray-traced returns.
-We ray-trace a $1 \times 1$ plate on the ground, sweep the sensor elevation at azimuth $0^\circ$,
-and compare the squared magnitude of the coherent sum of its returns with the physical-optics radar
-cross section of a square plate (Figure \ref{fig:validation}c). At both wavelengths the lobes and
-nulls fall where physical optics puts them. The envelope falls faster away from normal, by about
-$0.4$~dB at $80$--$85^\circ$ elevation, since the directional scattering lobe of the material is
-narrower than that of physical optics.
 
 \subsection{Bandwidth and Ray Density}
 \label{sec:bw-ray-density}
@@ -1075,7 +1108,7 @@ energy through the phenomenological lobe of Section \ref{sec:signal-simulation}.
 currents are integrated, so edge and tip diffraction, creeping waves, and resonant scattering from
 features comparable in size to $\lambda$ are not modeled, and the model holds only for targets much
 larger than the wavelength. The wavelength enters only through the phase of each return, so the
-scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:validation}
+scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:rcs}
 matches physical optics in its lobes and nulls because the coherent sum reproduces the phase
 across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
 traced through two bounces, so higher-order multipath, such as returns that bounce three or more
@@ -1106,8 +1139,8 @@ $(R,A,I,D,S)$ chosen by hand, as in the CVDomes conversion of Section
 \ref{sec:per-triangle-materials}, where glass is given a single band-averaged reflection. No ray is
 transmitted through a surface, so the interior of a vehicle is never seen through its windows.
 
-\textbf{Validation.} The forward model is validated against point scatterers and the
-physical-optics glint of a flat plate (Section \ref{sec:validation}), but its images are not
+\textbf{Validation.} The forward model is validated against point scatterers (Section \ref{sec:validation}) and the
+physical-optics glint of a flat plate (Section \ref{sec:rcs}), but its images are not
 compared against measured SAR or sonar data, or quantitatively against CVDomes. Its images should
 therefore be read as reproducing the geometry of real sensors, including shadows and two-bounce
 multipath, rather than their calibrated intensities.
@@ -1669,6 +1702,7 @@ The scripts read their defaults from \texttt{experiments/config.json} (Appendix 
   \item Figure \ref{fig:effective-windows}: \texttt{window\_analysis.py}
   \item Figure \ref{fig:materials}: \texttt{convert\_cvdomes.py}, then \texttt{render\_cvdomes.py}
   \item Figure \ref{fig:validation} and the validation numbers: \texttt{sar\_validation.py}
+  \item Figure \ref{fig:rcs}: \texttt{calculate\_rcs.py} (a, b) and \texttt{sar\_validation.py} (c)
   \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
   \item Figures \ref{fig:fsbw}--\ref{fig:scatter-closeup}: \texttt{fsbw\_and\_raydensity\_exp.py}
   \item Table \ref{tab:compute-time}: \texttt{compute\_time\_experiment.py}
