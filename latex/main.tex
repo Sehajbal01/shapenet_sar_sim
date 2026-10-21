@@ -219,7 +219,7 @@ $R,A,S$. Scattering is the only component that returns energy to the receiver. T
 assigned to each of the $F$ faces of the mesh by a \texttt{.mp} file that accompanies the
 \texttt{.obj}, with one line of $(R,A,I,D,S)$ per triangle (Section \ref{sec:per-triangle-materials}).
 Without one, we use only two materials, one for the object and one for the ground, whose values are
-listed in Table \ref{tab:materials}.
+listed in Table \ref{tab:materials} of Appendix \ref{app:materials}.
 
 The three fractions of a surface add up to 1, so that a surface never returns more energy than it
 receives:
@@ -233,28 +233,9 @@ intensity $I$ and diffuse scattering $D$, which split the scattered fraction:
     D + I = 1
     .
 \end{equation}
-Material properties that do not satisfy these constraints are divided by their sums before ray
-tracing. Table \ref{tab:materials} gives the default materials in both forms. The car scatters about a
-third of the incident energy, almost entirely in the directional lobe, so it returns strong glints
-near the mirror direction and little elsewhere. The ground scatters weakly and mostly diffusely, so it
-returns a dim, nearly uniform clutter that does not mask the car.
-\begin{table}[H]
-\centering
-\caption{Default materials. The configuration values (as in \texttt{obj\_raids} and
-\texttt{ground\_raids}) are normalized to the values used by the simulator. The directional
-exponent is $\alpha = 5$ for both.}
-\label{tab:materials}
-\begin{tabular}{lccccc}
-\toprule
-\textbf{Material} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
-\midrule
-Car, configured    & $1.0$   & $1.0$   & $0.9$   & $100.0$ & $0.1$ \\
-Car, normalized    & $0.345$ & $0.345$ & $0.310$ & $0.999$ & $0.001$ \\
-Ground, configured & $1.0$   & $1.0$   & $0.1$   & $1.0$   & $5.0$ \\
-Ground, normalized & $0.476$ & $0.476$ & $0.048$ & $0.167$ & $0.833$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+Material properties that do not satisfy these constraints are normalized automatically before ray
+tracing (Appendix \ref{app:materials}).
+
 Returned energy from a particular ray $E_r$ is given by
 \begin{equation}
     E_r = E_{in} S \Big(m_I\cos({\theta/2})^\alpha + m_D\Big)
@@ -1678,6 +1659,35 @@ $\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--}     & level\_with\_ground      & True \\
 \multicolumn{1}{c}{--}     & object\_x\_flip          & False \\
 \multicolumn{1}{c}{--}     & object\_rotate\_xyz      & $(90^\circ, 0^\circ, 0^\circ)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Material Normalization}
+\label{app:materials}
+The materials are configured as $(R,A,I,D,S)$, either once for the object and once for the ground
+(\texttt{obj\_raids} and \texttt{ground\_raids}) or per triangle in a \texttt{.mp} file (Section
+\ref{sec:per-triangle-materials}), and the configured values need not satisfy $R+A+S=1$ and $I+D=1$.
+Before ray tracing, the simulator divides $R$, $A$ and $S$ of each triangle by their sum, and $I$
+and $D$ by theirs, so the configured values act as relative weights. Table \ref{tab:materials}
+gives the default materials in both forms. The car scatters about a third of the incident energy,
+almost entirely in the directional lobe, so it returns strong glints near the mirror direction and
+little elsewhere. The ground scatters weakly and mostly diffusely, so it returns a dim, nearly
+uniform clutter that does not mask the car.
+\begin{table}[H]
+\centering
+\caption{Default materials. The configuration values (as in \texttt{obj\_raids} and
+\texttt{ground\_raids}) are normalized to the values used by the simulator. The directional
+exponent is $\alpha = 5$ for both.}
+\label{tab:materials}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Material} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
+\midrule
+Car, configured    & $1.0$   & $1.0$   & $0.9$   & $100.0$ & $0.1$ \\
+Car, normalized    & $0.345$ & $0.345$ & $0.310$ & $0.999$ & $0.001$ \\
+Ground, configured & $1.0$   & $1.0$   & $0.1$   & $1.0$   & $5.0$ \\
+Ground, normalized & $0.476$ & $0.476$ & $0.048$ & $0.167$ & $0.833$ \\
 \bottomrule
 \end{tabular}
 \end{table}
