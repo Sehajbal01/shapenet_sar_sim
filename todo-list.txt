@@ -1,142 +1,106 @@
+general stuff:
+DONE - remove any reference to the outdated claim that we only consider 2 bounces. It is now actually configurable
+DONE - ensure naming conventions throughout the paper are consistent. example: "SRN Cars" and "srncars" should just be "SRN Cars" with a reference
 
-=== Paper Todo List ===
-- read over the rest of the paper and fix anything that might need fixing
+DONE - scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
+
+DONE section: abstract:
+DONE - raysar does in fact simulate a signal, just not using waveforms
+
+section: intro:
+DONE - throughout the paper, we can't say raysar or cv-domes don't simulate a signal. they do infact simulate a signal
+DONE - also to the best of our knowledge we are the only publicly available simulator that allows arbitrary waveforms
+DONE - we allow for as many bounces as we want, no need to specify we stick to 2. that info is only needed in experiments
+- figure 1 (examples of generated images) is too big, it occupies a whole page. make it 1/3rd that size
+- when talking about figure 2 (example of rgb, sar, depth map, energy map, scatters, signal) in the text, we don't need detailed descriptions. our goal is to quickly grab reader attention. we only need to say we showcase some examples of images produced by the simulator. techincal details and simulation parameters are for other sections of the paper.
+- make figure 3 (process for simulating received signals) the first plot seen in the paper. have an accompanying paragraph that talks through the process at a high level. This should be before we talk about the main contributions of the paper.
+
+section: method:
+- we don't need table 1 in the methods section. we can make a short subsection in the appendix about how r a i d s values are automatically normalized, with the table there.
+- remove the sentence "The size of the ray grid only needs to be big enough to cover the ground space desired for imaging."
+- put discussion of r a i d s into a dedicated material properties subsection
+- "m I , m D are multipliers that conserve the scattered energy." should be "m I , m D are multipliers that conserve the law of conservation of energy for scattered energy."
+- clarify that a_r e_r a_l e_l are relative to the surface normal (if it has not already been clarified)
+- "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors" should be "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors that are integrated over" 
+DONE - after the sentence "We only consider two-bounce returns, so each ray contributes at most two returns." we should also say how we only consider additional bounces from reflectivity, not scattering
+- follow "We name the processing in (23) interposummation" with "it is different from standard interpolation because it is summing together multiple returns in addition to interpolation" or something like that
+- the subsection "units and scale" should be moved to the experiments section. it is out of place here.
+- remove this entire paragraph in the "units and scale" subsection that start with "The bandwidth corresponds to a high-resolution radar, and"
+- change s to s(n) in the sentence "adds the return weights as field amplitudes, and"
+MAYBE DON"T DO THIS ONE - the sentence "No antenna gain, transmit power or receiver noise figure is modeled, so signal values are relative to the transmitted energy rather than calibrated in watts." is not correct, we utilize beam width which in sonar which is an antenna pattern
+- remove this clause after the comma "and the range sidelobes of the waveform shape the final image."
+- ", left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression." is completely wrong. the gaussian pulse window has no side lobes in the range domain, but it is costly in the frequency domain as it has much energy outside the spatial bandwidth, despite satisfying full width half max at the targetted +- bw/2. all the other pulses have a good limitation in the frequency domain but pay for it with range domain side lobes. lets also use "spatial domain" instead of "range domain"
+
+subsection: imaging modalities
+- get rid of the introductory paragraph. It is redundant and useless information.
+- we should have a dedicated paragraph for sss and fls just like spotlight mode sar. currently there is a SAR paragraph and just 1 sonar paragraph
+
+subsection: Radar Cross Section
+- replace "physical optics" with "theoretical RCS"
+
+section: experiments:
+- delete and redo the introductory paragraph, it is outdated
+
+subsection: per-triangle materials
+- do not mention gamma.
+- the explanation of how r a i d s are selected and the creation of the .mp script is way too lengthy. simplify it to just how we took the various material descriptors (tires, glass, etc.) from the CV domes material labels and created our own material properties as we saw fit.
+- make a table in the appendix that maps the cv domes object properties to r a i d s values
+
+subsection: Validation Against Closed-Form References
+- add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
+- remove this sentence "At the default Fs = 2Bs , magnitude aliasing narrows this impulse response by up to 42% relative to an analytic backprojection; at Fs ≥ 8Bs the two agree within 4%."
+- when talking about the sphere figure, mention that the azimuth spread in this sim is 90 degrees
+- in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
+
+subsection: Bandwidth and Ray Density
+- the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
+- This section has too many numerical descriptions in the text. Slim it down significantly
+
+subsection: Compute Time
+- need citation when talking about srncars
+
+subsection: Side-Scan Sonar Azimuth Rays
+- remove the first sentence, it is unecessary information to the reader "The remaining experiments test the two sonar modalities"
+- effecively delete the entire text of this subsection, it has too much unecessary detail. we only need to talk about how when we want to see a beam width in sonar we need a lot of rays, otherwise it looks like multiple ghost images of the scene overlayed with each other. With our 7.5 sensor distance and a beam width of 4 degrees, the image looks smooth after 501 azimuth rays.
+- the figure description can be one short sentence: "sweeping the number of azimuth rays with a 7.5 l sensor distance and 4 degree beam width" or something like that
+- the equation is totally unecessary
+
+subsection: Sonar Ray Density Across Range
+- equation is totally unecessary
+- again, this section is way too long
+- delete the current text, and follow my outline below
+    - we render a sonar image with a long range and azimuth swath and (whatever sensor distance was for this)
+    - the rays for sonar fan out in elevation from a fixes point
+    - so the ray density that hits the ground at close ranges is more than at far ranges
+    - this makes us see strange patterns at far ranges
+    - refer the reader to the subsection on bandwidth and ray density, it is the same effect
+    - we also note that the top of the image is darker because there is less returned energy
+    - this effect is like the inverse square law, but now it's due to the physical spread of the rays
+    - we also note that at close ranges the image is black
+    - this is because the sensor is off the ground, and there is literally no returns for those ranges
+
+subsection: transmit waveform
+- add a sentence to the first paragraph about how the sonar images are in db scale and the sar images are linear scale
+- keep first paragraph, delete the rest, then follow my outline. again, this needs to be brief, but still enough detail for an academic paper
+    - in the sar images the difference between different waveforms is minimal because of the linear scaling
+    - the side lobes as observed in figure (whatever the waveform figure is) (a) are at least 6db down
+    - although the sidelobes are small, we can still see some repeating of the stronger lines in the sar images.
+    - in the sonar images we observe a vertical smearing effect
+    - this is because the beam width is narrow, but the db scaling really showcases the side lobes
+    - only gaussian waveform gives a clear sonar image because it has no side lobes
+
+section: Limitations
+- remove sentence "Carrying a polarization vector with each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without changing the ray trace."
+- the last sentence in the paragraph for "Geometrical optics" should be "The wavelength enters only through the phase of each return, so the scattering of a surface does not depend on frequency." everything after that deleted
+- in "Geometrical optics" also mention that we only consider directly reflected rays according to the R material property, whereas in real life energy would be scattered in all directions.
+- in "Geometrical optics" also mention that there is no diffraction effects, such as knife edge diffraction
+- delete the current "Ray Density" paragraph. replace it with a paragraph about "Ray density and signal bandwidth". replace it with a new paragraph that follows this outline. no equations
+    - the modeling of returns are discrete samples of a continuous surface
+    - these discrete discontinuities can be visible in the signal if the bandwidth is too high relative to the density of rays cast
+    - To get high bandwidth signals, one needs to also increase the ray density which is computationally costly
+- Remove the Materials paragraph's currenty text. replace it with something that follows this outline
+    - the material property values R A I D S and the exponenet alpha do not comprehensively capture the behaviors of radio energy
+    - the two forms of scattered energy (diffuse and directional scatter) do not perfectly model the pattern of energy scattered by real radio waves.
 
 
 
-
-
-
-- implement a "range binning" waveform option in interpolate signal
-    - it is theoretically equivalent to a waveform who's matched filter output is equal to a perfect rectangular pulse
-    - it operates as sum of energy of scatters whos range is within sample_z +- 1/(2*bw)
-    - note: bins will overlap unles sample rate <= bw
-
-
-
-        
-        
-        
-
-- make a "range angle profile vs range dataset" for the L3 harris project
-    - ask professor for how the data is made again...
-
-- Sehaj todo list
-    DONE - make an updates slide show
-    DONE - find capability to plot signal for RaySAR & CV Domes
-        DONE - find any simulation parameters that might affect the signal
-    - Compare signal under various conditions
-        - compare the frequency domain of the signals
-        - signal power (add parameter to accumulate_scatters_rays to select total transmit energy)
-        - compare signal-to-clutter ratio
-            - can we adjust material properties to match CV Dome's signal-to-clutter ratio?
-    - calculate radar cross section of the object 
-        - remove the ground?
-        - learn how to do this
-    - Write comparative analysis section of the paper
-    - adjust the related works section at the end
-    - decide what to plot in the paper
-        - make the plots
-    - convert paper to MDPI format
-    - submit to MDPI
-
-
-            
-            
-            
-
-
-
-
-- Adress reviewre concerns
-    - address these in the paper to satisfy reviewer 1's complaints: https://gisgeography.com/synthetic-aperture-radar-examples/
-    - i have some slides about this in my updates presentation
-        - https://docs.google.com/presentation/d/128WiwIninhMNFE3ZtLbhJNa_3-_SFAs0fCvjq3ALgXU/edit?slide=id.g2ab64a12bdf_0_22#slide=id.g2ab64a12bdf_0_22
-
-- submit to https://www.mdpi.com/journal/sensors/special_issues/G617MH56JV
-    - due october
-
-- address reviewer concerns:
-****************************************
-Reviewer #1 Comments
-****************************************
-This work describes an open-source, GPU-accelerated SAR simulator in PyTorch that ray-traces arbitrary data.Object meshes with customizable 
-radar settings (wavelength, bandwidth, and sampling rate) and simple per-face material features, such as two-bounce interactions. "
-Interposummation" is a sinc-based interpolation-and-summation approach that maps discrete energy-range scatterers into a sampled received signal 
-commensurate with the system bandwidth/sample rate, followed by spotlight-mode picture generation tests using ShapeNet automobile models.
-
-The work has several strong advantages:
-1) High practical value / accessibility: PyTorch + GPU setup is attractive for most research workflows due to already existing infrastructure.
-2) Clear end-to-end story: ray tracing → energy–range scatter → interposummation → simulated received signal → SAR image (figures help communicate the flow).
-3) Interesting observation about oversampling artifacts: the discussion and diagnostic figure on how higher Fs/Bs can reveal “delta-like” 
-discontinuities (and mitigation via ray density or reduced bandwidth) is a useful practical insight for users of such a simulator.
-
-However, I see room for potential improvements:
-1) Limited evaluation scope. The experiments are mostly qualitative and focus on a single class of models (cars) and spotlight-mode 
-reconstructions. There’s no comparison to an established simulator.
-2) Modeling assumptions are simplistic / under-specified. The per-face parameters (reflect/scatter/absorb) are introduced, but the scattering/
-backscatter model is quite simplified; it’s unclear how well this matches typical SAR phenomenology (e.g., aspect dependence, specular glints, 
-diffuse scattering, etc.)
-3) Reproducibility details need tightening. Several parameters in the table appear unitless or unclear (e.g., “spatial bw 90”, “spatial fs 90”, 
-wavelength units, geometry scaling). Without consistent units and a clearly stated coordinate system/scale, it’s hard for others to reproduce 
-results or port scenes reliably.
-
-Suggested edits:
-1) Add coherent validation tests, such as a single point-scatterer or a simple canonical target (flat plate/trihedral) with a known phase 
-history and focused response. Demonstrate that complex-valued focussing operates as intended.
-2) Compare qualitative structure and/or basic metrics (peak location, resolution, sidelobes) in a single controlled trial that roughly 
-corresponds to RaySAR or CVDomes conditions.
-3) Open-source preparedness: incorporate (in the paper and repository) the license, minimal sample scripts, and a reproducibility section 
-detailing the precise configuration employed to produce significant figures.
-
-Overall, I think the tool is promising and could be very useful to the community, but the paper needs stronger evidence that it produces 
-coherently accurate SAR phase histories (not just visually plausible magnitude images), plus clearer specification of units and assumptions.
-
-
-****************************************
-Reviewer #2 Comments
-****************************************
-The paper addresses a relevant and timely problem, namely the lack of flexible open-source SAR simulators, and the general idea of combining ray 
-tracing with a signal-level model is interesting. However, in its current form, several aspects limit the technical strength and clarity of the contribution.
-
-First, the proposed Interposummation technique is presented as a core novelty, but from a signal processing perspective it appears equivalent to 
-a standard convolution with a sinc kernel, or, equivalently, an ideal matched filtering / low-pass filtering operation in range. While applying 
-this operation directly to ray-based energy–range scatters is a reasonable implementation choice, the manuscript does not sufficiently clarify 
-how this differs conceptually or practically from classical range compression or matched filtering. A clearer positioning with respect to 
-established SAR signal models would strengthen the contribution and avoid overstating novelty.
-
-Second, the paper lacks quantitative or qualitative comparisons with existing SAR simulators (e.g., RaySAR, CVDomes, or other physics-based tools
-). Although these frameworks are acknowledged as outdated or limited, they are widely known for their physical accuracy. Without side-by-side 
-comparisons (either in terms of image quality, signal fidelity, or computational trade-offs) it is difficult to assess the realism and accuracy 
-of the proposed simulator beyond visual inspection.
-
-Third, the handling of complex-valued signals raises concerns. The results show that SAR imaging with complex signals performs poorly, while 
-magnitude-only imaging yields visually acceptable results. This behaviour is not sufficiently explained and represents a significant limitation, 
-given that real SAR imaging fundamentally relies on phase coherence. A deeper analysis is needed to clarify whether this issue arises from the 
-signal model, phase handling across rays, numerical implementation, or assumptions in the ray-based scattering model.
-
-Additionally, some analyses and figures would benefit from clearer presentation. For example, Figure 1(c) and Figure 1(d), described as “range 
-per ray” and “energy per ray,” visually resemble rendered target images but lack colorbars, scales, or units. As a result, it is difficult to 
-interpret these plots quantitatively or to understand how range and energy values are distributed across rays.
-
-Overall, the work addresses an important need and has clear potential, especially as an open-source, GPU-accelerated framework. However, the 
-simulator appears to be at an early stage of development. Strengthening the theoretical framing of Interposummation, improving comparisons with 
-established simulators, clarifying the limitations related to complex-valued imaging, and refining the presentation would significantly improve 
-the paper’s impact and credibility.
-
-****************************************
-Reviewer #3 Comments
-****************************************
-Please re-read to address minor typos.  The level of detail in some explanations is significant but some areas (such for the coherent imaging) 
-could use further discussion.
-
-****************************************
-Reviewer #4 Comments
-****************************************
-The manuscript describes an interesting piece of software developed to simulate SAR imaging. Its main claim to novelty is the use of ray tracing 
-to consider up to 2 bounces per ray, and the first using PyTorch libraries to work with any 3D .obj model. The manuscript is clearly written, 
-and simulations are illustrative. It appears the method requires very detailed 3D models of targets, including full reflection/absorption/
-scattering coefficient specified for every triangle of the model. How feasible this is for general purpose SAR imaging is questionable. 
-Practical concerns aside, the greatest weakness of the manuscript is the lack of any verification for the correctness of the code, and no 
-measurements of performance against benchmarks of any kind. The manuscript would be stronger if some evidence of correction is provided. There 
-is undoubtedly some good work, but the paper feels premature for dissemination.
