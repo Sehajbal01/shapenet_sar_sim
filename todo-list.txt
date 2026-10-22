@@ -53,7 +53,7 @@ DONE - when talking about the sphere figure, mention that the azimuth spread in 
 DONE - in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
 
 subsection: Bandwidth and Ray Density
-- the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
+DONE - the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
 - This section has too many numerical descriptions in the text. Slim it down significantly
 
 subsection: Compute Time

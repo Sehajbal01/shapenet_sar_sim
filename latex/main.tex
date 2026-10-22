@@ -719,15 +719,17 @@ so that its floor does not hide the artifacts.
   \label{fig:raydensity}
 \end{figure}
 
-Figure \ref{fig:scatter-closeup} shows where the artifacts come from. The SAR ray grid is
-orthographic, so on the flat seafloor the $R_w = 208$ rays in one row of the grid travel the same
-distance and return at the same range, to within $1.1\times10^{-6}\ell$. The seafloor part of the
-energy-range scatter is therefore a set of clusters of $208$ coincident returns, one per row. Rows
+The artifacts appear when the waveform that accumulates and interpolates the returns resolves the
+pattern of the returns rather than the surface they sample. The returns are discrete samples of a
+continuous surface, and a pulse narrower than their spacing in range shows the gaps between them.
+The seafloor is sampled sparsely in range. The SAR ray grid is orthographic, so on the flat
+seafloor the $R_w = 208$ rays in one row of the grid travel the same distance and return at the
+same range, to within $1.1\times10^{-6}\ell$. The seafloor returns therefore fall in clusters of
+$208$ coincident returns, one per row, and add no density along range. Rows
 are $\Delta = W_g/R_h = 0.0058\ell$ apart on the grid, and $\Delta\cot\theta$ apart in range for a
 pulse at elevation $\theta$, which is $0.0068\ell$ at the $40.6^\circ$ elevation of the middle pulse.
-No bandwidth separates the returns within a cluster, since they share a range. The pulse does,
-however, resolve the gaps between clusters once it is narrower than their spacing (Figure
-\ref{fig:scatter-closeup}b). Over the seafloor window of Figure \ref{fig:scatter-closeup}b, the
+Once the pulse is narrower than this spacing, it resolves the gaps between clusters (Figure
+\ref{fig:fsbw}, top). Over a near-range patch of seafloor, the
 ratio of the largest to the smallest signal sample is $0.0$, $5.6$, and $40$~dB at
 $B_s = 64$, $128$, and $256$, whose pulses are $0.0097$, $0.0048$, and $0.0024\ell$ wide. At $B_s = 512$, the signal falls to zero between clusters, and its seafloor becomes a comb with
 one peak per row of the ray grid.
@@ -742,26 +744,13 @@ rings centered on boresight. The side-scan sonar shows the same effect as horizo
 ping sees the flat seafloor through the same fan, so its returns fall at the same ranges in every
 ping, and a row that falls between them is dim along the whole track.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\textwidth]{figs/fsbw_and_raydensity_scatters.png}
-  \caption{(\textbf{a}) Energy-range scatter of the middle SAR pulse at the default
-  $208 \times 208$ rays, normalized to its peak, with the windows of (\textbf{b},\textbf{c}) shaded.
-  (\textbf{b}) The seafloor returns of (\textbf{a}) as stems, each a cluster of $R_w = 208$
-  coincident returns from one row of the ray grid, under the signal at $B_s = 512$, $128$, and $64$.
-  (\textbf{c}) The seafloor returns at $0.125\times$ rays ($R_w = 26$) under the signal of each ray
-  grid of Figure \ref{fig:raydensity}, all at $B_s = 64$. The clusters of the denser grids fall
-  between the stems drawn. Each signal is normalized to its peak in the window.}
-  \label{fig:scatter-closeup}
-\end{figure}
-
-Raising the ray density closes the gaps from the other side: it moves the clusters together
-instead of widening the pulse. Doubling the rays per side halves $\Delta$, and with it the cluster
-spacing, so it has the same effect as halving $B_s$. At $B_s = 64$, the signal of the middle SAR
+The artifacts are therefore removed either by lowering $B_s$, which widens the pulse, or by
+raising the density of the returns along range, which narrows the gaps. Raising the ray density
+helps only through the second: doubling the rays per side halves $\Delta$, and with it the cluster
+spacing in range, so it has the same effect as halving $B_s$. At $B_s = 64$, the signal of the middle SAR
 pulse falls to zero between clusters at $0.125\times$ rays, as it does at $B_s = 512$, and its
 seafloor ripple is $41$~dB at $0.25\times$ rays and $5.7$~dB at $0.5\times$, against $40$ and
-$5.6$~dB at $B_s = 256$ and $128$ with the default rays (Figures \ref{fig:raydensity} and
-\ref{fig:scatter-closeup}c). On the seafloor on the far side of the car, the standard deviation of the forward-looking sonar image is
+$5.6$~dB at $B_s = 256$ and $128$ with the default rays (Figure \ref{fig:raydensity}). On the seafloor on the far side of the car, the standard deviation of the forward-looking sonar image is
 $9.6$ and $1.6$~dB at $0.25\times$ and $0.5\times$ rays, against $8.7$ and $1.5$~dB at
 $B_s = 256$ and $128$ with the default fan. From $1\times$ rays on, both
 signals are smooth, and the sonar's rings are gone.
@@ -1724,7 +1713,7 @@ The scripts read their defaults from \texttt{experiments/config.json} (Appendix 
   \item Figure \ref{fig:validation} and the validation numbers: \texttt{sar\_validation.py}
   \item Figure \ref{fig:rcs}: \texttt{calculate\_rcs.py} (a, b) and \texttt{sar\_validation.py} (c)
   \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
-  \item Figures \ref{fig:fsbw}--\ref{fig:scatter-closeup}: \texttt{fsbw\_and\_raydensity\_exp.py}
+  \item Figures \ref{fig:fsbw} and \ref{fig:raydensity}: \texttt{fsbw\_and\_raydensity\_exp.py}
   \item Table \ref{tab:compute-time}: \texttt{compute\_time\_experiment.py}
   \item Figures \ref{fig:ss-az-rays} and \ref{fig:ss-beam-width}: \texttt{sss\_paper\_figures.py}
   \item Figures \ref{fig:fls-range-density} and \ref{fig:fls-beam-width}: \texttt{fls\_paper\_figures.py}
