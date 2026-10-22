@@ -683,19 +683,12 @@ its sidelobes spread symmetrically into concentric rings around the target.
 \label{sec:bw-ray-density}
 
 The returned signal (\ref{eq:returned-scatters}) is a sum of delta functions, one per ray return,
-and accumulating and interpolating the returns low-pass filters it with a pulse whose amplitude full width at half maximum is
-$0.62/B_s$ for the default Gaussian waveform. A pulse that is wide against the range spacing of the
-returns gives a smooth estimate of the continuous response. A narrow one resolves the returns, and
-the gaps between them show up as nulls. In Figure \ref{fig:fsbw}, we lower the spatial bandwidth from
-$B_s = 512$ to $64$ with $F_s = 2B_s$ at the default ray grids. Each column shows the sampled
-signal of the middle SAR pulse, the SAR image, and the forward-looking sonar image. We then hold
-$B_s = 64$ and scale the rays per side of both the SAR grid and the forward-looking sonar fan from
-$0.125$ to $4$ times their defaults. Figure \ref{fig:raydensity} shows the signal of the middle SAR
-pulse from $0.125$ to $1$ times the default rays, where it is already smooth. Both modalities image the same car from
-the same pose, \texttt{pose\_num} 000000 at an elevation of $40.6^\circ$, the SAR sensor at the
-pose's distance of $1.3\ell$ and the sonar at $7.5\ell$. All other settings are the defaults of
-Tables \ref{tab:params} and \ref{tab:fls-params}, except that the SAR receiver noise is turned off
-so that its floor does not hide the artifacts.
+and accumulating and interpolating the returns low-pass filters it with a pulse whose width is
+inversely proportional to $B_s$. A pulse that is wide against the range spacing of the returns gives
+a smooth estimate of the continuous response, while a narrow one resolves the individual returns,
+and the gaps between them show up as nulls. In Figure \ref{fig:fsbw}, we lower $B_s$ at the default
+ray density, and in Figure \ref{fig:raydensity}, we hold $B_s$ fixed and scale the rays per side of
+the SAR grid. The SAR receiver noise is turned off so that its floor does not hide the artifacts.
 
 \begin{figure}[H]
   \centering
@@ -720,56 +713,24 @@ so that its floor does not hide the artifacts.
 \end{figure}
 
 The artifacts appear when the waveform that accumulates and interpolates the returns resolves the
-pattern of the returns rather than the surface they sample. The returns are discrete samples of a
-continuous surface, and a pulse narrower than their spacing in range shows the gaps between them.
-The seafloor is sampled sparsely in range. The SAR ray grid is orthographic, so on the flat
-seafloor the $R_w = 208$ rays in one row of the grid travel the same distance and return at the
-same range, to within $1.1\times10^{-6}\ell$. The seafloor returns therefore fall in clusters of
-$208$ coincident returns, one per row, and add no density along range. Rows
-are $\Delta = W_g/R_h = 0.0058\ell$ apart on the grid, and $\Delta\cot\theta$ apart in range for a
-pulse at elevation $\theta$, which is $0.0068\ell$ at the $40.6^\circ$ elevation of the middle pulse.
-Once the pulse is narrower than this spacing, it resolves the gaps between clusters (Figure
-\ref{fig:fsbw}, top). Over a near-range patch of seafloor, the
-ratio of the largest to the smallest signal sample is $0.0$, $5.6$, and $40$~dB at
-$B_s = 64$, $128$, and $256$, whose pulses are $0.0097$, $0.0048$, and $0.0024\ell$ wide. At $B_s = 512$, the signal falls to zero between clusters, and its seafloor becomes a comb with
-one peak per row of the ray grid.
+pattern of the returns rather than the surface they sample. The ground is sampled sparsely in
+range. The SAR ray grid is orthographic, so on the flat ground all rays in one row of the grid
+travel the same distance and return at the same range. The ground returns therefore fall in
+clusters, one per row. At $B_s = 64$, the pulse is wider than the spacing between clusters, the signal is smooth, and the SAR image shows the outline of the car over a dark ground.
+As $B_s$ rises, the pulse resolves the gaps between clusters, the signal becomes a comb with one
+peak per row of the grid, and the car is lost in grain (Figure \ref{fig:fsbw}). The forward-looking
+sonar fails the same way along its elevation fan: its ground returns spread apart in range as the
+fan meets the ground at shallower angles, and its ground breaks into concentric rings centered
+on boresight.
 
-The images follow their signals. At $B_s = 64$, the SAR image shows the outline of the car
-over a dark seafloor. At $B_s = 128$ the outline breaks up, and at $256$ and $512$ the car is lost in
-grain. The forward-looking sonar fails the same way along its
-elevation fan. Its seafloor returns spread apart in range as the fan meets the seafloor at ever
-shallower angles, from $0.0050\ell$ at the near edge of the image to $0.0078\ell$ at the far edge,
-so from $B_s = 128$ on, where the pulse is $0.0048\ell$ wide, its seafloor breaks into concentric
-rings centered on boresight. The side-scan sonar shows the same effect as horizontal stripes: every
-ping sees the flat seafloor through the same fan, so its returns fall at the same ranges in every
-ping, and a row that falls between them is dim along the whole track.
-
-The artifacts are therefore removed either by lowering $B_s$, which widens the pulse, or by
-raising the density of the returns along range, which narrows the gaps. Raising the ray density
-helps only through the second: doubling the rays per side halves $\Delta$, and with it the cluster
-spacing in range, so it has the same effect as halving $B_s$. At $B_s = 64$, the signal of the middle SAR
-pulse falls to zero between clusters at $0.125\times$ rays, as it does at $B_s = 512$, and its
-seafloor ripple is $41$~dB at $0.25\times$ rays and $5.7$~dB at $0.5\times$, against $40$ and
-$5.6$~dB at $B_s = 256$ and $128$ with the default rays (Figure \ref{fig:raydensity}). On the seafloor on the far side of the car, the standard deviation of the forward-looking sonar image is
-$9.6$ and $1.6$~dB at $0.25\times$ and $0.5\times$ rays, against $8.7$ and $1.5$~dB at
-$B_s = 256$ and $128$ with the default fan. From $1\times$ rays on, both
-signals are smooth, and the sonar's rings are gone.
-
-The SAR image needs more rays than its middle pulse suggests. That pulse is smooth from $1\times$
-on, but the grain the gaps leave in the image raises its seafloor: on the far seafloor beside the
-car, the mean image level is $7.6$, $4.3$, $1.4$, $0.9$, and $0.9\%$ of the image peak from
-$0.25\times$ to $4\times$ rays, so it settles only at $2\times$. The aperture is a linear track, so
-its end pulses are $2.72\ell$ from the scene center against $1.30\ell$ for the middle pulse, and look
-down at $18.1^\circ$ instead of $40.6^\circ$. Their $\cot\theta$ is $3.05$ instead of $1.17$, so
-their clusters are $2.6$ times farther apart, $0.018\ell$ at the default rays. That spacing falls to
-$0.0088\ell$ at $2\times$ and $0.0044\ell$ at $4\times$, below the $0.0097\ell$ pulse. A ray grid is therefore fine enough when the cluster spacing of
-its most grazing look stays below the pulse width, $\Delta\cot\theta_{\min} < 0.62/B_s$, or
-$R_h > 1.6\,B_s W_g \cot\theta_{\min}$, which is $375$ here, between the $1\times$ and $2\times$ grids.
-
-Both remedies have a cost. Lowering $B_s$ coarsens the range resolution $1/B_s$. Scaling the rays
-per side by $k$ scales the ray tracing time by $k^2$. On one NVIDIA L40S, tracing two bounces of
-the $64$ SAR pulses of this car takes $117$, $468$, and $1909$~s at $208$, $416$, and $832$ rays per
-side.
+The artifacts are therefore removed either by lowering $B_s$, which widens the pulse, or by raising
+the density of the returns along range, which narrows the gaps. Doubling the rays per side halves
+the spacing between clusters, so it has the same effect as halving $B_s$ (Figure \ref{fig:raydensity}). A ray grid is
+fine enough when the cluster spacing stays below the pulse width at the most grazing look. For SAR,
+that look is at the ends of the linear aperture rather than its middle, so the SAR image needs about
+twice the default rays per side, although the signal of the middle pulse is already smooth at the
+default. Both remedies have a cost: lowering $B_s$ coarsens the range resolution, and scaling the
+rays per side by $k$ scales the ray tracing time by $k^2$.
 
 \subsection{Compute Time}
 \label{sec:compute-time}

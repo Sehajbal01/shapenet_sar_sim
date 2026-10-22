@@ -54,7 +54,7 @@ DONE - in the flate plate discussion, ensure we use my existing notation. like h
 
 subsection: Bandwidth and Ray Density
 DONE - the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
-- This section has too many numerical descriptions in the text. Slim it down significantly
+DONE - This section has too many numerical descriptions in the text. Slim it down significantly
 
 subsection: Compute Time
 - need citation when talking about srncars
