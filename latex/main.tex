@@ -506,9 +506,9 @@ the car of Figure \ref{fig:main-fig}.a without the ground, at the default $\lamb
 returns a lattice of sinc lobes around its normal. The car is strongest near the zenith and
 broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $13$~dB less than
 its sides at low elevation. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns
-against the theoretical RCS of the plate: at both wavelengths the lobes and nulls fall where
-the theoretical RCS puts them, and the envelope falls about $0.4$~dB faster at $80$--$85^\circ$
-elevation, since the scattering lobe of the material is narrower than that of the theoretical RCS.
+against the theoretical RCS of the plate: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls
+fall where the theoretical RCS puts them, and the envelope falls about $0.4$~dB faster at
+$e = 80$--$85^\circ$, since the scattering lobe of the material is narrower than that of the theoretical RCS.
 
 \begin{figure}[H]
   \centering
@@ -520,7 +520,7 @@ elevation, since the scattering lobe of the material is narrower than that of th
   \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate and (\textbf{b}) the car
   of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$, with the azimuth $a$ as
   the angle and $90^\circ - e$ as the radius, so the zenith is at the center. (\textbf{c}) The plate
-  at $a = 0^\circ$ from $80$ to $90^\circ$ elevation, simulated (solid) and theoretical RCS (dotted),
+  at $a = 0^\circ$ and $e = 80$--$90^\circ$, simulated (solid) and theoretical RCS (dotted),
   each normalized to its peak.}
   \label{fig:rcs}
 \end{figure}
@@ -650,9 +650,9 @@ Table \ref{tab:params}, injecting each directly as a return in (\ref{eq:accum-in
 its true range and phase, bypassing the ray tracer. A single scatterer at the scene origin
 (Figure \ref{fig:validation}a) shows the expected X-shaped sidelobes from the ends of the aperture,
 and along range its return takes the shape of the effective window $w(z)$ of
-Figure \ref{fig:effective-windows}. At the default $F_s = 2B_s$, magnitude aliasing narrows this
-impulse response by up to $42\%$ relative to an analytic backprojection; at $F_s \ge 8B_s$ the two
-agree within $4\%$. On a $5 \times 5$ grid (Figure \ref{fig:validation}b), every target is imaged as
+Figure \ref{fig:effective-windows}. Figure \ref{fig:effective-windows} is itself made the same way:
+each window is the signal of a single point scatterer injected into the accumulation and
+interpolation with that transmit waveform. On a $5 \times 5$ grid (Figure \ref{fig:validation}b), every target is imaged as
 a compact peak within $0.27$ of a pixel of its true position, and the phase of each return matches
 $e^{j4\pi R/\lambda}$ to numerical precision, so the pulses integrate coherently.
 
@@ -665,7 +665,7 @@ $e^{j4\pi R/\lambda}$ to numerical precision, so the pulses integrate coherently
 \end{figure}
 
 In Figure \ref{fig:sphere-size}, we ray-trace a sphere at five successively halved scales with the
-ground plane removed. The image traces the curved illuminated surface of the sphere, which tightens as the sphere
+ground plane removed, over an azimuth spread of $\Delta a = 90^\circ$. The image traces the curved illuminated surface of the sphere, which tightens as the sphere
 shrinks until, at the smallest scales, the return collapses to the compact response of a point
 scatterer in Figure \ref{fig:validation}a. Since a sphere backscatters equally from every angle,
 its sidelobes spread symmetrically into concentric rings around the target.
@@ -673,7 +673,7 @@ its sidelobes spread symmetrically into concentric rings around the target.
 \begin{figure}[H]
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
-  \caption{SAR reconstruction of a sphere at decreasing scale ($256$ pulses), shown in dB, with the scale factor labeled above each subplot.}
+  \caption{SAR reconstruction of a sphere at decreasing scale ($256$ pulses, $\Delta a = 90^\circ$), shown in dB, with the scale factor labeled above each subplot.}
   \label{fig:sphere-size}
 \end{figure}
 

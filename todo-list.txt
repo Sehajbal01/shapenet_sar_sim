@@ -47,10 +47,10 @@ DONE - the explanation of how r a i d s are selected and the creation of the .mp
 DONE - make a table in the appendix that maps the cv domes object properties to r a i d s values
 
 subsection: Validation Against Closed-Form References
-- add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
-- remove this sentence "At the default Fs = 2Bs , magnitude aliasing narrows this impulse response by up to 42% relative to an analytic backprojection; at Fs ≥ 8Bs the two agree within 4%."
-- when talking about the sphere figure, mention that the azimuth spread in this sim is 90 degrees
-- in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
+DONE - add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
+DONE - remove this sentence "At the default Fs = 2Bs , magnitude aliasing narrows this impulse response by up to 42% relative to an analytic backprojection; at Fs ≥ 8Bs the two agree within 4%."
+DONE - when talking about the sphere figure, mention that the azimuth spread in this sim is 90 degrees
+DONE - in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
 
 subsection: Bandwidth and Ray Density
 - the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
