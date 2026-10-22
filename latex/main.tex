@@ -439,7 +439,7 @@ the reflectivity of the triangle in the object mesh that has been hit.
 
 The accumulation and interpolation in (\ref{eq:accum-interp}) simulates an ideal band-limited pulse.
 Real radar and sonar systems instead transmit pulse-compression waveforms and match-filter the
-echoes, and the range sidelobes of the waveform shape the final image. We therefore generalize
+echoes. We therefore generalize
 it to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatters model in
 (\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
 \begin{equation}
@@ -471,14 +471,14 @@ $ is then given by
 \end{equation}
 where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. Although $w(z)*g(z)$ has the form of conventional matched filtering, it is never computed by convolving a sampled received signal. Since $g(z)$ is a sum of off-grid delta functions, the matched-filter output is evaluated in closed form at each sample $z_o$, so the same sum performs both the interpolation and the summation of the returns. One may view the ideal band-limited digital signal in (\ref{eq:accum-interp}) as the case $w(z)=\sinc(B_s z)$, which has no frequency domain sidelobes.
 
-Each transmit waveform therefore replaces the ideal sinc of (\ref{eq:accum-interp}) with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the range domain (Figure \ref{fig:effective-windows}, left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression.
+Each transmit waveform therefore replaces the ideal sinc of (\ref{eq:accum-interp}) with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the spatial domain (Figure \ref{fig:effective-windows}, left) the Gaussian pulse has no sidelobes, but it is costly in the frequency domain (Figure \ref{fig:effective-windows}, right): although the full width at half maximum of its power spectrum matches the targeted band $\pm B_s/2$, much of its energy lies outside the spatial bandwidth. The sinc, LFM chirp, and Barker-13 windows keep their spectra largely within $\pm B_s/2$, but pay for it with sidelobes in the spatial domain.
 
-In the frequency domain (Figure \ref{fig:effective-windows}, right) the sinc window fills the band $\pm B_s/2$ with a sharp cutoff, whereas the Gaussian rolls off smoothly and the LFM and Barker-13 spectra fill the band with some ripple. Because the returns are accumulated and interpolated the same way for any $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform. The waveform is not limited to these four: any transmit waveform $x(z)$ sampled on a fine range grid is supported, since its effective window is computed once as the autocorrelation of $x(z)$ and then linearly interpolated at the range offset of every return. The waveform therefore adds no ray tracing, and every return costs the same as with the ideal sinc. The effective window is shared by all three imaging modalities.
+Because the returns are accumulated and interpolated the same way for any $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform. The waveform is not limited to these four: any transmit waveform $x(z)$ sampled on a fine range grid is supported, since its effective window is computed once as the autocorrelation of $x(z)$ and then linearly interpolated at the range offset of every return. The waveform therefore adds no ray tracing, and every return costs the same as with the ideal sinc. The effective window is shared by all three imaging modalities.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{figs/window_analysis_bw10_fs2000.png}
-  \caption{Effective windows $w(z) = h(z) * x(z)$, used to accumulate and interpolate the returns, for a sinc, Gaussian, LFM chirp, and Barker-13 transmit waveform, all with spatial bandwidth $B_s = 10$. Left: range impulse response (linear, normalized). Right: spectrum in dB, with dashed lines marking $\pm B_s/2$.}
+  \caption{Effective windows $w(z) = h(z) * x(z)$, used to accumulate and interpolate the returns, for a sinc, Gaussian, LFM chirp, and Barker-13 transmit waveform, all with spatial bandwidth $B_s = 10$. Left: impulse response in the spatial domain (linear, normalized). Right: spectrum in dB, with dashed lines marking $\pm B_s/2$.}
   \label{fig:effective-windows}
 \end{figure}
 
@@ -528,27 +528,27 @@ elevation, since the scattering lobe of the material is narrower than that of ph
 \subsection{Imaging Modalities}
 \label{sec:modalities-overview}
 
-The simulated signals are independent of how they are imaged, and the simulator forms images in
-three modalities, summarized in Table \ref{tab:modalities} and detailed in Appendix
-\ref{sec:modalities}. All three share the ray tracer, the material model of
-(\ref{eq:returned-energy}), and the accumulation and interpolation of returns with any effective window $w(z)$, so the range
-resolution of every modality is set by the spatial bandwidth $B_s$ of the transmit waveform. They
-differ in how the rays are launched, how the returns are weighted, and how the signals are formed
-into an image.
-
 \textbf{Spotlight-mode SAR} casts the parallel ray grid of Figure \ref{fig:sig-sim} from each
 position of a circular or linear trajectory, aimed at the scene origin, and forms the image by
 convolution backprojection \cite{spotlightmodesar}. When a wavelength is given, it demodulates
 each pulse and integrates the complex-valued pulses coherently, so the image is formed from the phase of the returns as well as
 their magnitude.
 
-The sonars replace the planar wavefront with a point source. Each ping casts a fan of rays from the
-sensor, every return is attenuated by spherical spreading, and the beam pattern of the sensor
-weights each return on both transmit and receive. \textbf{Side-scan sonar} transmits its pings
-along a straight track with a fixed beam, adds absorption in the water and a time-varying gain, and
-stacks the range profiles along the track. \textbf{Forward-looking sonar} transmits from a single
-position and steers its beam across the scene. Since the sensor does not move, the beam is applied
-after ray tracing, and all $P$ pings share a single ray trace.
+\textbf{Side-scan sonar} replaces the planar wavefront with a point source. Each ping casts a fan of
+rays from its position on a straight track, and every return is weighted by the beam pattern of the
+sensor on both transmit and receive. We attenuate the returns by absorption in the water but not by
+spherical spreading, since the rays of the fan already spread apart with range (Section
+\ref{sec:sonar-range-density}). The beam is never steered, so the scene drifts across it as the
+platform passes, and the image stacks the range profiles of the pings along the track.
+
+\textbf{Forward-looking sonar} casts the same point-source fan, with the same attenuation and the
+beam pattern on both transmit and receive, but transmits every ping from a single position and
+steers the beam to a different azimuth for each, so the image stacks the range profiles in azimuth.
+Since the sensor does not move, the beam is applied after ray tracing, and all $P$ pings share a
+single ray trace.
+
+The three modalities are summarized in Table \ref{tab:modalities} and detailed in Appendix
+\ref{sec:modalities}.
 
 \begin{table}[H]
 \caption{The three imaging modalities of the simulator. All share the ray tracer, the material model,
@@ -611,9 +611,9 @@ back to the sensor, and a signal or image value is a sum of such fractions. The 
 received power, as in the flat-plate validation of Section \ref{sec:rcs}. The physically
 consistent amplitude would be $\sqrt{E_k}$. Using $E_k$ instead preserves where returns fall and
 their phases, but squares their relative amplitudes, which doubles the dynamic range of the images
-in dB. No antenna gain, transmit power or
-receiver noise figure is modeled, so signal values are relative to the transmitted energy rather
-than calibrated in watts.
+in dB. The sonars apply a Gaussian azimuth beam pattern, but it is normalized to 1 on boresight, so
+no absolute antenna gain, transmit power or receiver noise figure is modeled, and signal values are
+relative to the transmitted energy rather than calibrated in watts.
 
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
@@ -1084,12 +1084,12 @@ matches physical optics in its lobes and nulls because the coherent sum reproduc
 across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
 traced through a fixed number of bounces, two in our experiments, so multipath of higher order than
 \texttt{num\_bounce}, such as returns that bounce many times inside a cavity, is missing, and each
-added bounce adds another pass of the ray trace. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and no
-antenna gain, transmit power, or noise figure is modeled (Section \ref{sec:units}), so image values
+added bounce adds another pass of the ray trace. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and beyond the normalized sonar beam
+pattern, no absolute antenna gain, transmit power, or noise figure is modeled (Section \ref{sec:units}), so image values
 are not calibrated radar cross sections. For sonar, the water is homogeneous: there is no
 sound-speed profile or refraction, no sea-surface multipath, and no volume reverberation, and the
 target scatters as a rigid surface without the elastic resonances of real objects. Returns lose
-energy only to spherical spreading and, in side-scan sonar, to a constant absorption $\kappa$.
+energy only to a constant absorption $\kappa$ in the water.
 
 \textbf{Ray density.} The returns are a discrete sample of a continuous surface, and the signal is
 smooth only when the range spacing between them stays below the pulse width at the most grazing
@@ -1240,15 +1240,18 @@ angular sampling uniform, which matters because the beam pattern is applied in a
 
 Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
 true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
-expanding sphere, which a planar wavefront does not, so each return is attenuated by the spreading
-loss over its round-trip range. With the carrier
-phase of (\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
+expanding sphere, which a planar wavefront does not. We do not apply this spreading loss to the
+returns, since the rays of the fan already spread apart with range, so fewer of them reach a
+distant surface (Section \ref{sec:sonar-range-density}). Each return is instead attenuated by
+absorption over its round trip through the water, and with the carrier phase of
+(\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
 \begin{equation}
-    \tilde{E}_k = \frac{E_k}{4 \pi z_k^2}e^{j 2 \pi z_k / \lambda}
+    \tilde{E}_k = E_k e^{-\kappa z_k}e^{j 2 \pi z_k / \lambda}
     ,
     \label{eq:sonar-energy}
 \end{equation}
-and the phasor is omitted when no wavelength is given.
+where $\kappa$ is the absorption coefficient in nepers per $\ell$, and the phasor is omitted when no
+wavelength is given.
 
 Each return also carries two azimuths off boresight. Its transmit azimuth $\phi^{tx}_k$ is the
 launch azimuth $\phi$ of the ray that produced it. Its receive azimuth $\phi^{rx}_k$ is the
@@ -1302,7 +1305,9 @@ where $|s_i|$ is evaluated between its samples by linear interpolation, and ever
 sampled over a window that covers $[\rho_{near},\rho_{far}]$. The rows span a range swath
 $S_\rho$ that brackets the scene origin along the line of sight, $\rho_{near} =
 \lVert\vec{v}\rVert - S_\rho/2$ and $\rho_{far} = \lVert\vec{v}\rVert + S_\rho/2$, so the window
-follows the sensor when it is moved away from the scene.
+follows the sensor when it is moved away from the scene. A time-varying gain, a receiver ramp
+against the fall of the return with range, can be applied after the image is formed by scaling row
+$m$ by $\rho_m^{\eta}$, where $\eta = 0$ disables it. It is not part of the simulated signal.
 
 In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
 as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
@@ -1337,16 +1342,7 @@ Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan s
 $\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan spans $\Theta_w =
 3\beta$ in azimuth, since the two-way beam has fallen to about $0.002$ at its edges, and
 $\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The returns take the
-energy of (\ref{eq:sonar-energy}) with an added absorption loss over their round trip through the
-water,
-\begin{equation}
-    \tilde{E}_k = \frac{E_k e^{-\kappa z_k}}{4 \pi z_k^2}e^{j 2 \pi z_k / \lambda}
-    ,
-    \label{eq:ss-energy}
-\end{equation}
-where $\kappa$ is the absorption coefficient in nepers per $\ell$. The spreading loss
-$4 \pi z_k^2$ can be disabled by setting \texttt{spherical\_spread} to False in the side-scan
-configuration, as in Table \ref{tab:sss-params}. Their azimuths
+energy of (\ref{eq:sonar-energy}), with absorption in the water and no spreading loss. Their azimuths
 $\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
 with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
 rather than always lying near $0$.
@@ -1354,13 +1350,11 @@ rather than always lying near $0$.
 The beam pattern (\ref{eq:beam-pattern}) is applied as in forward-looking sonar, but without
 steering, and the digital signal of the $i^{th}$ ping is
 \begin{equation}
-    s_i(z_o) = z_o^{\eta}\sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k\big)\,b\big(\phi^{rx}_k\big)\,w\big(z_o-\zeta_k\big)
+    s_i(z_o) = \sum_{k=1}^{N}\tilde{E}_k\,b\big(\phi^{tx}_k\big)\,b\big(\phi^{rx}_k\big)\,w\big(z_o-\zeta_k\big)
     ,
     \label{eq:ss-signal}
 \end{equation}
-where the sum runs over the returns of that ping. The factor $z_o^{\eta}$ is a time-varying gain, a
-receiver ramp against the fall of the seafloor return with range, and $\eta = 0$ disables it.
-Every ping is sampled over the same window, which covers the range swath of the image, so the
+where the sum runs over the returns of that ping. Every ping is sampled over the same window, which covers the range swath of the image, so the
 samples of all pings line up in range.
 
 Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\ell_i$
@@ -1368,7 +1362,8 @@ and slant range $z_o$. The image interpolates them bilinearly onto an $H \times 
 spans a cross-range swath $S_\ell$ along the track and a range swath $S_\rho$ in slant range,
 centered on $\ell = 0$ and on the target range $\lVert\bar{\vec{v}}\rVert$, with near range in the
 bottom row. Pixels outside the sampled track are zero, so the track length $L$ should be at least
-$S_\ell$. The rows are in slant range, since no projection onto the ground plane is applied.
+$S_\ell$. The rows are in slant range, since no projection onto the ground plane is applied. As in
+forward-looking sonar, a time-varying gain can be applied to the rows after the image is formed.
 
 Along the track, the resolution is set by the beam: at slant range $\rho$ the beam covers about
 $\rho\beta$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
