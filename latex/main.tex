@@ -571,7 +571,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We test our signal simulation in the imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales, then compare a constant material with per-triangle materials on a CVDomes car, and validate the SAR forward model on point scatterers and a sphere. The following experiments use spotlight-mode SAR as described in the Jakowatz book \cite{spotlightmodesar}, vary the bandwidth and sample rate to show where the signal model breaks down, and then measure the compute time on a GPU and a CPU. Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}. The remaining experiments vary the azimuth rays of side-scan sonar and show how the ray density of a sonar fan changes across range, and finally compare the transmit waveforms in SAR and side-scan sonar. Sweeps of the sonar beam width are given in Appendix \ref{app:sonar-beam-width}. The sensor is placed on the bottom side of every image, so illumination always arrives from that direction. Unless specified otherwise, the SAR experiments use the default parameters shown in Table \ref{tab:params} of Appendix \ref{app:params}, and are on the car model from the ShapeNet \cite{shapenet} cars dataset shown in Figure \ref{fig:main-fig}.a.
+We evaluate the simulator in the three imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales (Section \ref{sec:units}), then render a CVDomes \cite{cvdomes} car with constant and per-triangle materials (Section \ref{sec:per-triangle-materials}), and validate spotlight-mode SAR against point scatterers and a sphere (Section \ref{sec:validation}). We then show how the spatial bandwidth and the ray density together limit the signal in SAR and forward-looking sonar (Section \ref{sec:bw-ray-density}), and measure the compute time on a GPU and a CPU (Section \ref{sec:compute-time}). For the sonars, we show how many azimuth rays side-scan sonar needs to model a wide beam (Section \ref{sec:ss-az-rays}) and how the ray density of a sonar fan changes across range (Section \ref{sec:sonar-range-density}). Finally, we compare transmit waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}). Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every experiment images the car of Figure \ref{fig:main-fig}.a from the same pose, with the defaults of Appendix \ref{app:params}, and the sensor is placed on the bottom side of every image, so illumination always arrives from that direction.
 
 \subsection{Units and Scale}
 \label{sec:units}
@@ -619,15 +619,11 @@ relative to the transmitted energy rather than calibrated in watts.
 \label{sec:per-triangle-materials}
 
 In Figure \ref{fig:materials}, we render the CVDomes \cite{cvdomes} Camry with two \texttt{.mp} files. The first
-gives every triangle the same perfect-conductor material, $(R,A,I,D,S) = (0.8, 0, 0.9, 0.1, 0.2)$.
-The second converts the CVDomes material labels of Section \ref{sec:cvdomes}: the body and rims keep
-that material, the tires are absorbers, and the glass and plastic reflect only $|\Gamma|^2 \approx
-0.15$ of the energy, the band-averaged reflection of a $6.35$~mm glass slab, with the rest absorbed
-since CVDomes does not trace rays into the vehicle interior. To build it, a conversion script reads
-the material each triangle is assigned in the \texttt{.obj} (body, rims, glass, plastic, or rubber),
-maps it to its CVDomes label, and writes that label's $(R,A,I,D,S)$ as the triangle's line of the
-\texttt{.mp}. The windows, tires, and trim go dark in
-the first-bounce energy, and the SAR peak drops by $4.7$~dB.
+gives every triangle the same material, $(R,A,I,D,S) = (0.8, 0, 0.9, 0.1, 0.2)$. For the second, we
+take the material descriptors of the CVDomes labels (Section \ref{sec:cvdomes}), such as body,
+glass, and tires, and give each descriptor our own $(R,A,I,D,S)$ values (Table
+\ref{tab:cvdomes-materials} of Appendix \ref{app:cvdomes-materials}). The windows, tires, and
+trim go dark in the first-bounce energy, and the SAR peak drops by $4.7$~dB.
 
 \begin{figure}[H]
   \centering
@@ -1684,6 +1680,31 @@ Car, configured    & $1.0$   & $1.0$   & $0.9$   & $100.0$ & $0.1$ \\
 Car, normalized    & $0.345$ & $0.345$ & $0.310$ & $0.999$ & $0.001$ \\
 Ground, configured & $1.0$   & $1.0$   & $0.1$   & $1.0$   & $5.0$ \\
 Ground, normalized & $0.476$ & $0.476$ & $0.048$ & $0.167$ & $0.833$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{CVDomes Materials}
+\label{app:cvdomes-materials}
+Table \ref{tab:cvdomes-materials} gives the $(R,A,I,D,S)$ we assign to each CVDomes material label
+in the per-triangle render of Section \ref{sec:per-triangle-materials}. Each triangle of the Camry
+takes the label of its part, and the ground of both renders is asphalt. The values already satisfy
+$R+A+S=1$ and $I+D=1$, so the normalization of Appendix \ref{app:materials} leaves them unchanged.
+\begin{table}[H]
+\centering
+\caption{CVDomes material labels and the materials we assign to them. The constant render of Figure
+\ref{fig:materials} gives every triangle the perfect-conductor values. The directional exponent is
+$\alpha = 5$ for all.}
+\label{tab:cvdomes-materials}
+\begin{tabular}{llccccc}
+\toprule
+\textbf{CVDomes label} & \textbf{Camry parts} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
+\midrule
+Perfect conductor & body, rims     & $0.800$ & $0.000$ & $0.200$ & $0.900$ & $0.100$ \\
+Glass             & windows        & $0.121$ & $0.849$ & $0.030$ & $0.900$ & $0.100$ \\
+Plastic           & plastic trim   & $0.121$ & $0.849$ & $0.030$ & $0.900$ & $0.100$ \\
+Rubber            & tires          & $0.000$ & $1.000$ & $0.000$ & $0.900$ & $0.100$ \\
+Asphalt           & ground         & $0.087$ & $0.826$ & $0.087$ & $0.800$ & $0.200$ \\
 \bottomrule
 \end{tabular}
 \end{table}

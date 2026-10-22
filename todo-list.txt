@@ -39,12 +39,12 @@ subsection: Radar Cross Section
 DONE - replace "physical optics" with "theoretical RCS"
 
 section: experiments:
-- delete and redo the introductory paragraph, it is outdated
+DONE - delete and redo the introductory paragraph, it is outdated
 
 subsection: per-triangle materials
-- do not mention gamma.
-- the explanation of how r a i d s are selected and the creation of the .mp script is way too lengthy. simplify it to just how we took the various material descriptors (tires, glass, etc.) from the CV domes material labels and created our own material properties as we saw fit.
-- make a table in the appendix that maps the cv domes object properties to r a i d s values
+DONE - do not mention gamma.
+DONE - the explanation of how r a i d s are selected and the creation of the .mp script is way too lengthy. simplify it to just how we took the various material descriptors (tires, glass, etc.) from the CV domes material labels and created our own material properties as we saw fit.
+DONE - make a table in the appendix that maps the cv domes object properties to r a i d s values
 
 subsection: Validation Against Closed-Form References
 - add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
