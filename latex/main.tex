@@ -501,24 +501,26 @@ where $E_k$ and $z_k$ are the return weights and two-way ranges of the $N$ retur
 $(a,e)$. Since $E_k$ is a fraction of the transmitted energy (Section \ref{sec:units}),
 (\ref{eq:rcs}) is a relative RCS in arbitrary units.
 
-Figure \ref{fig:rcs} shows (\ref{eq:rcs}) on a $2^\circ$ grid for a $1 \times 1$ flat plate and for
-the car of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$. The plate
+Figure \ref{fig:rcs} shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\lambda = 0.05$ on a
+$0.25^\circ$ grid, and for the car of Figure \ref{fig:main-fig}.a without the ground at the default
+$\lambda$ on a $2^\circ$ grid. The plate
 returns a lattice of sinc lobes around its normal. The car is strongest near the zenith and
 broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $13$~dB less than
 its sides at low elevation. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns
-against the theoretical RCS of the plate: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls
+against the theoretical RCS of the plate, which measured plates follow near normal incidence
+\cite{ross1966}: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls
 fall where the theoretical RCS puts them, and the envelope falls about $0.4$~dB faster at
 $e = 80$--$85^\circ$, since the scattering lobe of the material is narrower than that of the theoretical RCS.
 
 \begin{figure}[H]
   \centering
-    \subfloat[\centering]{\includegraphics[trim=0 0 0 27bp, clip, height=0.25\textwidth]{figs/rcs_flatplate_polar.png}}
+    \subfloat[\centering]{\includegraphics[height=0.25\textwidth]{figs/rcs_flatplate_polar.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[height=0.25\textwidth]{figs/rcs_polar.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[trim=767bp 0 0 20bp, clip, height=0.25\textwidth]{figs/sar_validation.png}}
-  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate and (\textbf{b}) the car
-  of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$, with the azimuth $a$ as
+  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate at $\lambda = 0.05$ and
+  (\textbf{b}) the car of Figure \ref{fig:main-fig}.a without the ground at the default $\lambda$, with the azimuth $a$ as
   the angle and $90^\circ - e$ as the radius, so the zenith is at the center. (\textbf{c}) The plate
   at $a = 0^\circ$ and $e = 80$--$90^\circ$, simulated (solid) and theoretical RCS (dotted),
   each normalized to its peak.}

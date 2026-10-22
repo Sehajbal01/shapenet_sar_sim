@@ -24,6 +24,7 @@ A plate's cuts carry its physical-optics RCS, dotted, with every curve normalize
     python calculate_rcs.py -mode az_cut -elevation 30
     python calculate_rcs.py -mode el_cut -azimuth 90
     python calculate_rcs.py -flatplate 1
+    python calculate_rcs.py -flatplate 1 -wavelength 0.05 -az_step 0.25 -el_step 0.25 -db_range 65   # paper Fig. rcs a
     python calculate_rcs.py -flatplate 1 -mode el_cut -el_step 0.1 -wavelength 0.05 0.025 -cartesian
     python calculate_rcs.py -mode polar -replot      # redraw from the saved .npz
 """
