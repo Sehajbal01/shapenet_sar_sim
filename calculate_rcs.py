@@ -161,7 +161,7 @@ def draw_cut(ax, angle_deg, sigmas, wavelengths, db_range, theories=None, polar=
         ax.plot(x, db, color='C%d' % i, lw=1.2, label='λ = %g' % lam)
         if normalize:
             ax.plot(x, wrap(to_db(theories[i], db_range, normalize)), color='C%d' % i, lw=1.2,
-                    ls=':', label='λ = %g, physical optics' % lam)
+                    ls=':', label='λ = %g, theoretical RCS' % lam)
     ylabel = 'normalized RCS (dB)' if normalize else 'RCS (dB, arb.)'
     if polar:
         ax.set_rlim(top - db_range, top + 0.05 * db_range)

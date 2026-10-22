@@ -506,9 +506,9 @@ the car of Figure \ref{fig:main-fig}.a without the ground, at the default $\lamb
 returns a lattice of sinc lobes around its normal. The car is strongest near the zenith and
 broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $13$~dB less than
 its sides at low elevation. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns
-against the physical-optics RCS of the plate: at both wavelengths the lobes and nulls fall where
-physical optics puts them, and the envelope falls about $0.4$~dB faster at $80$--$85^\circ$
-elevation, since the scattering lobe of the material is narrower than that of physical optics.
+against the theoretical RCS of the plate: at both wavelengths the lobes and nulls fall where
+the theoretical RCS puts them, and the envelope falls about $0.4$~dB faster at $80$--$85^\circ$
+elevation, since the scattering lobe of the material is narrower than that of the theoretical RCS.
 
 \begin{figure}[H]
   \centering
@@ -520,7 +520,7 @@ elevation, since the scattering lobe of the material is narrower than that of ph
   \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate and (\textbf{b}) the car
   of Figure \ref{fig:main-fig}.a without the ground, at the default $\lambda$, with the azimuth $a$ as
   the angle and $90^\circ - e$ as the radius, so the zenith is at the center. (\textbf{c}) The plate
-  at $a = 0^\circ$ from $80$ to $90^\circ$ elevation, simulated (solid) and physical optics (dotted),
+  at $a = 0^\circ$ from $80$ to $90^\circ$ elevation, simulated (solid) and theoretical RCS (dotted),
   each normalized to its peak.}
   \label{fig:rcs}
 \end{figure}
@@ -1080,7 +1080,7 @@ currents are integrated, so edge and tip diffraction, creeping waves, and resona
 features comparable in size to $\lambda$ are not modeled, and the model holds only for targets much
 larger than the wavelength. The wavelength enters only through the phase of each return, so the
 scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:rcs}
-matches physical optics in its lobes and nulls because the coherent sum reproduces the phase
+matches the theoretical RCS in its lobes and nulls because the coherent sum reproduces the phase
 across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
 traced through a fixed number of bounces, two in our experiments, so multipath of higher order than
 \texttt{num\_bounce}, such as returns that bounce many times inside a cavity, is missing, and each
@@ -1112,7 +1112,7 @@ $(R,A,I,D,S)$ chosen by hand, as in the CVDomes conversion of Section
 transmitted through a surface, so the interior of a vehicle is never seen through its windows.
 
 \textbf{Validation.} The forward model is validated against point scatterers (Section \ref{sec:validation}) and the
-physical-optics glint of a flat plate (Section \ref{sec:rcs}), but its images are not
+theoretical RCS of a flat plate (Section \ref{sec:rcs}), but its images are not
 compared against measured SAR or sonar data, or quantitatively against CVDomes. Its images should
 therefore be read as reproducing the geometry of real sensors, including shadows and
 multipath, rather than their calibrated intensities.
@@ -1140,8 +1140,8 @@ by replacing its ideal sinc with the effective window of the waveform's matched 
 Gaussian, LFM chirp, Barker-13, or user-defined waveforms are simulated from the same ray trace at
 the same cost, with the range sidelobes of a real pulse-compression system. When a carrier wavelength is given,
 every return keeps its round-trip phase, and SAR images are formed by coherent integration of the
-complex-valued signals, which we validated against ideal point scatterers and the physical-optics
-glint of a flat plate.
+complex-valued signals, which we validated against ideal point scatterers and the theoretical
+RCS of a flat plate.
 
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
 sonar, and forward-looking sonar, while varying key parameters such as bandwidth, sample rate, and beam width, with

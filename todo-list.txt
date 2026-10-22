@@ -36,7 +36,7 @@ DONE - get rid of the introductory paragraph. It is redundant and useless inform
 DONE - we should have a dedicated paragraph for sss and fls just like spotlight mode sar. currently there is a SAR paragraph and just 1 sonar paragraph
 
 subsection: Radar Cross Section
-- replace "physical optics" with "theoretical RCS"
+DONE - replace "physical optics" with "theoretical RCS"
 
 section: experiments:
 - delete and redo the introductory paragraph, it is outdated
