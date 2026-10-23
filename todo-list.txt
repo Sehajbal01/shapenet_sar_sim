@@ -57,18 +57,18 @@ DONE - the figure with "Energy-range scatter of the middle SAR pulse at the" nee
 DONE - This section has too many numerical descriptions in the text. Slim it down significantly
 
 subsection: Compute Time
-- need citation when talking about srncars
+DONE - need citation when talking about srncars
 
 subsection: Side-Scan Sonar Azimuth Rays
-- remove the first sentence, it is unecessary information to the reader "The remaining experiments test the two sonar modalities"
-- effecively delete the entire text of this subsection, it has too much unecessary detail. we only need to talk about how when we want to see a beam width in sonar we need a lot of rays, otherwise it looks like multiple ghost images of the scene overlayed with each other. With our 7.5 sensor distance and a beam width of 4 degrees, the image looks smooth after 501 azimuth rays.
-- the figure description can be one short sentence: "sweeping the number of azimuth rays with a 7.5 l sensor distance and 4 degree beam width" or something like that
-- the equation is totally unecessary
+DONE - remove the first sentence, it is unecessary information to the reader "The remaining experiments test the two sonar modalities"
+DONE - effecively delete the entire text of this subsection, it has too much unecessary detail. we only need to talk about how when we want to see a beam width in sonar we need a lot of rays, otherwise it looks like multiple ghost images of the scene overlayed with each other. With our 7.5 sensor distance and a beam width of 4 degrees, the image looks smooth after 501 azimuth rays.
+DONE - the figure description can be one short sentence: "sweeping the number of azimuth rays with a 7.5 l sensor distance and 4 degree beam width" or something like that
+DONE - the equation is totally unecessary
 
 subsection: Sonar Ray Density Across Range
-- equation is totally unecessary
-- again, this section is way too long
-- delete the current text, and follow my outline below
+DONE - equation is totally unecessary
+DONE - again, this section is way too long
+DONE - delete the current text, and follow my outline below
     - we render a sonar image with a long range and azimuth swath and (whatever sensor distance was for this)
     - the rays for sonar fan out in elevation from a fixes point
     - so the ray density that hits the ground at close ranges is more than at far ranges
