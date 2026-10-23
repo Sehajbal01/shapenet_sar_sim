@@ -55,7 +55,7 @@ def _sss_experiments():
     )
 
     # Time varying gain sweep -- how hard the receiver ramp lifts far range against the
-    # seafloor's fall with range. 0 is the raw echo, 4 is the two-way spreading loss undone.
+    # seafloor's fall with range. 0 is the raw echo.
     tvg_vals = np.linspace(-20, 30, 5).tolist()
     tvg = dict(
         name='tvg',

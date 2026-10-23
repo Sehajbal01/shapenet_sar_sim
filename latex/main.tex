@@ -536,9 +536,8 @@ their magnitude.
 
 \textbf{Side-scan sonar} replaces the planar wavefront with a point source. Each ping casts a fan of
 rays from its position on a straight track, and every return is weighted by the beam pattern of the
-sensor on both transmit and receive. We attenuate the returns by absorption in the water but not by
-spherical spreading, since the rays of the fan already spread apart with range (Section
-\ref{sec:sonar-range-density}). The beam is never steered, so the scene drifts across it as the
+sensor on both transmit and receive. We attenuate the returns by absorption in the water. The beam
+is never steered, so the scene drifts across it as the
 platform passes, and the image stacks the range profiles of the pings along the track.
 
 \textbf{Forward-looking sonar} casts the same point-source fan, with the same attenuation and the
@@ -813,9 +812,8 @@ therefore see artifacts from oversampling the scatters. This is the same effect 
 Section \ref{sec:bw-ray-density}: once the returns are spaced farther apart in range than the pulse
 width, the waveform resolves the individual returns rather than the surface they sample.
 
-The top of the image is also darker, because less energy returns from far range. This is like the
-inverse square law, but here the loss comes from the physical spread of the rays, since fewer of
-them reach a distant patch of seafloor. At close range the image is black. The sensor is above the
+The top of the image is also darker, because fewer rays reach a distant patch of seafloor, so less
+energy returns from far range. At close range the image is black. The sensor is above the
 seafloor, so there are no returns at ranges shorter than its height.
 
 \begin{figure}[H]
@@ -1027,12 +1025,9 @@ view of the fan. Parameterizing the fan by angle rather than by a flat image pla
 angular sampling uniform, which matters because the beam pattern is applied in angle.
 
 Ray tracing the fan yields the same energy-range pairs $(E_k,z_k)$ as before, with $z_k$ now the
-true round-trip distance from $\vec{v}$. A point source loses energy over the surface of an
-expanding sphere, which a planar wavefront does not. We do not apply this spreading loss to the
-returns, since the rays of the fan already spread apart with range, so fewer of them reach a
-distant surface (Section \ref{sec:sonar-range-density}). Each return is instead attenuated by
-absorption over its round trip through the water, and with the carrier phase of
-(\ref{eq:coherent-scatters}), the energy of the $k^{th}$ return is
+true round-trip distance from $\vec{v}$. Each return is attenuated by absorption over its round
+trip through the water, and with the carrier phase of (\ref{eq:coherent-scatters}), the energy of
+the $k^{th}$ return is
 \begin{equation}
     \tilde{E}_k = E_k e^{-\kappa z_k}e^{j 2 \pi z_k / \lambda}
     ,
@@ -1130,7 +1125,7 @@ Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan s
 $\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan spans $\Theta_w =
 3\beta$ in azimuth, since the two-way beam has fallen to about $0.002$ at its edges, and
 $\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The returns take the
-energy of (\ref{eq:sonar-energy}), with absorption in the water and no spreading loss. Their azimuths
+energy of (\ref{eq:sonar-energy}), with absorption in the water. Their azimuths
 $\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight as in (\ref{eq:rx-azimuth}),
 with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
 rather than always lying near $0$.
@@ -1434,7 +1429,6 @@ $(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 
 $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
 $\alpha$                  & --                     & $5$ \\
 \multicolumn{1}{c}{--}     & waveform                 & gaussian \\
-\multicolumn{1}{c}{--}     & spherical\_spread        & False \\
 \multicolumn{1}{c}{--}     & num\_bounce              & $2$ \\
 \multicolumn{1}{c}{--}     & use\_sig\_magnitude      & True \\
 \multicolumn{1}{c}{--}     & compression              & dB \\

@@ -24,7 +24,6 @@
         "image_range_swath": 1.2,
         "wavelength": null,
         "num_bounce": 2,
-        "spherical_spread": false,
         "water_absorption": 0.0,
         "tvg_exponent": 0,
         "spatial_bw": 30,

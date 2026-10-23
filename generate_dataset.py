@@ -151,7 +151,7 @@ SAR_KEYS = ('spatial_bw', 'spatial_fs', 'waveform', 'snr_db', 'wavelength', 'use
             'obj_raids', 'ground_raids', 'object_x_flip', 'object_rotate_xyz',
             'noise_type', 'speckle_correlation_length', 'speckle_strength')
 SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_cross_range_swath', 'image_range_swath',
-                  'wavelength', 'num_bounce', 'spherical_spread', 'water_absorption',
+                  'wavelength', 'num_bounce', 'water_absorption',
                   'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude',
                   'noise_type', 'snr_db', 'speckle_correlation_length', 'speckle_strength')
 FLS_KEYS = ('image_range_swath', 'wavelength', 'num_bounce',

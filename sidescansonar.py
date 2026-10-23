@@ -85,7 +85,6 @@ def side_scan_sonar_image(
     wavelength = None,
     num_bounce = 1,
     second_bounce_batch_size = 2**9,
-    spherical_spread = True,
     water_absorption = 0.0,
     tvg_exponent = 4.0,
     spatial_bw = 32,
@@ -164,7 +163,6 @@ def side_scan_sonar_image(
         n_ray_height   = num_ray_height,
         num_bounce     = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
-        spherical_spread = spherical_spread,
         water_absorption = water_absorption,
         debug_gif      = debug_gif,
         octree         = octree,
@@ -310,7 +308,6 @@ def render_side_scan_image(
         wavelength = None,
         num_bounce = 1,
         second_bounce_batch_size = 2**9,
-        spherical_spread = True,
         water_absorption = 0.0,
         tvg_exponent = 4.0,
         spatial_bw = 64,
@@ -380,9 +377,6 @@ def render_side_scan_image(
             along the track (cross range) and out in slant range. The rows run from
             sensor_distance - image_range_swath/2 to sensor_distance + image_range_swath/2, so
             the swath needs room for the object's own span plus the shadow it throws down range
-        spherical_spread (bool): True applies energy /= 4*pi * range**2 over the round trip;
-            False turns the spreading loss off, which is useful for telling how much of the
-            near-range dominance is spreading and how much is geometry
         water_absorption (float): two-way absorption in nepers per unit length, 0 = off
         noise_type (str or sequence): 'none', 'awgn', 'speckle', or a list of them; see noise.py
         snr_db (float): awgn SNR, applied ahead of the tvg; None skips the awgn
@@ -490,7 +484,6 @@ def render_side_scan_image(
         wavelength = wavelength,
         num_bounce = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
-        spherical_spread = spherical_spread,
         water_absorption = water_absorption,
         tvg_exponent = tvg_exponent,
         spatial_bw = spatial_bw,
