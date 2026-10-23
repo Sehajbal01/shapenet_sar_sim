@@ -80,8 +80,8 @@ DONE - delete the current text, and follow my outline below
     - this is because the sensor is off the ground, and there is literally no returns for those ranges
 
 subsection: transmit waveform
-- add a sentence to the first paragraph about how the sonar images are in db scale and the sar images are linear scale
-- keep first paragraph, delete the rest, then follow my outline. again, this needs to be brief, but still enough detail for an academic paper
+DONE - add a sentence to the first paragraph about how the sonar images are in db scale and the sar images are linear scale
+DONE - keep first paragraph, delete the rest, then follow my outline. again, this needs to be brief, but still enough detail for an academic paper
     - in the sar images the difference between different waveforms is minimal because of the linear scaling
     - the side lobes as observed in figure (whatever the waveform figure is) (a) are at least 6db down
     - although the sidelobes are small, we can still see some repeating of the stronger lines in the sar images.

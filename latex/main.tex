@@ -836,43 +836,23 @@ window $w(z)$ of the corresponding pulse-compression matched filter as described
 trace is identical across the panels, and only the effective window changes. We compare an ideal
 sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase code, all designed for the same spatial
 bandwidth $B_s = 30$, and then the LFM chirp at $B_s = 60$, with $F_s = 2B_s$ throughout. The SAR
-images use the defaults of Table \ref{tab:params} and are shown linearly relative to their own
-peak. The side-scan images use the defaults of Table \ref{tab:sss-params} and, as in Figure
-\ref{fig:ss-az-rays}, are shown in dB relative to their own peak with a floor of $-60$~dB.
+images use the defaults of Table \ref{tab:params} and the side-scan images those of Table
+\ref{tab:sss-params}. The SAR images are shown on a linear scale, whereas the sonar images are
+shown on a dB scale with a floor of $-60$~dB as in Figure \ref{fig:ss-az-rays}, each relative to
+its own peak.
 
-In SAR, the sinc, LFM chirp, and Barker-13 reconstructions share a comparable range resolution, and
-their range sidelobes appear only as faint replicas alongside the strong scatterers. The background
-of the image is nearly unchanged by the waveform: its $10$th percentile lies between $-43.2$ and
-$-44.6$~dB relative to the peak across the four waveforms at $B_s = 30$. The Gaussian pulse
-produces no range sidelobes, but it does a poor job of suppressing out-of-bandwidth frequencies,
-leaving much of its energy outside the allotted band $\pm B_s/2$. Its gradual roll-off also tapers
-the in-band response, which costs coherent gain and yields the dimmer peak of its panel. Doubling
-the bandwidth of the chirp halves its mainlobe and sharpens the outline of the car.
+In SAR, the images differ little between the waveforms, because the linear scale makes it
+harder to see the sidelobes of the waveform. The peak sidelobes of the effective windows in Figure \ref{fig:effective-windows}
+(left) lie at least $13$~dB below the mainlobe, and the Gaussian pulse has none. Although these
+sidelobes are small, they still repeat the strongest lines of the car as faint parallel copies
+offset in range.
 
-In side-scan sonar, the range sidelobes of the pulse-compression waveforms are far more intense.
-With the Gaussian pulse, the car casts a clean acoustic shadow at far range whose median amplitude
-lies $75$~dB below the seafloor beside it. Every other waveform fills that shadow, to $12.2$~dB
-below the seafloor for the sinc, $9.1$~dB for the LFM chirp, and $6.9$~dB for Barker-13, and
-doubling the bandwidth of the chirp still leaves it at $12.1$~dB. The sidelobes also ring through
-the car as bands of constant range, and trail streaks in range from its brightest glints across
-the full height of the image. Barker-13 further lifts the seafloor itself, from $31$~dB to $25$~dB
-below the peak.
-
-Three properties of the side-scan sonar make its sidelobes stronger than those of SAR. First, each
-column of a side-scan image is the matched-filter output of a single ping, so the range sidelobes
-of every return enter the image directly. In SAR, each pixel coherently sums $64$ pulses spread over
-$135^\circ$ of aspect. The sidelobes of a scatterer fall on a different iso-range arc in each
-pulse, so they spread thinly over the image, while the mainlobes add up at the scatterer. Second,
-the sidelobes are long compared with the $1.2$ range swath of the image. The sidelobes of the sinc
-decay as $1/(\pi B_s z)$ and stay above $-60$~dB out to $z \approx 10$, the LFM chirp with a
-time-bandwidth product of $100$ spreads over $100/B_s \approx 3.3$, and the flat $-22.3$~dB
-sidelobes of Barker-13 span $\pm 13/B_s \approx \pm 0.43$. Against the dB display, the sidelobes of
-the bright car therefore exceed the seafloor and the shadow over most of the image. Third, the
-side-scan sonar is given no carrier wavelength, so its returns add without their carrier phase and
-their sidelobes cannot cancel. The aperiodic autocorrelation sidelobes of Barker-13 are all
-non-negative, so across the densely sampled seafloor they accumulate rather than alternate in sign
-as those of the sinc do, which raises the seafloor relative to the peak. For these reasons the
-side-scan and forward-looking sonar defaults use the Gaussian pulse.
+In side-scan sonar, the sidelobes instead smear the image vertically, along range. The azimuth beam
+is narrow ($\beta = 0.1^\circ$), so each column of the image is the range profile of a single ping,
+and the sidelobes of every return stay within its column. The dB scale then exposes sidelobes that
+a linear scale would hide, so the bright returns of the car are smeared in range across the
+seafloor and into the acoustic shadow behind the car. Only the Gaussian pulse, which has no
+sidelobes, gives a clear side-scan image.
 
 \begin{figure}[H]
   \centering
