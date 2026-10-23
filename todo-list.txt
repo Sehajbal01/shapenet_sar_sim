@@ -1,106 +1,49 @@
-general stuff:
-DONE - remove any reference to the outdated claim that we only consider 2 bounces. It is now actually configurable
-DONE - ensure naming conventions throughout the paper are consistent. example: "SRN Cars" and "srncars" should just be "SRN Cars" with a reference
+Paper inconsistencies (latex/main.tex), found 2026-10-22. Most important first.
 
-DONE - scrap the term "interposummation", sub it for "accumulation and interpolation" or some other phrasing depending on the sentence. many parts of the paper may need to be rewritten accordingly.
+TEXT DISAGREES WITH THE CODE OR THE FIGURES
 
-DONE section: abstract:
-DONE - raysar does in fact simulate a signal, just not using waveforms
+1. Forward-looking sonar doesn't do what the paper says. The paper (Imaging Modalities, FLS appendix) says it applies absorption, no spherical spreading, and an optional time-varying gain. The code always turns spreading on (accumulate_scatters.py and the public package's scatter.py hardcode spherical_spread = True) and has no absorption or gain setting. The FLS parameters table has no kappa or eta rows. Fix the code or the text, then re-render every FLS figure. Worst case is the Sonar Ray Density Across Range figure: the text blames all of the far-range darkening on the rays spreading apart, but about 12 of the 29 dB (range 6 to 12) is the 1/z^2 term.
 
-section: intro:
-DONE - throughout the paper, we can't say raysar or cv-domes don't simulate a signal. they do infact simulate a signal
-DONE - also to the best of our knowledge we are the only publicly available simulator that allows arbitrary waveforms
-DONE - we allow for as many bounces as we want, no need to specify we stick to 2. that info is only needed in experiments
-DONE - figure 1 (examples of generated images) is too big, it occupies a whole page. make it 1/3rd that size
-DONE - when talking about figure 2 (example of rgb, sar, depth map, energy map, scatters, signal) in the text, we don't need detailed descriptions. our goal is to quickly grab reader attention. we only need to say we showcase some examples of images produced by the simulator. techincal details and simulation parameters are for other sections of the paper.
-DONE - make figure 3 (process for simulating received signals) the first plot seen in the paper. have an accompanying paragraph that talks through the process at a high level. This should be before we talk about the main contributions of the paper.
+2. SAR appendix figures are out of date. Rendered 2026-07-16, before the car, pose and linear-trajectory defaults were set, and they show a different car orientation from Fig. 2b, so "the car of Figure 2a ... varied from the defaults of Table A1" is not true for them. The azimuth-spread figure goes to 360 deg, which the default linear trajectory can't fly (generate_trajectory requires < 180 deg), and has raw panel titles like "azimuth_spread0.00e+00". The wavelength figure has 8 values while sar_paper_figures.py now makes 5. Re-render at the current defaults.
 
-section: method:
-DONE - we don't need table 1 in the methods section. we can make a short subsection in the appendix about how r a i d s values are automatically normalized, with the table there.
-DONE - remove the sentence "The size of the ray grid only needs to be big enough to cover the ground space desired for imaging."
-DONE - put discussion of r a i d s into a dedicated material properties subsection
-DONE - "m I , m D are multipliers that conserve the scattered energy." should be "m I , m D are multipliers that conserve the law of conservation of energy for scattered energy."
-DONE - clarify that a_r e_r a_l e_l are relative to the surface normal (if it has not already been clarified)
-DONE - "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors" should be "The θ/2 in the numerator of (16) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the θ/2 in (11) refers to the angle between the reflected ray direction and all possible line-of-sight vectors that are integrated over" 
-DONE - after the sentence "We only consider two-bounce returns, so each ray contributes at most two returns." we should also say how we only consider additional bounces from reflectivity, not scattering
-DONE - follow "We name the processing in (23) interposummation" with "it is different from standard interpolation because it is summing together multiple returns in addition to interpolation" or something like that
-DONE - the subsection "units and scale" should be moved to the experiments section. it is out of place here.
-DONE - remove this entire paragraph in the "units and scale" subsection that start with "The bandwidth corresponds to a high-resolution radar, and"
-DONE - change s to s(n) in the sentence "adds the return weights as field amplitudes, and"
-DONE MAYBE DON"T DO THIS ONE - the sentence "No antenna gain, transmit power or receiver noise figure is modeled, so signal values are relative to the transmitted energy rather than calibrated in watts." is not correct, we utilize beam width which in sonar which is an antenna pattern
-DONE - remove this clause after the comma "and the range sidelobes of the waveform shape the final image."
-DONE - ", left) the sinc yields the narrowest mainlobe but slowly decaying range sidelobes, while the Gaussian pulse trades a wider mainlobe for the complete suppression of sidelobes. The LFM chirp and Barker-13 waveforms, which are widely used in practical radar systems, achieve a mainlobe comparable to the sinc while exhibiting the characteristic range sidelobes of pulse compression." is completely wrong. the gaussian pulse window has no side lobes in the range domain, but it is costly in the frequency domain as it has much energy outside the spatial bandwidth, despite satisfying full width half max at the targetted +- bw/2. all the other pulses have a good limitation in the frequency domain but pay for it with range domain side lobes. lets also use "spatial domain" instead of "range domain"
+3. calculate_rcs.py is cited in the Reproducibility appendix for the RCS figure (a, b) but is not in the public repo's experiments folder. It only exists in this research repo.
 
-subsection: imaging modalities
-DONE - get rid of the introductory paragraph. It is redundant and useless information.
-DONE - we should have a dedicated paragraph for sss and fls just like spotlight mode sar. currently there is a SAR paragraph and just 1 sonar paragraph
+4. The FLS beam-width sweep breaks the paper's own fan-margin rule. The FLS appendix says the fan must be about 3 beam widths wider than the image span or the edges darken. The Sonar Beam Width appendix sweeps the beam to 10 deg with the fan fixed at 10 deg and the image at 9.15 deg, so the rule fails above 0.28 deg, and the text doesn't mention it.
 
-subsection: Radar Cross Section
-DONE - replace "physical optics" with "theoretical RCS"
+THE TEXT CONTRADICTS ITSELF
 
-section: experiments:
-DONE - delete and redo the introductory paragraph, it is outdated
+DONE 5. Compute Time: "On the CPU, the time grows faster than the number of rays and the number of triangles" is wrong for triangles. The CPU time grows only 6.6x, 13.8x and 15.3x for 104x more triangles.
 
-subsection: per-triangle materials
-DONE - do not mention gamma.
-DONE - the explanation of how r a i d s are selected and the creation of the .mp script is way too lengthy. simplify it to just how we took the various material descriptors (tires, glass, etc.) from the CV domes material labels and created our own material properties as we saw fit.
-DONE - make a table in the appendix that maps the cv domes object properties to r a i d s values
+DONE 6. Conclusions say the method keeps the signal band-limited "instead of interpolating returns onto the sample grid". The Method says accumulation and interpolation "interpolates each of them onto the sample grid". 
 
-subsection: Validation Against Closed-Form References
-DONE - add a sentence about how the figure about "Effective interposummation windows" shows the signal when there is a point scatter injected into interposummation as well.
-DONE - remove this sentence "At the default Fs = 2Bs , magnitude aliasing narrows this impulse response by up to 42% relative to an analytic backprojection; at Fs ≥ 8Bs the two agree within 4%."
-DONE - when talking about the sphere figure, mention that the azimuth spread in this sim is 90 degrees
-DONE - in the flate plate discussion, ensure we use my existing notation. like how the varialbe for azimuth is $a$
+7. Bandwidth and Ray Density: at B_s = 64 with the default rays the SAR image is said to be clean, then "the SAR image needs about twice the default rays per side" without saying at which B_s. The 2x only applies at B_s = 64. At the default B_s = 30 the default 208 rays are enough (about 176 needed).
 
-subsection: Bandwidth and Ray Density
-DONE - the figure with "Energy-range scatter of the middle SAR pulse at the" needs to be removed
-DONE - This section has too many numerical descriptions in the text. Slim it down significantly
+8. SAR wavelength appendix blames the interference on wavelengths "much shorter than the ray grid spacing". The spacing is 1.2/208 ~ 0.006 l, but the panels that show interference are lambda = 0.01-0.02, which are longer than that.
 
-subsection: Compute Time
-DONE - need citation when talking about srncars
+9. Abstract claims "different noise types", but the body only shows AWGN at a set SNR. Speckle and noise_type are never described, and the SAR parameters table has no noise_type row. Describe them or drop the claim.
 
-subsection: Side-Scan Sonar Azimuth Rays
-DONE - remove the first sentence, it is unecessary information to the reader "The remaining experiments test the two sonar modalities"
-DONE - effecively delete the entire text of this subsection, it has too much unecessary detail. we only need to talk about how when we want to see a beam width in sonar we need a lot of rays, otherwise it looks like multiple ghost images of the scene overlayed with each other. With our 7.5 sensor distance and a beam width of 4 degrees, the image looks smooth after 501 azimuth rays.
-DONE - the figure description can be one short sentence: "sweeping the number of azimuth rays with a 7.5 l sensor distance and 4 degree beam width" or something like that
-DONE - the equation is totally unecessary
+PHYSICAL SCALE
 
-subsection: Sonar Ray Density Across Range
-DONE - equation is totally unecessary
-DONE - again, this section is way too long
-DONE - delete the current text, and follow my outline below
-    - we render a sonar image with a long range and azimuth swath and (whatever sensor distance was for this)
-    - the rays for sonar fan out in elevation from a fixes point
-    - so the ray density that hits the ground at close ranges is more than at far ranges
-    - this makes us see strange patterns at far ranges
-    - refer the reader to the subsection on bandwidth and ray density, it is the same effect
-    - we also note that the top of the image is darker because there is less returned energy
-    - this effect is like the inverse square law, but now it's due to the physical spread of the rays
-    - we also note that at close ranges the image is black
-    - this is because the sensor is off the ground, and there is literally no returns for those ranges
+10. The default SAR wavelength (0.5 l, 2.5 m) is comparable to the 0.9 l (4.5 m) car, but Limitations says the model only holds for targets much larger than the wavelength. The car's RCS plot uses this wavelength too.
 
-subsection: transmit waveform
-DONE - add a sentence to the first paragraph about how the sonar images are in db scale and the sar images are linear scale
-DONE - keep first paragraph, delete the rest, then follow my outline. again, this needs to be brief, but still enough detail for an academic paper
-    - in the sar images the difference between different waveforms is minimal because of the linear scaling
-    - the side lobes as observed in figure (whatever the waveform figure is) (a) are at least 6db down
-    - although the sidelobes are small, we can still see some repeating of the stronger lines in the sar images.
-    - in the sonar images we observe a vertical smearing effect
-    - this is because the beam width is narrow, but the db scaling really showcases the side lobes
-    - only gaussian waveform gives a clear sonar image because it has no side lobes
+11. The units table pairs a 900 MHz bandwidth with a 120 MHz carrier, which no real radar can do.
 
-section: Limitations
-DONE - remove sentence "Carrying a polarization vector with each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without changing the ray trace."
-DONE - the last sentence in the paragraph for "Geometrical optics" should be "The wavelength enters only through the phase of each return, so the scattering of a surface does not depend on frequency." everything after that deleted
-DONE - in "Geometrical optics" also mention that we only consider directly reflected rays according to the R material property, whereas in real life energy would be scattered in all directions.
-DONE - in "Geometrical optics" also mention that there is no diffraction effects, such as knife edge diffraction
-DONE - delete the current "Ray Density" paragraph. replace it with a paragraph about "Ray density and signal bandwidth". replace it with a new paragraph that follows this outline. no equations
-    - the modeling of returns are discrete samples of a continuous surface
-    - these discrete discontinuities can be visible in the signal if the bandwidth is too high relative to the density of rays cast
-    - To get high bandwidth signals, one needs to also increase the ray density which is computationally costly
-DONE - Remove the Materials paragraph's currenty text. replace it with something that follows this outline
-    - the material property values R A I D S and the exponenet alpha do not comprehensively capture the behaviors of radio energy
-    - the two forms of scattered energy (diffuse and directional scatter) do not perfectly model the pattern of energy scattered by real radio waves.
+12. The units table's sonar column uses B_s = 30 and F_s = 60, but the FLS default is 32 and 64.
 
+MINOR
 
+13. "l" is both the unit of length and the along-track offset (l_i, S_l, "centered on l = 0") in the side-scan appendix. Rename the offset.
 
+14. SAR trajectory appendix says the circular path lights the scene more evenly because the range stays nearly constant. SAR uses a planar wavefront with no spreading loss, so range can't change brightness, and the two panels look almost the same.
+
+15. Point scatterers skip the ray tracer, so Limitations' "the forward model is validated against point scatterers" overstates it. The flat-plate check, the only closed-form check that goes through the ray tracer, sits in the Method RCS subsection, not in Validation Against Closed-Form References.
+
+16. The intro overview of the signal simulation figure describes a parallel ray grid for every modality, but the sonars cast a point-source fan and FLS traces only once.
+
+17. Spotlight-Mode SAR appendix: with e^{j2 pi r Z} and Z in cycles, the backprojection should have no 1/(4 pi^2) factor. That factor belongs to the angular-frequency convention.
+
+18. The materials tables use the column order R, A, S, I, D, while everywhere else the order is (R, A, I, D, S).
+
+19. Per-Triangle Materials says the constant render gives "every triangle the same material", but the CVDomes materials appendix says its ground is asphalt.
+
+20. Conclusions say sample rate was varied, but F_s is always 2B_s, and the list of appendix SAR sweeps leaves out noise.

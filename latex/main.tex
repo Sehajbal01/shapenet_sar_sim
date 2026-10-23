@@ -285,11 +285,9 @@ energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumu
 interpolation} of the returns. It differs from standard interpolation because it sums together
 multiple returns in addition to interpolating them. Standard interpolation resamples a signal
 already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous
-ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates each of
-them onto the sample grid and accumulates them in a single step. For the same reason it differs
-from standard range compression, which filters a signal already sampled on a uniform grid.
-Since it is linear in $E_k$, it applies unchanged to complex returns that carry their
-carrier phase (\ref{eq:coherent-scatters}), so the simulated signals preserve phase for coherent
+ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates 
+and accumulates them in a single step.
+(\ref{eq:accum-interp}) allows for complex returns, so the simulated signals preserve phase for coherent
 imaging.
 
 
@@ -519,7 +517,7 @@ $e = 80$--$85^\circ$, since the scattering lobe of the material is narrower than
     \subfloat[\centering]{\includegraphics[height=0.25\textwidth]{figs/rcs_polar.png}}
     \hfill
     \subfloat[\centering]{\includegraphics[trim=767bp 0 0 20bp, clip, height=0.25\textwidth]{figs/sar_validation.png}}
-  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate at $\lambda = 0.05$ and
+  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate at $\lambda = 0.05$ for $e = 45$--$90^\circ$ and
   (\textbf{b}) the car of Figure \ref{fig:main-fig}.a without the ground at the default $\lambda$, with the azimuth $a$ as
   the angle and $90^\circ - e$ as the radius, so the zenith is at the center. (\textbf{c}) The plate
   at $a = 0^\circ$ and $e = 80$--$90^\circ$, simulated (solid) and theoretical RCS (dotted),
@@ -776,8 +774,10 @@ cost of the simulator is set by the number of rays and not by the bandwidth, sam
 transmit waveform. On the GPU, $16\times$ more rays cost $9\times$ more time on the small mesh and
 $12.5\times$ more on the large mesh. The large mesh has about $100\times$ more triangles than the small
 one but takes only $1.6$--$2.3\times$ longer on the GPU, since the octree limits each ray to the
-triangles near its path. On the CPU, the time grows faster than the number of rays and the number of
-triangles, so the speedup of the GPU grows with the size of the problem, from $15\times$ for the
+triangles near its path. On the CPU, the same $16\times$ more rays cost $27\times$ more time on the
+small mesh and $61\times$ more on the large mesh, and the large mesh takes $6.6$--$15\times$ longer
+than the small one. The CPU time grows faster than the GPU time with both the rays and the triangles,
+so the speedup of the GPU grows with the size of the problem, from $15\times$ for the
 small mesh at $32^2$ rays to $306\times$ for the large mesh at $128^2$ rays. The largest setting,
 with $30 \times 128^2 \approx 4.9 \times 10^5$ rays over a $1.3$~M-triangle mesh, renders in under $7$~s on the GPU and needs $2.5$~GB
 of GPU memory, compared with $35$~min on the CPU.

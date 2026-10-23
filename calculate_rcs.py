@@ -24,9 +24,10 @@ A plate's cuts carry its physical-optics RCS, dotted, with every curve normalize
     python calculate_rcs.py -mode az_cut -elevation 30
     python calculate_rcs.py -mode el_cut -azimuth 90
     python calculate_rcs.py -flatplate 1
-    python calculate_rcs.py -flatplate 1 -wavelength 0.05 -az_step 0.25 -el_step 0.25 -db_range 65   # paper Fig. rcs a
+    python calculate_rcs.py -flatplate 1 -wavelength 0.05 -az_step 0.25 -el_step 0.25 -db_range 65
+    python calculate_rcs.py -flatplate 1 -wavelength 0.05 -el_range 45 90 -db_range 65 -replot   # paper Fig. rcs a
     python calculate_rcs.py -flatplate 1 -mode el_cut -el_step 0.1 -wavelength 0.05 0.025 -cartesian
-    python calculate_rcs.py -mode polar -replot      # redraw from the saved .npz
+    python calculate_rcs.py -mode polar -replot      # redraw from the saved .npz, cropped to -el_range
 """
 import argparse
 import os
@@ -209,7 +210,7 @@ def plot_map(az, el, sigma, db_range, out_path, cartesian=False):
         fig, ax = plt.subplots(figsize=(5.5, 4.6), subplot_kw=dict(projection='polar'))
         mesh = ax.pcolormesh(np.radians(az), 90 - el, to_db(sigma, db_range),
                              shading='nearest', cmap='viridis')
-        r_ticks = np.arange(0, 90 - el.min() + 1e-6, 30)
+        r_ticks = np.arange(0, 90 - el.min() + 1e-6, 30 if el.min() < 45 else 15)
         ax.set_rticks(r_ticks)
         ax.set_yticklabels(['%d°' % (90 - r) for r in r_ticks], fontsize=8)
         ax.set_rlim(0, 90 - el.min())
@@ -270,9 +271,13 @@ def main():
     if args.wavelength is not None:
         tag += '_wl' + '-'.join('%g' % w for w in wavelengths)
 
+    el_tag = '' if args.mode == 'az_cut' or tuple(args.el_range) == (0.0, 90.0) else '_el%g-%g' % tuple(args.el_range)
+
     os.makedirs(args.output_dir, exist_ok=True)
-    npz_path = os.path.join(args.output_dir, 'rcs_%s.npz' % tag)
-    png_path = os.path.join(args.output_dir, 'rcs_%s%s.png' % (tag, '_cartesian' if args.cartesian else ''))
+    npz_path = os.path.join(args.output_dir, 'rcs_%s%s.npz' % (tag, el_tag))
+    if args.replot and not os.path.exists(npz_path):                    # crop the full sweep instead
+        npz_path = os.path.join(args.output_dir, 'rcs_%s.npz' % tag)
+    png_path = os.path.join(args.output_dir, 'rcs_%s%s%s.png' % (tag, el_tag, '_cartesian' if args.cartesian else ''))
 
     if args.replot:
         data = np.load(npz_path)
@@ -294,6 +299,10 @@ def main():
                  wavelength=[np.nan if w is None else w for w in wavelengths],
                  num_bounce=baseline['num_bounce'], ground=args.ground)
     sigmas = sigmas.reshape((len(wavelengths),) + az_grid.shape)        # old single-wavelength .npz
+    if args.replot and args.mode != 'az_cut':                           # elevation axis is first
+        el_axis = el_grid if el_grid.ndim == 1 else el_grid[:, 0]
+        keep = (el_axis >= args.el_range[0] - 1e-6) & (el_axis <= args.el_range[1] + 1e-6)
+        az_grid, el_grid, sigmas = az_grid[keep], el_grid[keep], sigmas[:, keep]
 
     theories = None
     if args.flatplate is not None and None not in wavelengths:
