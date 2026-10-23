@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} simulates signals from ray-traced contributions but does not model a transmit waveform, and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed dataset of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique that \emph{accumulates and interpolates} ray returns onto the sample grid of the sensor in a single step, accounting for its effective bandwidth and sample rate. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling, different noise types, and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
+\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} simulates signals from ray-traced contributions but does not model a transmit waveform, and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed dataset of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique that \emph{accumulates and interpolates} ray returns onto the sample grid of the sensor in a single step, accounting for its effective bandwidth and sample rate. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
 
 \keyword{SAR; spotlight SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -713,7 +713,7 @@ The artifacts appear when the waveform that accumulates and interpolates the ret
 pattern of the returns rather than the surface they sample. The ground is sampled sparsely in
 range. The SAR ray grid is orthographic, so on the flat ground all rays in one row of the grid
 travel the same distance and return at the same range. The ground returns therefore fall in
-clusters, one per row. At $B_s = 64$, the pulse is wider than the spacing between clusters, the signal is smooth, and the SAR image shows the outline of the car over a dark ground.
+clusters, one per row of rays. At $B_s = 64$, the pulse is wider than the spacing between clusters, the signal is smooth, and the SAR image shows the outline of the car over a dark ground.
 As $B_s$ rises, the pulse resolves the gaps between clusters, the signal becomes a comb with one
 peak per row of the grid, and the car is lost in grain (Figure \ref{fig:fsbw}). The forward-looking
 sonar fails the same way along its elevation fan: its ground returns spread apart in range as the
@@ -722,11 +722,12 @@ from oversampling the scatters.
 
 The artifacts are therefore removed either by lowering $B_s$, which widens the pulse, or by raising
 the density of the returns along range, which narrows the gaps. Doubling the rays per side halves
-the spacing between clusters, so it has the same effect as halving $B_s$ (Figure \ref{fig:raydensity}). A ray grid is
+the spacing between clusters, so it has the same effect as halving $B_s$ (Figure \ref{fig:raydensity}) without sacrificing resolution. A ray grid is
 fine enough when the cluster spacing stays below the pulse width at the most grazing look. For SAR,
-that look is at the ends of the linear aperture rather than its middle, so the SAR image needs about
-twice the default rays per side, although the signal of the middle pulse is already smooth at the
-default. Both remedies have a cost: lowering $B_s$ coarsens the range resolution, and scaling the
+that look is at the ends of the linear aperture rather than its middle, so at $B_s = 64$ the end
+pulses need about twice the default rays per side, although their artifacts are faint in the SAR
+image and the signal of the middle pulse is already smooth at the default. At the default
+$B_s = 30$, about half of $64$, the default rays are enough. Both remedies have a cost: lowering $B_s$ coarsens the range resolution, and scaling the
 rays per side by $k$ scales the ray tracing time by $k^2$.
 
 \subsection{Compute Time}
