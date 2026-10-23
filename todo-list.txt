@@ -90,15 +90,15 @@ DONE - keep first paragraph, delete the rest, then follow my outline. again, thi
     - only gaussian waveform gives a clear sonar image because it has no side lobes
 
 section: Limitations
-- remove sentence "Carrying a polarization vector with each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without changing the ray trace."
-- the last sentence in the paragraph for "Geometrical optics" should be "The wavelength enters only through the phase of each return, so the scattering of a surface does not depend on frequency." everything after that deleted
-- in "Geometrical optics" also mention that we only consider directly reflected rays according to the R material property, whereas in real life energy would be scattered in all directions.
-- in "Geometrical optics" also mention that there is no diffraction effects, such as knife edge diffraction
-- delete the current "Ray Density" paragraph. replace it with a paragraph about "Ray density and signal bandwidth". replace it with a new paragraph that follows this outline. no equations
+DONE - remove sentence "Carrying a polarization vector with each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without changing the ray trace."
+DONE - the last sentence in the paragraph for "Geometrical optics" should be "The wavelength enters only through the phase of each return, so the scattering of a surface does not depend on frequency." everything after that deleted
+DONE - in "Geometrical optics" also mention that we only consider directly reflected rays according to the R material property, whereas in real life energy would be scattered in all directions.
+DONE - in "Geometrical optics" also mention that there is no diffraction effects, such as knife edge diffraction
+DONE - delete the current "Ray Density" paragraph. replace it with a paragraph about "Ray density and signal bandwidth". replace it with a new paragraph that follows this outline. no equations
     - the modeling of returns are discrete samples of a continuous surface
     - these discrete discontinuities can be visible in the signal if the bandwidth is too high relative to the density of rays cast
     - To get high bandwidth signals, one needs to also increase the ray density which is computationally costly
-- Remove the Materials paragraph's currenty text. replace it with something that follows this outline
+DONE - Remove the Materials paragraph's currenty text. replace it with something that follows this outline
     - the material property values R A I D S and the exponenet alpha do not comprehensively capture the behaviors of radio energy
     - the two forms of scattered energy (diffuse and directional scatter) do not perfectly model the pattern of energy scattered by real radio waves.
 

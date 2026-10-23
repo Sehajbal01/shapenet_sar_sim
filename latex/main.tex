@@ -875,46 +875,29 @@ its images can be used for.
 Unlike SBR (Section \ref{sec:sbr}), no polarization is carried along the ray, so the simulator
 produces a single channel and cannot form HH, VV, or HV images or polarimetric decompositions. The
 double-bounce returns between the car and the ground, which change the polarization of a real
-wave, differ from single-bounce returns only in their delay. Carrying a polarization vector with
-each ray and reflecting it with Fresnel coefficients at each bounce would add polarization without
-changing the ray trace.
+wave, differ from single-bounce returns only in their delay.
 
 \textbf{Geometrical optics.} Rays reflect into their next path by geometrical optics and return
-energy through the phenomenological lobe of Section \ref{sec:material-properties}. No surface
-currents are integrated, so edge and tip diffraction, creeping waves, and resonant scattering from
-features comparable in size to $\lambda$ are not modeled, and the model holds only for targets much
-larger than the wavelength. The wavelength enters only through the phase of each return, so the
-scattering of a surface does not depend on frequency. The flat plate of Section \ref{sec:rcs}
-matches the theoretical RCS in its lobes and nulls because the coherent sum reproduces the phase
-across the plate, but its $\sigma$ matches only up to the aperture gain $4\pi/\lambda^2$. Rays are
-traced through a fixed number of bounces, two in our experiments, so multipath of higher order than
-\texttt{num\_bounce}, such as returns that bounce many times inside a cavity, is missing, and each
-added bounce adds another pass of the ray trace. Returns are summed as $E_k$ rather than $\sqrt{E_k}$, and beyond the normalized sonar beam
-pattern, no absolute antenna gain, transmit power, or noise figure is modeled (Section \ref{sec:units}), so image values
-are not calibrated radar cross sections. For sonar, the water is homogeneous: there is no
-sound-speed profile or refraction, no sea-surface multipath, and no volume reverberation, and the
-target scatters as a rigid surface without the elastic resonances of real objects. Returns lose
-energy only to a constant absorption $\kappa$ in the water.
+energy through the phenomenological lobe of Section \ref{sec:material-properties}. Only the single
+reflected ray, carrying the fraction $R$ of the incident energy (\ref{eq:reflected-energy}),
+continues to the next bounce, whereas a real surface scatters energy in all directions, toward
+other surfaces as well as back to the sensor. No surface currents are integrated, so there are no
+diffraction effects. The model therefore holds only for targets much larger than the wavelength. 
+The wavelength enters only through the phase of each return, so the scattering of a surface does 
+not depend on frequency.
 
-\textbf{Ray density.} The returns are a discrete sample of a continuous surface, and the signal is
-smooth only when the range spacing between them stays below the pulse width at the most grazing
-look, $R_h > 1.6\,B_sW_g\cot\theta_{\min}$ for SAR (Section \ref{sec:bw-ray-density}) and its
-analogue at the far edge of a sonar fan (Section \ref{sec:sonar-range-density}). Below this density
-the images show artifacts from oversampling the scatters rather than blurring. Meeting it is costly: the
-SAR rule asks for $375$ rays per side against the default $208$, imaging the forward-looking sonar
-out to $\rho = 15$ needs $3900$ elevation rays, and the ray tracing time grows as the square of the
-rays per side, from $117$ to $1909$~s between $1\times$ and $4\times$ the default SAR grid. The
-orthographic grid places the seafloor returns of each row at a single range, so a jittered or
-stratified grid would spread them apart and may lower the density required.
+\textbf{Ray density and signal bandwidth.} The returns are discrete samples of a continuous
+surface, taken only where the rays hit it. When the bandwidth is too high relative to the density of
+the rays cast, the pulse becomes narrower than the spacing between neighboring returns, and these
+discontinuities become visible in the signal as artifacts from oversampling the scatters (Sections
+\ref{sec:bw-ray-density} and \ref{sec:sonar-range-density}). Simulating high-bandwidth signals
+therefore also requires a higher ray density, which is computationally costly, since the ray
+tracing time grows with the number of rays cast.
 
-\textbf{Materials.} The fractions $(R,A,I,D,S)$ and the exponent $\alpha$ are phenomenological.
-They are not derived from permittivity, conductivity, or surface roughness, and they do not vary
-with the angle of incidence or the frequency, as Fresnel reflection would. ShapeNet meshes carry
-no material labels, so our ShapeNet experiments use one material for the car and one for the
-ground (Table \ref{tab:materials}). Per-triangle materials require a mapping from labels to
-$(R,A,I,D,S)$ chosen by hand, as in the CVDomes conversion of Section
-\ref{sec:per-triangle-materials}, where glass is given a single band-averaged reflection. No ray is
-transmitted through a surface, so the interior of a vehicle is never seen through its windows.
+\textbf{Materials.} The material properties $(R,A,I,D,S)$ and the exponent $\alpha$ do not
+comprehensively capture the behavior of radio and acoustic energy at a real surface. The scattered
+energy takes only two forms, directional scattering $I$ and diffuse scattering $D$, and together
+they do not perfectly model the pattern of energy scattered by real waves.
 
 \textbf{Validation.} The forward model is validated against point scatterers (Section \ref{sec:validation}) and the
 theoretical RCS of a flat plate (Section \ref{sec:rcs}), but its images are not
