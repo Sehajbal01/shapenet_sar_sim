@@ -6,9 +6,9 @@ DONE 1. Forward-looking sonar doesn't do what the paper says. The paper (Imaging
 
 2. SAR appendix figures are out of date. Rendered 2026-07-16, before the car, pose and linear-trajectory defaults were set, and they show a different car orientation from Fig. 2b, so "the car of Figure 2a ... varied from the defaults of Table A1" is not true for them. The azimuth-spread figure goes to 360 deg, which the default linear trajectory can't fly (generate_trajectory requires < 180 deg), and has raw panel titles like "azimuth_spread0.00e+00". The wavelength figure has 8 values while sar_paper_figures.py now makes 5. Re-render at the current defaults.
 
-3. calculate_rcs.py is cited in the Reproducibility appendix for the RCS figure (a, b) but is not in the public repo's experiments folder. It only exists in this research repo.
+DONE 3. calculate_rcs.py is cited in the Reproducibility appendix for the RCS figure (a, b) but is not in the public repo's experiments folder. It only exists in this research repo.
 
-4. The FLS beam-width sweep breaks the paper's own fan-margin rule. The FLS appendix says the fan must be about 3 beam widths wider than the image span or the edges darken. The Sonar Beam Width appendix sweeps the beam to 10 deg with the fan fixed at 10 deg and the image at 9.15 deg, so the rule fails above 0.28 deg, and the text doesn't mention it.
+DONE 4. The FLS beam-width sweep breaks the paper's own fan-margin rule. The FLS appendix says the fan must be about 3 beam widths wider than the image span or the edges darken. The Sonar Beam Width appendix sweeps the beam to 10 deg with the fan fixed at 10 deg and the image at 9.15 deg, so the rule fails above 0.28 deg, and the text doesn't mention it.
 
 THE TEXT CONTRADICTS ITSELF
 

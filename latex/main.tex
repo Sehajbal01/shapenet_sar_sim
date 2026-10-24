@@ -1292,39 +1292,25 @@ In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowled
 \label{app:sonar-beam-width}
 
 Figures \ref{fig:fls-beam-width} and \ref{fig:ss-beam-width} vary the azimuth beam width $\beta$ of
-the two sonars logarithmically from $0.1^\circ$ to $10^\circ$, with the other parameters at the
-defaults of Tables \ref{tab:fls-params} and \ref{tab:sss-params}. Each panel is in dB relative to its
-own peak, with a floor of $-60$~dB.
-
-In forward-looking sonar, the beam rather than the $0.072^\circ$ ping spacing sets the azimuth
-resolution at every width. The edge of the shadow widens with $\beta$, the shadow fills in once the
-beam is wider than its $3^\circ$ span, and at $10^\circ$ the returns of the car spread into arcs of
-constant range. The fan is fixed, so a wider beam sums the returns of more rays into each ping, and
-the peak grows about in proportion to $\beta$ up to $1^\circ$.
-
-In side-scan sonar, a beam covers $\rho\beta$ of the track, $1.4$ pixels at $0.1^\circ$ and more than
-the whole image at $10^\circ$. As it widens, the car smears along the track into streaks at constant
-range, and its shadow fills in with the seafloor heard past the ends of the car. The fan spans
-$3\beta$ with $R_w = 250$ azimuth rays, so the same number of rays falls under the beam at every
-width, and the peak falls rather than rises as the brightest returns are averaged with their
-surroundings. At $10^\circ$, $250$ rays are too few for the wider fan, and faint ghost copies of
-Section \ref{sec:ss-az-rays} remain. In both sonars, range resolution is set by $B_s$ and
-does not change with $\beta$.
+the two sonar imaging modalities, with the other parameters at the defaults of Tables \ref{tab:fls-params} and
+\ref{tab:sss-params}. In both, a wider beam blurs the car in azimuth, until
+its returns spread into bands of constant range, while the range resolution does not change. In
+side-scan sonar, only the rays within $\pm1.5\beta$ of boresight are cast, so the fan widens with
+the beam.
 
 \begin{figure}[H]
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/fls_stitched_beam_width.png}
-  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$. Each panel is in dB relative to its own peak, printed beneath its
-  colorbar.}
+  \caption{Forward-looking sonar images of a car as the azimuth beam width $\beta$ widens. Each
+  panel is in dB relative to its own peak, printed beneath its colorbar.}
   \label{fig:fls-beam-width}
 \end{figure}
 
 \begin{figure}[H]
   \centering
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/side_scan_stitched_beam_width.png}
-  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens from
-  $0.1^\circ$ to $10^\circ$, with $R_w = 250$ azimuth rays. Along-track position runs horizontally
+  \caption{Side-scan sonar images of a car as the azimuth beam width $\beta$ widens. Along-track
+  position runs horizontally
   and slant range vertically, with near range at the bottom. Each panel is in dB relative to its
   own peak, printed beneath its colorbar.}
   \label{fig:ss-beam-width}
