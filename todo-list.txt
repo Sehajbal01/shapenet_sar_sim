@@ -18,7 +18,7 @@ DONE 6. Conclusions say the method keeps the signal band-limited "instead of int
 
 DONE 7. Bandwidth and Ray Density: at B_s = 64 with the default rays the SAR image is said to be clean, then "the SAR image needs about twice the default rays per side" without saying at which B_s. The 2x only applies at B_s = 64. At the default B_s = 30 the default 208 rays are enough (about 176 needed).
 
-8. SAR wavelength appendix blames the interference on wavelengths "much shorter than the ray grid spacing". The spacing is 1.2/208 ~ 0.006 l, but the panels that show interference are lambda = 0.01-0.02, which are longer than that.
+DONE 8. SAR wavelength appendix blames the interference on wavelengths "much shorter than the ray grid spacing". The spacing is 1.2/208 ~ 0.006 l, but the panels that show interference are lambda = 0.01-0.02, which are longer than that.
 
 DONE 9. Abstract claims "different noise types", but the body only shows AWGN at a set SNR. Speckle and noise_type are never described, and the SAR parameters table has no noise_type row. Describe them or drop the claim.
 

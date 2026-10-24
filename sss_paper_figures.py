@@ -54,6 +54,22 @@ def _sss_experiments():
                               for n in ray_width_vals],
     )
 
+    # Carrier wavelength sweep -- does the coherent sum break down at short wavelengths as in SAR
+    wavelength_vals = [0.01, 0.02, 0.05, 0.1, 0.2]
+    wavelength = dict(
+        name='wavelength',
+        vary={'wavelength': wavelength_vals},
+        custom_title_strings=['Wavelength: %.2f' % w for w in wavelength_vals],
+    )
+
+    # the same sweep at twice the elevation rays; not named wavelength_*, since cleanup matches on substring
+    lambda_2x_el_rays = dict(
+        name='lambda_2x_el_rays',
+        vary={'wavelength': wavelength_vals},
+        overrides={'num_ray_height': 2 * SSS_PAPER_BASELINE['num_ray_height']},
+        custom_title_strings=['Wavelength: %.2f' % w for w in wavelength_vals],
+    )
+
     # Time varying gain sweep -- how hard the receiver ramp lifts far range against the
     # seafloor's fall with range. 0 is the raw echo.
     tvg_vals = np.linspace(-20, 30, 5).tolist()
@@ -157,6 +173,8 @@ def _sss_experiments():
     return [
         beam_width,
         num_ray_width,
+        # wavelength,
+        # lambda_2x_el_rays,
         # tvg,
         # compression,
         # asinh_k,

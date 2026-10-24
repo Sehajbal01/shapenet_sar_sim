@@ -574,7 +574,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We evaluate the simulator in the three imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales (Section \ref{sec:units}), then render a CVDomes \cite{cvdomes} car with constant and per-triangle materials (Section \ref{sec:per-triangle-materials}), and validate spotlight-mode SAR against point scatterers and a sphere (Section \ref{sec:validation}). We then show how the spatial bandwidth and the ray density together limit the signal in SAR and forward-looking sonar (Section \ref{sec:bw-ray-density}), and measure the compute time on a GPU and a CPU (Section \ref{sec:compute-time}). For the sonars, we show how many azimuth rays side-scan sonar needs to model a wide beam (Section \ref{sec:ss-az-rays}) and how the ray density of a sonar fan changes across range (Section \ref{sec:sonar-range-density}). Finally, we compare transmit waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}). Further SAR images that vary the wavelength, the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every experiment images the car of Figure \ref{fig:main-fig}.a from the same pose, with the defaults of Appendix \ref{app:params}, and the sensor is placed on the bottom side of every image, so illumination always arrives from that direction.
+We evaluate the simulator in the three imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales (Section \ref{sec:units}), then render a CVDomes \cite{cvdomes} car with constant and per-triangle materials (Section \ref{sec:per-triangle-materials}), and validate spotlight-mode SAR against point scatterers and a sphere (Section \ref{sec:validation}). We then show how the spatial bandwidth and the ray density together limit the signal in SAR and forward-looking sonar (Section \ref{sec:bw-ray-density}) and how a short wavelength raises the ray density that SAR needs (Section \ref{sec:wavelength-ray-density}), and measure the compute time on a GPU and a CPU (Section \ref{sec:compute-time}). For the sonars, we show how many azimuth rays side-scan sonar needs to model a wide beam (Section \ref{sec:ss-az-rays}) and how the ray density of a sonar fan changes across range (Section \ref{sec:sonar-range-density}). Finally, we compare transmit waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}). Further SAR images that vary the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every experiment images the car of Figure \ref{fig:main-fig}.a from the same pose, with the defaults of Appendix \ref{app:params}, and the sensor is placed on the bottom side of every image, so illumination always arrives from that direction.
 
 \subsection{Units and Scale}
 \label{sec:units}
@@ -740,6 +740,35 @@ image and the signal of the middle pulse is already smooth at the default. At th
 $B_s = 30$, about half of $64$, the default rays are enough. Both remedies have a cost: lowering $B_s$ coarsens the range resolution, and scaling the
 rays per side by $k$ scales the ray tracing time by $k^2$.
 
+\subsection{Ray Density at Short Wavelengths}
+\label{sec:wavelength-ray-density}
+
+With a wavelength $\lambda$, each return carries the phase of its round trip, and the returns
+within a pulse sum coherently. Over the flat ground, the phase turns quickly with range, and the
+returns of neighboring rays cancel, as they would over the continuous surface. This holds only
+while the range step between the returns of neighboring rays is below about $\lambda/4$. Beyond
+it, the phase between neighbors is aliased and the ground no longer cancels. In Figure
+\ref{fig:wavelength-raydensity}, we set $\lambda = 0.05$ and scale the rays per side of the SAR
+grid, and show the signal of a single pulse at the start of the linear aperture. This is the
+aperture's most grazing look, where the range step between rays is longest.
+
+At half the default rays, aliased returns fill the whole window. At the default rays, the ground
+still returns a smooth, raised level and the returns of the car are smeared. With twice the
+default rays per side, the ground falls to a low, flat level, the returns of the car are sharp,
+and more rays no longer change the signal. A short wavelength therefore needs a denser ray grid
+than the bandwidth alone requires (Section \ref{sec:bw-ray-density}), and, as there, the most
+grazing pulse sets how dense.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/sar_wavelength_raydensity.png}
+  \caption{Scaling the SAR ray grid from $0.5$ to $10$ times the default $208 \times 208$ rays at
+  $\lambda = 0.05$. Sampled signal magnitude of a single SAR pulse at the start of the linear
+  aperture against range from the sensor distance $d$, normalized to its peak, printed in each
+  panel. SAR receiver noise is off.}
+  \label{fig:wavelength-raydensity}
+\end{figure}
+
 \subsection{Compute Time}
 \label{sec:compute-time}
 
@@ -877,7 +906,7 @@ sidelobes, gives a clear side-scan image.
 \section{Limitations}
 \label{sec:limitations}
 
-The simulator trades physical fidelity for speed and generality. Five simplifications bound what
+The simulator trades physical fidelity for speed and generality. Six simplifications bound what
 its images can be used for.
 
 \textbf{Scalar returns.} Each return keeps only its energy, path length, and round-trip phase.
@@ -901,6 +930,13 @@ discontinuities become visible in the signal as artifacts from oversampling the 
 \ref{sec:bw-ray-density} and \ref{sec:sonar-range-density}). Simulating high-bandwidth signals
 therefore also requires a higher ray density, which is computationally costly, since the ray
 tracing time grows with the number of rays cast.
+
+\textbf{Ray density and wavelength.} With a wavelength, the returns sum coherently, and a flat
+surface cancels as it should only while the range step between the returns of neighboring rays is
+below about $\lambda/4$. At shorter wavelengths, the phase between neighbors is aliased, and the
+surface returns energy that depends on the ray grid rather than on the scene (Section
+\ref{sec:wavelength-ray-density}). The step is longest at grazing looks, so short wavelengths at
+grazing angles require more rays than the bandwidth alone, at the same cost in ray tracing time.
 
 \textbf{Materials.} The material properties $(R,A,I,D,S)$ and the exponent $\alpha$ do not
 comprehensively capture the behavior of radio and acoustic energy at a real surface. The scattered
@@ -942,8 +978,7 @@ RCS of a flat plate.
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
 sonar, and forward-looking sonar, while varying key parameters such as bandwidth, ray density,
 transmit waveform, and beam width, with the sample rate always twice the bandwidth. Further SAR
-examples in Appendix \ref{app:sar-examples} vary the wavelength, aperture, noise, and sensor
-trajectory. These experiments demonstrate how system
+examples in Appendix \ref{app:sar-examples} vary the aperture, noise, and sensor trajectory. These experiments demonstrate how system
 parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
 sonar that once the pulse is narrower than the range spacing between ray returns, the signal
 resolves the individual returns and the images break into artifacts. This can be avoided either by
@@ -1226,19 +1261,10 @@ $|\hat{\gamma}(\vec{x})|$.
 \section{SAR Image Examples}
 \label{app:sar-examples}
 This appendix shows spotlight-mode SAR images of the car of Figure \ref{fig:main-fig}.a as single parameters
-are varied from the defaults of Table \ref{tab:params}: the wavelength, the aperture, the noise,
-and the sensor trajectory.
+are varied from the defaults of Table \ref{tab:params}: the aperture, the noise, and the sensor
+trajectory.
 
-\subsection{Wavelength, Aperture, and Noise}
-
-In Figure \ref{fig:wavelength}, we analyze the effect of varying the wavelength parameter on the spotlight-mode SAR reconstruction. We use coherent integration of the complex-valued signals. Image quality is clearest at wavelengths that are well matched to the range resolution of the simulated system; wavelengths that are much shorter than the ray grid spacing introduce interference patterns from constructive and destructive summation across nearby rays.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_wavelength.png}
-  \caption{Varying the wavelength in our simulation with coherent integration.}
-  \label{fig:wavelength}
-\end{figure}
+\subsection{Aperture and Noise}
 
 In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
         
@@ -1508,14 +1534,17 @@ The scripts read their defaults from \texttt{experiments/config.json} (Appendix 
   \item Figure \ref{fig:materials}: \texttt{convert\_cvdomes.py}, then \texttt{render\_cvdomes.py}
   \item Figure \ref{fig:validation} and the validation numbers: \texttt{sar\_validation.py}
   \item Figure \ref{fig:rcs}: \texttt{calculate\_rcs.py} (a, b) and \texttt{sar\_validation.py} (c)
-  \item Figures \ref{fig:sphere-size} and \ref{fig:wavelength}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
+  \item Figures \ref{fig:sphere-size} and \ref{fig:az-spread}--\ref{fig:trajectory-noise}: \texttt{sar\_paper\_figures.py}
   \item Figures \ref{fig:fsbw} and \ref{fig:raydensity}: \texttt{fsbw\_and\_raydensity\_exp.py}
+  \item Figure \ref{fig:wavelength-raydensity}: \texttt{sar\_wavelength\_raydensity\_exp.py}
   \item Table \ref{tab:compute-time}: \texttt{compute\_time\_experiment.py}
   \item Figures \ref{fig:ss-az-rays} and \ref{fig:ss-beam-width}: \texttt{sss\_paper\_figures.py}
   \item Figures \ref{fig:fls-range-density} and \ref{fig:fls-beam-width}: \texttt{fls\_paper\_figures.py}
   \item Figure \ref{fig:waveform}: \texttt{waveform\_figure.py}
 \end{itemize}
-The sweep scripts \texttt{sar\_paper\_figures.py}, \texttt{sss\_paper\_figures.py} and \texttt{fls\_paper\_figures.py} take sweep names to render only those, and with \texttt{fsbw\_and\_raydensity\_exp.py} and \texttt{waveform\_figure.py} take \texttt{-replot} to redraw a figure from the outputs saved on an earlier run without rendering again.
+\begin{sloppypar}
+The sweep scripts \texttt{sar\_paper\_figures.py}, \texttt{sss\_paper\_figures.py} and \texttt{fls\_paper\_figures.py} take sweep names to render only those, and with \texttt{fsbw\_and\_raydensity\_exp.py}, \texttt{sar\_wavelength\_raydensity\_exp.py} and \texttt{waveform\_figure.py} take \texttt{-replot} to redraw a figure from the outputs saved on an earlier run without rendering again.
+\end{sloppypar}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{adjustwidth}{-\extralength}{0cm}
