@@ -632,6 +632,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
                                     num_bounce = 1,
                                     second_bounce_batch_size = 2**100,
                                     surface_bias = 1e-3,
+                                    water_absorption = 0.0,
                                     debug_gif = False,
                                     octree = None,
                                     return_positions = False,
@@ -656,6 +657,9 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
         surface_bias (float): distance to push each bounce's outgoing ray origin off the surface
             along the normal, to prevent self-intersection (spurious leg~=0 re-hits). Should be
             small relative to scene features but large relative to float error at the scene scale.
+        water_absorption (float): absorption coefficient of the water, in nepers per unit length
+            (0 disables it). Applied over the round trip, so it is already the two-way loss.
+            From the dB/m absorption is usually tabulated in: nepers = dB / 8.686.
         octree (Octree): a previously built octree for this mesh, built here when None. The
             octree depends only on the mesh, so a caller rendering many poses of one object
             builds it once and passes it back in instead of paying the rebuild every call
@@ -664,7 +668,8 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
     outputs:
         range (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only).
             Round-trip path length, so ~2x the distance to the scatter on a first bounce
-        energy (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only)
+        energy (T,)[P,][R']: list of lists of 1-D tensors; R' varies per pulse (hit rays only),
+            attenuated by water absorption over that round-trip range if enabled
         azimuth (T,)[P,][R']: list of lists of 1-D tensors; the launch azimuth in degrees off
             boresight, positive toward the sensor's right vector, of the ray that produced
             each scatter. On a second bounce that is where the ray left, not where the
@@ -675,7 +680,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
         positions (T,)[P,][R',3]: list of lists of each scatter's world position; only with
             return_positions, after debugging_maps
         debugging_maps: dict (t,p) -> {'depth','energy'} of (H,W) maps, or None. The energy map
-            is the raw first-bounce energy, before the ray-count normalization
+            is the raw first-bounce energy, before absorption and the ray-count normalization
     '''
     device = trajectory.device
     T = trajectory.shape[0]  # no. of camera views
@@ -733,6 +738,7 @@ def accumulate_scatters_perspective(mesh, face_normals, material_properties,
                 ray_origins, ray_directions,
                 wavelength       = wavelength,
                 num_bounce       = num_bounce,
+                attenuation      = water_absorption,
                 octree           = octree,
                 second_bounce_batch_size = second_bounce_batch_size,
                 surface_bias     = surface_bias,
@@ -796,7 +802,7 @@ def accumulate_scatters_side_scan(mesh, face_normals, material_properties,
     flies a straight track staring off to one side -- so this wrapper takes the full pose matrix
     and reads the sensor axes straight out of its columns. Azimuths are therefore measured off
     a fixed boresight, so a scatter's azimuth tells you where it sits along the track rather
-    than always being ~0. It also takes the water absorption the perspective wrapper leaves out.
+    than always being ~0.
 
     inputs:
         mesh (obj): pytorch3d mesh object of the 3d model
@@ -1205,8 +1211,8 @@ def test_perspective_matches_side_scan(device='cuda'):
     '''
     The two fan wrappers are the same physics with the pose supplied rather than inferred, so
     handing side scan exactly the pose perspective builds for itself must give the same
-    scatters. The side scan's absorption stays at its 0 default, so the energies must match
-    outright rather than up to a constant.
+    scatters. Both take the same water absorption, so the energies must match outright, with
+    absorption off and on.
 
     This is the cross-check that survives deleting the originals: it pins the two wrappers to
     each other through the shared core without needing any reference implementation.
@@ -1239,6 +1245,13 @@ def test_perspective_matches_side_scan(device='cuda'):
     ok &= _check('azimuths', sss[2], per[2])
     ok &= _check('arrival azimuths', sss[3], per[3])
     ok &= _check('energies', sss[1], per[1])
+
+    # absorption reaches the core the same way through either wrapper
+    per = _quiet(accumulate_scatters_perspective, mesh, normals, materials, trajectory,
+                 water_absorption=0.05, **kwargs)
+    sss = _quiet(accumulate_scatters_side_scan, mesh, normals, materials, poses,
+                 water_absorption=0.05, **kwargs)
+    ok &= _check('energies, absorption 0.05', sss[1], per[1])
     return ok
 
 

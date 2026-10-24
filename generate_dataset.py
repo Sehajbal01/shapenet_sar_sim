@@ -154,8 +154,8 @@ SIDE_SCAN_KEYS = ('image_width', 'image_height', 'image_cross_range_swath', 'ima
                   'wavelength', 'num_bounce', 'water_absorption',
                   'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude',
                   'noise_type', 'snr_db', 'speckle_correlation_length', 'speckle_strength')
-FLS_KEYS = ('image_range_swath', 'wavelength', 'num_bounce',
-            'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude',
+FLS_KEYS = ('image_range_swath', 'wavelength', 'num_bounce', 'water_absorption',
+            'tvg_exponent', 'spatial_bw', 'spatial_fs', 'waveform', 'use_sig_magnitude',
             'noise_type', 'snr_db', 'speckle_correlation_length', 'speckle_strength')
 
 

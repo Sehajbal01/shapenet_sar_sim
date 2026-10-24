@@ -56,6 +56,8 @@ def forward_looking_sonar_image(
     wavelength = None,
     num_bounce = 1,
     second_bounce_batch_size = 2**9,
+    water_absorption = 0.0,
+    tvg_exponent = 0.0,
     spatial_bw = 32,
     spatial_fs = 64,
     waveform = 'sinc',
@@ -86,6 +88,9 @@ def forward_looking_sonar_image(
             image_range_swath/2 in the bottom row to sensor_distance + image_range_swath/2 in the
             top row, so moving the sensor moves the window with it
         wavelength (float): when given, scatter energies are complex and sum coherently
+        water_absorption (float): two-way absorption in nepers per unit length, 0 = off
+        tvg_exponent (float): time varying gain, signals multiplied by range^n before image
+            formation; after the receiver noise, so it amplifies that too. 0 = off
         noise_type (str or sequence): 'none', 'awgn', 'speckle', or a list of them; see noise.py
         snr_db (float): awgn SNR over all of a view's pings; None skips the awgn
         speckle_correlation_length (float): speckle surface patch size, see noise.speckle_phase
@@ -110,6 +115,7 @@ def forward_looking_sonar_image(
         n_ray_height   = num_ray_height,
         num_bounce     = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
+        water_absorption = water_absorption,
         octree         = octree,
         return_positions = True,
     )  # list[T][1] of (R',) each
@@ -157,8 +163,12 @@ def forward_looking_sonar_image(
     signals  = torch.stack(signals)  # (T,P,Z)
     sample_z = sample_z.squeeze(0)   # (Z,) every ping shares the one window
 
-    # receiver noise
+    # receiver noise, ahead of the time varying gain that amplifies it with range
     signals = apply_signal_noise(signals, noise_type, snr_db)
+
+    # time varying gain on the signal, before image formation: each sample scaled by its range^n
+    if tvg_exponent:
+        signals = signals * sample_z ** tvg_exponent  # (T,P,Z)
 
     if use_sig_magnitude:
         signals = signals.abs()  # project the envelope; a complex image is not displayable
@@ -213,6 +223,8 @@ def render_forward_looking_sonar_image(
         wavelength = None,
         num_bounce = 1,
         second_bounce_batch_size = 2**9,
+        water_absorption = 0.0,
+        tvg_exponent = 0.0,
         spatial_bw = 32,
         spatial_fs = 64,
         waveform = 'sinc',
@@ -347,6 +359,8 @@ def render_forward_looking_sonar_image(
         wavelength = wavelength,
         num_bounce = num_bounce,
         second_bounce_batch_size = second_bounce_batch_size,
+        water_absorption = water_absorption,
+        tvg_exponent = tvg_exponent,
         spatial_bw = spatial_bw,
         spatial_fs = spatial_fs,
         waveform = waveform,

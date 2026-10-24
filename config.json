@@ -55,7 +55,7 @@
         "num_pulse": 64,
         "spatial_bw": 30,
         "spatial_fs": 60,
-        "wavelength": 0.5,
+        "wavelength": 0.1,
         "waveform": "gaussian",
         "use_sig_magnitude": true,
         "snr_db": 50,
@@ -112,6 +112,8 @@
         "image_range_swath": 1.2,
         "wavelength": null,
         "num_bounce": 2,
+        "water_absorption": 0.0,
+        "tvg_exponent": 0,
         // pulse FWHM 0.62/bw spans ~1.4 rows
         "spatial_bw": 32,
         "spatial_fs": 64,

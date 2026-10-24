@@ -48,20 +48,23 @@ SAR and sonar simulators are crucial for developing and validating radar and son
 
 Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified in some manner or proprietary to their respective developer. The openly available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed dataset of ten vehicles whose simulation code is not public, RaySAR \cite{raysar} simulates signals from ray-traced contributions but does not model a transmit waveform and depends on outdated POV-Ray and MATLAB software, and neither simulates sonar. XPatch and the simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and traces their reflections, and our ray tracer follows the same ray-launching approach.
 
-Figure \ref{fig:sig-sim} gives an overview of how our simulator produces a received signal. A grid
-of parallel rays with equal energy is cast from the sensor toward an \texttt{.obj} mesh. Each time a
+Figure \ref{fig:sig-sim} gives an overview of how our simulator produces a received signal. Rays
+with equal energy are cast from the sensor toward an \texttt{.obj} mesh: a grid of parallel rays for
+SAR, as drawn, or a fan of rays from a point source for the sonars. Each time a
 ray hits a triangle, part of its energy is scattered back to the sensor, part is lost to absorption,
 and the rest is reflected along a new path that can hit the mesh again, up to a configurable number
 of bounces. Every return to the sensor is recorded with its energy and the range it traveled,
 forming an energy-range scatter plot. These irregularly spaced returns are then accumulated and
 interpolated onto the sample grid of the sensor with a band-limited window set by the sensor's
-bandwidth and transmit waveform, giving the received signal of one pulse. Repeating this for every
-pulse along the sensor trajectory gives the signals from which SAR and sonar images are formed.
+bandwidth and transmit waveform, giving the received signal of one pulse. SAR and side-scan sonar
+repeat this for every pulse along the sensor trajectory, while forward-looking sonar, which does not
+move, traces once and steers its beam over the same returns for every ping. These signals are then
+formed into SAR and sonar images.
 
 \begin{figure}[H]
   \centering
   \includegraphics[trim=0 241 289 0, clip, width=\textwidth]{figs/ray-trace-sim.pdf}
-  \caption{Process for simulating the received signal from object meshes.}
+  \caption{Process for simulating the received signal from object meshes, shown for the parallel ray grid of SAR.}
   \label{fig:sig-sim}
 \end{figure}
 
@@ -210,7 +213,8 @@ $R_h \times R_w$ parallel rays that originate on a grid of size $W_g \times H_g$
 grid intersects a line from the origin for a given azimuth $a$ and elevation $e$ angle. 
 Azimuth $a$ is defined as the angle from the $x$ to the $y$ axis, and elevation $e$ is the 
 angle from the $x$-$y$ plane to the $z$ axis. The grid is orthogonal to this line defined by the 
-azimuth/elevation. This set of rays can be viewed as a simulated wavefront.
+azimuth/elevation. This set of rays can be viewed as a simulated wavefront. The sonars replace it
+with a fan of rays from a point source (Appendix \ref{sec:modalities}).
 
 When a ray hits a triangle of the mesh, the material of that triangle (Section
 \ref{sec:material-properties}) sets the energy $E_r$ returned toward the sensor
@@ -586,7 +590,9 @@ defaults for a car about $4.5$~m long, or $1\ell \approx 5$~m.
 \begin{table}[H]
 \centering
 \caption{Default lengths and frequencies converted at $1\ell \approx 5$~m, with
-$B_t = cB_s/2$ and $F_t = cF_s/2$.}
+$B_t = cB_s/2$ and $F_t = cF_s/2$. $B_s$ and $F_s$ are the SAR and side-scan sonar defaults;
+forward-looking sonar uses $B_s = 32\ell^{-1}$ and $F_s = 64\ell^{-1}$, or $B_t = 4.8$~kHz and
+$F_t = 9.6$~kHz.}
 \label{tab:units}
 \begin{tabular}{lllll}
 \toprule
@@ -598,7 +604,7 @@ Sonar distance $\lVert\vec{v}\rVert$ & $7.5\ell$ & $37.5$~m    & -- & -- \\
 Bandwidth $B_s$          & $30\,\ell^{-1}$    & $6$~m$^{-1}$   & $B_t = 900$~MHz & $B_t = 4.5$~kHz \\
 Range resolution $1/B_s$ & $0.033\ell$        & $17$~cm        & -- & -- \\
 Sample rate $F_s$        & $60\,\ell^{-1}$    & $12$~m$^{-1}$  & $F_t = 1.8$~GHz & $F_t = 9$~kHz \\
-SAR wavelength $\lambda$ & $0.5\ell$          & $2.5$~m        & $120$~MHz & -- \\
+SAR wavelength $\lambda$ & $0.1\ell$          & $0.5$~m        & $600$~MHz & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -618,10 +624,13 @@ relative to the transmitted energy rather than calibrated in watts.
 \label{sec:per-triangle-materials}
 
 In Figure \ref{fig:materials}, we render the CVDomes \cite{cvdomes} Camry with two \texttt{.mp} files. The first
-gives every triangle the same material, $(R,A,I,D,S) = (0.8, 0, 0.9, 0.1, 0.2)$. For the second, we
-take the material descriptors of the CVDomes labels (Section \ref{sec:cvdomes}), such as body,
-glass, and tires, and give each descriptor our own $(R,A,I,D,S)$ values (Table
-\ref{tab:cvdomes-materials} of Appendix \ref{app:cvdomes-materials}). The windows, tires, and
+gives every triangle of the car the same perfect-conductor material, $(R,A,I,D,S) = (0.8, 0, 0.9,
+0.1, 0.2)$, and the ground keeps its own asphalt material, $(R,A,I,D,S) = (0.087, 0.826, 0.8, 0.2,
+0.087)$, so this render has two constant materials, one for the car and one for the ground. For the
+second, we take the material descriptors of the CVDomes labels (Section \ref{sec:cvdomes}), such as
+body, glass, and tires, and give each descriptor our own $(R,A,I,D,S)$ values (Table
+\ref{tab:cvdomes-materials} of Appendix \ref{app:cvdomes-materials}). The ground is the same asphalt
+in both renders, so only the materials of the car differ between them. The windows, tires, and
 trim go dark in the first-bounce energy, and the SAR peak drops by $4.7$~dB.
 
 \begin{figure}[H]
@@ -632,7 +641,8 @@ trim go dark in the first-bounce energy, and the SAR peak drops by $4.7$~dB.
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_constant_sar.png}}
     \hspace{0.05\textwidth}
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]{figs/cvdomes_materials_per-triangle_sar.png}}
-    \caption{CVDomes Camry with a constant material and with per-triangle CVDomes materials.
+    \caption{CVDomes Camry with a constant material and with per-triangle CVDomes materials, on the
+    same asphalt ground.
     (\textbf{a}) First-bounce energy of the center pulse with a constant material, (\textbf{b})
     first-bounce energy of the center pulse with per-triangle materials, (\textbf{c}) SAR image with
     a constant material, (\textbf{d}) SAR image with per-triangle materials. Panels (\textbf{a},\textbf{b})
@@ -881,9 +891,8 @@ energy through the phenomenological lobe of Section \ref{sec:material-properties
 reflected ray, carrying the fraction $R$ of the incident energy (\ref{eq:reflected-energy}),
 continues to the next bounce, whereas a real surface scatters energy in all directions, toward
 other surfaces as well as back to the sensor. No surface currents are integrated, so there are no
-diffraction effects. The model therefore holds only for targets much larger than the wavelength. 
-The wavelength enters only through the phase of each return, so the scattering of a surface does 
-not depend on frequency.
+diffraction effects. The wavelength enters only through the phase of each return, so the
+scattering of a surface does not depend on frequency.
 
 \textbf{Ray density and signal bandwidth.} The returns are discrete samples of a continuous
 surface, taken only where the rays hit it. When the bandwidth is too high relative to the density of
@@ -931,9 +940,10 @@ complex-valued signals, which we validated against ideal point scatterers and th
 RCS of a flat plate.
 
 We conducted a series of experiments on ShapeNet car models in spotlight-mode SAR, side-scan
-sonar, and forward-looking sonar, while varying key parameters such as bandwidth, sample rate, and beam width, with
-further SAR examples varying the aperture, wavelength, and sensor trajectory in
-Appendix \ref{app:sar-examples}. These experiments demonstrate how system
+sonar, and forward-looking sonar, while varying key parameters such as bandwidth, ray density,
+transmit waveform, and beam width, with the sample rate always twice the bandwidth. Further SAR
+examples in Appendix \ref{app:sar-examples} vary the wavelength, aperture, noise, and sensor
+trajectory. These experiments demonstrate how system
 parameters influence image quality and signal fidelity. In particular, we observed in both SAR and
 sonar that once the pulse is narrower than the range spacing between ray returns, the signal
 resolves the individual returns and the images break into artifacts. This can be avoided either by
@@ -1090,8 +1100,8 @@ sampled over a window that covers $[\rho_{near},\rho_{far}]$. The rows span a ra
 $S_\rho$ that brackets the scene origin along the line of sight, $\rho_{near} =
 \lVert\vec{v}\rVert - S_\rho/2$ and $\rho_{far} = \lVert\vec{v}\rVert + S_\rho/2$, so the window
 follows the sensor when it is moved away from the scene. A time-varying gain, a receiver ramp
-against the fall of the return with range, can be applied after the image is formed by scaling row
-$m$ by $\rho_m^{\eta}$, where $\eta = 0$ disables it. It is not part of the simulated signal.
+against the fall of the return with range, can be applied to each signal before the image is
+formed by scaling $s_i(z_o)$ by $z_o^{\eta}$, where $\eta = 0$ disables it.
 
 In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
 as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
@@ -1114,11 +1124,11 @@ along the horizontal axis of the sensor, $\vec{u}_h = (\vec{u}_f \times \vec{u}_
 \times \vec{u}_z\rVert$, where $\vec{u}_z$ is the unit vector along the $z$ axis, so the scene
 stays off to one side of the platform the whole way. Ping $i$ is transmitted from
 \begin{equation}
-    \vec{v}_i = \bar{\vec{v}} + \ell_i\vec{u}_h
+    \vec{v}_i = \bar{\vec{v}} + \xi_i\vec{u}_h
     ,
     \label{eq:ss-track}
 \end{equation}
-where the $P$ offsets $\ell_i$ are spaced uniformly over $[-L/2,L/2]$ for a track of length $L$.
+where the $P$ offsets $\xi_i$ are spaced uniformly over $[-L/2,L/2]$ for a track of length $L$.
 Where a forward-looking sonar sweeps its beam across the target from one position, a side-scan
 sonar holds its beam fixed, and the target drifts across the beam as the platform passes.
 
@@ -1141,13 +1151,13 @@ steering, and the digital signal of the $i^{th}$ ping is
 where the sum runs over the returns of that ping. Every ping is sampled over the same window, which covers the range swath of the image, so the
 samples of all pings line up in range.
 
-Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\ell_i$
+Stacked as columns, the magnitudes $|s_i(z_o)|$ sample the scene over along-track offset $\xi_i$
 and slant range $z_o$. The image interpolates them bilinearly onto an $H \times W$ pixel grid that
-spans a cross-range swath $S_\ell$ along the track and a range swath $S_\rho$ in slant range,
-centered on $\ell = 0$ and on the target range $\lVert\bar{\vec{v}}\rVert$, with near range in the
+spans a cross-range swath $S_\xi$ along the track and a range swath $S_\rho$ in slant range,
+centered on $\xi = 0$ and on the target range $\lVert\bar{\vec{v}}\rVert$, with near range in the
 bottom row. Pixels outside the sampled track are zero, so the track length $L$ should be at least
-$S_\ell$. The rows are in slant range, since no projection onto the ground plane is applied. As in
-forward-looking sonar, a time-varying gain can be applied to the rows after the image is formed.
+$S_\xi$. The rows are in slant range, since no projection onto the ground plane is applied. As in
+forward-looking sonar, a time-varying gain can be applied to each signal before the image is formed.
 
 Along the track, the resolution is set by the beam: at slant range $\rho$ the beam covers about
 $\rho\beta$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
@@ -1199,14 +1209,16 @@ $\tilde{S}_i(Z)$ by the ramp $|Z|$,
 \end{equation}
 and the filtered pulses are backprojected along their ground lines,
 \begin{equation}
-    \hat{\gamma}(\vec{x}) = \frac{1}{4\pi^2}\sum_{i=1}^{P}\check{s}_i\big(\vec{n}_i\cdot\vec{x}\big)
+    \hat{\gamma}(\vec{x}) = \sum_{i=1}^{P}\check{s}_i\big(\vec{n}_i\cdot\vec{x}\big)
     ,
     \label{eq:cbp}
 \end{equation}
 where $\check{s}_i$ is evaluated between its samples by linear interpolation, or by sinc
 interpolation at the rate $F_s\cos e_i$. The ramp is the Jacobian of the polar-to-Cartesian change
-of variables in the image's spatial-frequency plane, and the factor $1/4\pi^2$ comes from the
-inverse two-dimensional Fourier transform in polar coordinates \cite{spotlightmodesar}. The image
+of variables in the image's spatial-frequency plane, and the sum over pulses approximates the
+angular integral of the inverse two-dimensional Fourier transform in polar coordinates, up to a
+constant scale \cite{spotlightmodesar}. With $Z$ in cycles per unit length, as in
+(\ref{eq:cbp-ramp}), this inverse transform has no $1/4\pi^2$ factor. The image
 samples $\vec{x}$ on an $H \times W$ grid of the ground plane centered on the origin, rotated so
 that the radar illuminates it from the bottom edge, and the displayed image is
 $|\hat{\gamma}(\vec{x})|$.
@@ -1258,7 +1270,7 @@ In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio (S
 
 \subsection{Sensor Trajectory}
 
-In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight path. The circular trajectory produces a more uniformly illuminated image because the range from the sensor to the target is nearly constant across pulses. Both are imaged by convolution backprojection.
+In Figure \ref{fig:trajectory-type}, we compare the two supported sensor trajectories. The circular trajectory sweeps the sensor along a constant-radius arc around the target, while the linear trajectory translates the sensor along a straight, level path whose ends span the same azimuth spread. The wavefront is planar and has no spreading loss, so the distance to the sensor does not change the returns, and the two trajectories differ only in the look direction of each pulse. The circular trajectory keeps the elevation fixed and steps the azimuth uniformly. The linear trajectory steps uniformly along the track, so its azimuth steps shrink toward the ends, and since the ends are farther from the target at the same height, the elevation falls toward them, from $40.6^\circ$ at the center to about $18^\circ$ at the ends for the default $\Delta a = 135^\circ$. Both differences vanish as the azimuth spread shrinks. Both trajectories are imaged by convolution backprojection.
 
 \begin{figure}[H]
   \centering
@@ -1334,7 +1346,7 @@ $\Delta a$                & azimuth\_spread        & $135^\circ$ \\
 $(a,e)$                   & pose\_num              & 000000 $(281.0^\circ, 40.6^\circ)$ \\
 $B_s$                     & spatial\_bw            & $30$ \\
 $F_s$                     & spatial\_fs            & $60$ \\
-$\lambda$                 & wavelength             & $0.5$ \\
+$\lambda$                 & wavelength             & $0.1$ \\
 SNR                       & snr\_db                & $50$~dB \\
 $\sigma^2$                & trajectory\_noise\_var & $0$ \\
 $R_w$                     & n\_ray\_width          & $208$ \\
@@ -1385,6 +1397,8 @@ $S_\rho$                   & image\_range\_swath      & $1.2$ \\
 $\lambda$                  & wavelength               & None \\
 $B_s$                      & spatial\_bw              & $32$ \\
 $F_s$                      & spatial\_fs              & $64$ \\
+$\kappa$                   & water\_absorption        & $0$ \\
+$\eta$                     & tvg\_exponent            & $0$ \\
 $(R,A,I,D,S)_{\text{obj}}$ & obj\_raids               & $(1.0, 1.0, 100.0, 0.1, 0.9)$ \\
 $(R,A,I,D,S)_{\text{gnd}}$ & ground\_raids            & $(1.0, 1.0, 1.0, 5.0, 0.1)$ \\
 $\alpha$                  & --                     & $5$ \\
@@ -1419,7 +1433,7 @@ $R_w$                      & num\_ray\_width          & $1$ \\
 $R_h$                      & num\_ray\_height         & $550$ \\
 $W$                        & image\_width             & $128$ \\
 $H$                        & image\_height            & $128$ \\
-$S_\ell$                   & image\_cross\_range\_swath & $1.2$ \\
+$S_\xi$                    & image\_cross\_range\_swath & $1.2$ \\
 $S_\rho$                   & image\_range\_swath      & $1.2$ \\
 $\lambda$                  & wavelength               & None \\
 $B_s$                      & spatial\_bw              & $30$ \\
@@ -1461,12 +1475,12 @@ exponent is $\alpha = 5$ for both.}
 \label{tab:materials}
 \begin{tabular}{lccccc}
 \toprule
-\textbf{Material} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
+\textbf{Material} & \textbf{$R$} & \textbf{$A$} & \textbf{$I$} & \textbf{$D$} & \textbf{$S$} \\
 \midrule
-Car, configured    & $1.0$   & $1.0$   & $0.9$   & $100.0$ & $0.1$ \\
-Car, normalized    & $0.345$ & $0.345$ & $0.310$ & $0.999$ & $0.001$ \\
-Ground, configured & $1.0$   & $1.0$   & $0.1$   & $1.0$   & $5.0$ \\
-Ground, normalized & $0.476$ & $0.476$ & $0.048$ & $0.167$ & $0.833$ \\
+Car, configured    & $1.0$   & $1.0$   & $100.0$ & $0.1$ & $0.9$ \\
+Car, normalized    & $0.345$ & $0.345$ & $0.999$ & $0.001$ & $0.310$ \\
+Ground, configured & $1.0$   & $1.0$   & $1.0$   & $5.0$ & $0.1$ \\
+Ground, normalized & $0.476$ & $0.476$ & $0.167$ & $0.833$ & $0.048$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1480,18 +1494,18 @@ $R+A+S=1$ and $I+D=1$, so the normalization of Appendix \ref{app:materials} leav
 \begin{table}[H]
 \centering
 \caption{CVDomes material labels and the materials we assign to them. The constant render of Figure
-\ref{fig:materials} gives every triangle the perfect-conductor values. The directional exponent is
+\ref{fig:materials} gives every triangle of the car the perfect-conductor values. The directional exponent is
 $\alpha = 5$ for all.}
 \label{tab:cvdomes-materials}
 \begin{tabular}{llccccc}
 \toprule
-\textbf{CVDomes label} & \textbf{Camry parts} & \textbf{$R$} & \textbf{$A$} & \textbf{$S$} & \textbf{$I$} & \textbf{$D$} \\
+\textbf{CVDomes label} & \textbf{Camry parts} & \textbf{$R$} & \textbf{$A$} & \textbf{$I$} & \textbf{$D$} & \textbf{$S$} \\
 \midrule
-Perfect conductor & body, rims     & $0.800$ & $0.000$ & $0.200$ & $0.900$ & $0.100$ \\
-Glass             & windows        & $0.121$ & $0.849$ & $0.030$ & $0.900$ & $0.100$ \\
-Plastic           & plastic trim   & $0.121$ & $0.849$ & $0.030$ & $0.900$ & $0.100$ \\
-Rubber            & tires          & $0.000$ & $1.000$ & $0.000$ & $0.900$ & $0.100$ \\
-Asphalt           & ground         & $0.087$ & $0.826$ & $0.087$ & $0.800$ & $0.200$ \\
+Perfect conductor & body, rims     & $0.800$ & $0.000$ & $0.900$ & $0.100$ & $0.200$ \\
+Glass             & windows        & $0.121$ & $0.849$ & $0.900$ & $0.100$ & $0.030$ \\
+Plastic           & plastic trim   & $0.121$ & $0.849$ & $0.900$ & $0.100$ & $0.030$ \\
+Rubber            & tires          & $0.000$ & $1.000$ & $0.900$ & $0.100$ & $0.000$ \\
+Asphalt           & ground         & $0.087$ & $0.826$ & $0.800$ & $0.200$ & $0.087$ \\
 \bottomrule
 \end{tabular}
 \end{table}
