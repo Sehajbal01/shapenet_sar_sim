@@ -338,4 +338,4 @@ def analyze_waveforms(
 
 if __name__ == '__main__':
     # characterize the interpolate_signal waveforms for the paper
-    analyze_waveforms(bw_list=(10.0,), fs_list=(2000.0,))
+    analyze_waveforms(waveforms=('sinc', 'gaussian', 'lfm', 'barker13'), bw_list=(10.0,), fs_list=(2000.0,))

@@ -507,7 +507,7 @@ Figure \ref{fig:rcs} shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\lam
 $0.25^\circ$ grid, and for the car of Figure \ref{fig:main-fig}.a without the ground at the default
 $\lambda$ on a $2^\circ$ grid. The plate
 returns a lattice of sinc lobes around its normal. The car is strongest near the zenith and
-broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $13$~dB less than
+broadside to its sides ($a = 0^\circ$ and $180^\circ$), and its ends return about $20$~dB less than
 its sides at low elevation. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns
 against the theoretical RCS of the plate, which measured plates follow near normal incidence
 \cite{ross1966}: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls
@@ -631,7 +631,7 @@ second, we take the material descriptors of the CVDomes labels (Section \ref{sec
 body, glass, and tires, and give each descriptor our own $(R,A,I,D,S)$ values (Table
 \ref{tab:cvdomes-materials} of Appendix \ref{app:cvdomes-materials}). The ground is the same asphalt
 in both renders, so only the materials of the car differ between them. The windows, tires, and
-trim go dark in the first-bounce energy, and the SAR peak drops by $4.7$~dB.
+trim go dark in the first-bounce energy, and the SAR peak drops by $5.0$~dB.
 
 \begin{figure}[H]
   \centering
@@ -662,7 +662,7 @@ and along range its return takes the shape of the effective window $w(z)$ of
 Figure \ref{fig:effective-windows}. Figure \ref{fig:effective-windows} is itself made the same way:
 each window is the signal of a single point scatterer injected into the accumulation and
 interpolation with that transmit waveform. On a $5 \times 5$ grid (Figure \ref{fig:validation}b), every target is imaged as
-a compact peak within $0.27$ of a pixel of its true position, and the phase of each return matches
+a compact peak within $0.42$ of a pixel of its true position, and the phase of each return matches
 $e^{j4\pi R/\lambda}$ to numerical precision, so the pulses integrate coherently.
 
 \begin{figure}[H]
@@ -677,7 +677,7 @@ In Figure \ref{fig:sphere-size}, we ray-trace a sphere at five successively halv
 ground plane removed, over an azimuth spread of $\Delta a = 90^\circ$. The image traces the curved illuminated surface of the sphere, which tightens as the sphere
 shrinks until, at the smallest scales, the return collapses to the compact response of a point
 scatterer in Figure \ref{fig:validation}a. Since a sphere backscatters equally from every angle,
-its sidelobes spread symmetrically into concentric rings around the target.
+its sidelobes are those of the point scatterer, an X from the ends of the aperture.
 
 \begin{figure}[H]
   \centering
@@ -1279,7 +1279,7 @@ In Figure \ref{fig:num-pulse}, we illustrate the effect of varying the number of
         
 \begin{figure}[H]
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_num_pulse.png}
+  \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_num_pulse.png}
   \caption{Effect of varying the number of pulses in our simulation.}
   \label{fig:num-pulse}
 \end{figure}
@@ -1300,7 +1300,7 @@ In Figure \ref{fig:trajectory-type}, we compare the two supported sensor traject
 
 \begin{figure}[H]
   \centering
-  \includegraphics[trim=0 0 0 0, clip, width=0.5\textwidth]{figs/sar_stitched_trajectory_type.png}
+  \includegraphics[trim=0 0 0 0, clip, width=0.8\textwidth]{figs/sar_stitched_trajectory_type.png}
   \caption{Comparison of circular and linear sensor trajectories in our simulation.}
   \label{fig:trajectory-type}
 \end{figure}

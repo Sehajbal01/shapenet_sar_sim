@@ -22,6 +22,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 import PIL.Image
+import PIL.ImageDraw
 import torch
 import tqdm
 from matplotlib import pyplot as plt
@@ -29,13 +30,14 @@ from matplotlib import pyplot as plt
 from config import SHAPENET_CARS_DIR
 from generate_dataset import SAR_KEYS
 from paper_figure_layout import panel_display
-from render_images import _find_split_dir, sar_render_image
+from render_images import _find_split_dir, pose_az_el, sar_render_image
 from sar_paper_figures import SAR_PAPER_BASELINE
 from signal_visualization import figure_to_frame, save_boomerang
 
 
-DEFAULT_OBJ_ID   = 'e6846796e15020e02bc9f17412005422'
-DEFAULT_POSE_NUM = '000046'
+# the paper's experiments all image this car and pose
+DEFAULT_OBJ_ID   = SAR_PAPER_BASELINE['obj_id']
+DEFAULT_POSE_NUM = SAR_PAPER_BASELINE['pose_num']
 PANEL_SIZE = (3.0, 2.6)  # inches, one paper panel
 FONT_SIZE  = 13          # readable at 0.3 of the paper's text width
 
@@ -188,14 +190,22 @@ def _ticks(ax):
     ax.set_yticks([-0.5, 0, 0.5])
 
 
-# (letter, paper png, drawer) in the paper's reading order. (a) is the paper's own rgb.png, which
-# carries the pose's az/el, so only (b)-(f) are written for it
+# (letter, paper png, drawer) in the paper's reading order. (a) is rgb.png, written by save_rgb
+# with the pose's az/el stamped on it
 PANELS = (('a', None,                         draw_rgb),
           ('b', 'sar_overview.png',           draw_sar),
           ('c', 'sar_overview_depth.png',     draw_depth),
           ('d', 'sar_overview_energy.png',    draw_energy),
           ('e', 'sar_overview_scatters.png',  draw_scatter),
           ('f', 'sar_overview_signal.png',    draw_signal))
+
+
+def save_rgb(data, obj_id, pose_num, path):
+    '''(a): the pose's rgb image with its az/el, stamped as render_random_image does.'''
+    image = PIL.Image.fromarray(data['rgb'])
+    PIL.ImageDraw.Draw(image).text((10, 10), 'Az: %.1f, El: %.1f' % pose_az_el(obj_id, pose_num),
+                                   fill=(0, 0, 0))
+    image.save(path)
 
 
 def save_paper_panels(data, pulse, output_dir):
@@ -241,6 +251,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     data = render(args.obj_id, args.pose_num)
     P = data['signal'].shape[0]
+    save_rgb(data, args.obj_id, args.pose_num, os.path.join(args.output_dir, 'rgb.png'))
     save_paper_panels(data, P // 2 if args.pulse is None else args.pulse, args.output_dir)
     if args.gif:
         save_gif(data, os.path.join(args.output_dir,

@@ -39,6 +39,7 @@ def _sar_experiments():
     az_spread = dict(
         name='az_spread',
         vary={'azimuth_spread': az_vals},
+        overrides={'trajectory_type': 'circular'},  # a linear track can't reach 180 deg
         custom_title_strings=['Azimuth spread: %.0f deg' % a for a in az_vals],
     )
 
@@ -172,24 +173,28 @@ def _sar_experiments():
         overrides = {'override_obj_path': override_obj_path,
                      # 'debug_gif': True,
                      'make_ground': False,
+                     # the paper's fig:sphere-size caption
+                     'num_pulse': 256,
+                     'azimuth_spread': 90,
+                     'compression': 'db',
                     },
         custom_title_strings=['Scale: 1','Scale: 1/2','Scale: 1/4','Scale: 1/8','Scale: 1/16'],
     )
 
     return [
-        # az_spread,
-        # num_pulse,
+        az_spread,
+        num_pulse,
         # n_ray,
         # fsbw,
         # fsbw_stripmap,
-        # snrdb,
-        noise_model,
+        snrdb,
+        # noise_model,
         # wavelength,
-        # trajectory_type,
+        trajectory_type,
         # az_spread_linear_stripmap,
-        # trajectory_noise_var,
+        trajectory_noise_var,
         # waveform,
-        # sphere,
+        sphere,
     ]
 
 
