@@ -1116,29 +1116,13 @@ $P$ signals each need their own accumulation and interpolation but share a singl
 
 The image has $M$ rows, at one-way ranges $z_o$ spaced uniformly from $z_{near}$ in the
 bottom row to $z_{far}$ in the top row, and one column per ping, with $\phi_i$ increasing from
-left to right. The pixel at range $z_o$ and azimuth $\phi_i$ is
-\begin{equation}
-    \hat{\gamma}(z_o,\phi_i) = \big|s_i(z_o)\big|
-    ,
-    \label{eq:fls-image}
-\end{equation}
-where $|s_i|$ is evaluated between its samples by linear interpolation, and every signal is
-sampled over a window that covers $[z_{near},z_{far}]$. The rows span a range swath
-$\Delta z$ that brackets the scene origin along the line of sight, $z_{near} =
-\lVert\vec{v}\rVert - \Delta z/2$ and $z_{far} = \lVert\vec{v}\rVert + \Delta z/2$, so the window
-follows the sensor when it is moved away from the scene. A time-varying gain, a receiver ramp
+left to right. The pixel at range $z_o$ and azimuth $\phi_i$ is $|s_i(z_o)|$.
+$|s_i|$ is evaluated between its samples by linear interpolation (after the signal 
+is calculated), and every signal is sampled over a range swath that covers 
+$[z_{near},z_{far}]$. A time-varying gain, a receiver ramp
 against the fall of the return with range, can be applied to each signal before the image is
 formed by scaling $s_i(z_o)$ by $z_o^{\eta}$, where $\eta = 0$ disables it.
 
-In range, the resolution of (\ref{eq:fls-signal}) is set by the spatial bandwidth $B_s$ of $w(z)$,
-as in SAR, rather than by the spacing of the rows. In azimuth, it is set by the beam width $\beta$
-rather than by a synthetic aperture, and the pings sample it every $\Theta_p/(P-1)$. The azimuth
-span of the image $\Theta_p$ is separate from the field of view $\Theta_w$ of the fan, and should
-be narrower than it by about $3\beta$. The one-way beam falls to about $0.002$ at $1.5\beta$ off
-its axis, so this margin puts rays under the whole beam of every ping, including the pings at the
-edges of the image. A fan narrower than that leaves the outer pings with part of their beam unlit,
-and the edges of the image darken. When $\lambda$ is given, the returns sum coherently within each
-ping, so interference between nearby rays appears as speckle.
 
 \subsection{Side-Scan Sonar}
 \label{sec:side-scan}
@@ -1162,11 +1146,10 @@ sonar holds its beam fixed, and the target drifts across the beam as the platfor
 Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan shares the axes
 $\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan spans $\Theta_w =
 3\beta$ in azimuth, since the one-way beam has fallen to about $0.002$ at its edges, and
-$\Theta_h$ in elevation, which sets the swath of seafloor that is imaged. The returns take the
+$\Theta_h$ in elevation, which sets the swath of seafloor that is accumulated by rays. The returns take the
 energy of (\ref{eq:sonar-energy}), with absorption in the water. Their azimuths
 $\phi^{tx}_k$ and $\phi^{rx}_k$ are measured off the fixed boresight,
-with $\vec{v}_i$ in place of $\vec{v}$, so the azimuth of a return locates it along the track
-rather than always lying near $0$.
+with $\vec{v}_i$ in place of $\vec{v}$.
 
 The beam pattern (\ref{eq:beam-pattern}) is applied as in forward-looking sonar, but without
 steering, and the digital signal of the $i^{th}$ ping is
@@ -1186,69 +1169,11 @@ bottom row. Pixels outside the sampled track are zero, so the track length $L$ s
 $\Delta\xi$. The rows are in slant range, since no projection onto the ground plane is applied. As in
 forward-looking sonar, a time-varying gain can be applied to each signal before the image is formed.
 
-Along the track, the resolution is set by the beam: at slant range $z_o$ the two-way beam covers
-about $z_o\beta/\sqrt{2}$ of the track, with $\beta$ in radians, so a narrower beam resolves finer detail. In
-range, it is set by $B_s$ as before. The seafloor is seen at a grazing angle, so an object standing
-off it occludes the ground down range and casts an acoustic shadow, and the top of the object
-returns before the seafloor beneath it because it is closer to the sensor.
-
 \subsection{Spotlight-Mode SAR}
 \label{sec:spotlight-sar}
 
-A spotlight-mode SAR image is formed by convolution backprojection \cite{spotlightmodesar}. The radar
-transmits $P$ pulses from positions $\vec{v}_i$, at azimuth $a_i$ and elevation $e_i$, and every
-pulse is aimed at the scene origin. The wavefront of the signal simulation is planar, so the
-iso-range surfaces of pulse $i$ are planes normal to its look direction $\vec{u}_i =
--\vec{v}_i/\lVert\vec{v}_i\rVert$, and a point $\vec{x}$ on the ground plane returns at the
-one-way range
-\begin{equation}
-    z_o = \lVert\vec{v}_i\rVert + \vec{u}_i\cdot\vec{x}
-    .
-    \label{eq:plane-wave-range}
-\end{equation}
-Only the horizontal part of $\vec{u}_i$ contributes to (\ref{eq:plane-wave-range}), and its length
-is $\cos e_i$. Letting $\vec{u}_{g,i}$ be its unit vector, the ground direction of pulse $i$, the
-sample at range $z_o$ comes from the ground line $\vec{u}_{g,i}\cdot\vec{x} = \rho$, where
-\begin{equation}
-    \rho = \frac{z_o-\lVert\vec{v}_i\rVert}{\cos e_i}
-    .
-    \label{eq:ground-projection}
-\end{equation}
-Each pulse is therefore a projection of the scene reflectivity onto the line through the origin
-along $\vec{u}_{g,i}$, sampled at the ground-plane rate $F_s\cos e_i$, and the image is recovered from
-the $P$ projections as in computed tomography. The projection is undefined at $e_i = 90^\circ$,
-where the pulse looks straight down and has no ground direction.
-
-When a wavelength is given, each pulse is first demodulated,
-\begin{equation}
-    \tilde{s}_i(z_o) = s_i(z_o)e^{-j 4 \pi z_o / \lambda}
-    ,
-    \label{eq:demod}
-\end{equation}
-which removes the carrier of (\ref{eq:coherent-signal}) and integrates the pulses coherently.
-Without a wavelength the signals are real and this step is skipped. Expressed in the ground
-coordinate $\rho$ of (\ref{eq:ground-projection}), each pulse is filtered by weighting its spectrum
-$\tilde{S}_i(Z)$ by the ramp $|Z|$,
-\begin{equation}
-    \check{s}_i(\rho) = \int_{-\infty}^{\infty}|Z|\tilde{S}_i(Z)e^{j 2 \pi \rho Z}dZ
-    ,
-    \label{eq:cbp-ramp}
-\end{equation}
-and the filtered pulses are backprojected along their ground lines,
-\begin{equation}
-    \hat{\gamma}(\vec{x}) = \sum_{i=1}^{P}\check{s}_i\big(\vec{u}_{g,i}\cdot\vec{x}\big)
-    ,
-    \label{eq:cbp}
-\end{equation}
-where $\check{s}_i$ is evaluated between its samples by linear interpolation, or by sinc
-interpolation at the rate $F_s\cos e_i$. The ramp is the Jacobian of the polar-to-Cartesian change
-of variables in the image's spatial-frequency plane, and the sum over pulses approximates the
-angular integral of the inverse two-dimensional Fourier transform in polar coordinates, up to a
-constant scale \cite{spotlightmodesar}. With $Z$ in cycles per unit length, as in
-(\ref{eq:cbp-ramp}), this inverse transform has no $1/4\pi^2$ factor. The image
-samples $\vec{x}$ on an $H \times W$ grid of the ground plane centered on the origin, rotated so
-that the radar illuminates it from the bottom edge, and the displayed image is
-$|\hat{\gamma}(\vec{x})|$.
+Spotlight-mode SAR images are formed from the simulated pulses by convolution backprojection, and we
+refer the reader to Chapter 2 of Jakowatz et al. \cite{spotlightmodesar} for its derivation.
 
 \section{SAR Image Examples}
 \label{app:sar-examples}
@@ -1258,7 +1183,7 @@ trajectory.
 
 \subsection{Aperture and Noise}
 
-In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of fainter lines appears within the outline of the car due to the second bounce of the rays.
+In Figure \ref{fig:az-spread} we showcase our simulation when the range of azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm. With little azimuth spread, there is not much detail in the SAR image. At a $360^\circ$ spread the entire car is surrounded by the aperture, and a second set of lines appears within the outline of the car due to the second bounce of the rays.
         
 \begin{figure}[H]
   \centering
@@ -1297,7 +1222,7 @@ In Figure \ref{fig:trajectory-type}, we compare the two supported sensor traject
   \label{fig:trajectory-type}
 \end{figure}
 
-In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
+In Figure \ref{fig:trajectory-noise}, we analyze the impact of imperfect knowledge of the sensor trajectory. We add zero-mean Gaussian noise with variance (turbulence) $\sigma^2$ to the perceived sensor position while the true trajectory used for signal simulation is kept noise-free. This models the case where the reconstruction algorithm has an imprecise estimate of the sensor pose. As the noise variance increases, the reconstructed image becomes progressively blurred as the pulses no longer coherently integrate at the correct locations.
 
 \begin{figure}[H]
   \centering
