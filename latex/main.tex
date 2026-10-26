@@ -34,7 +34,7 @@ Department of Electrical and Computer Engineering, The University of Arizona, Tu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently a lack of open-source SAR and sonar simulators. \emph{RaySAR} simulates signals from ray-traced contributions but does not model a transmit waveform, and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed dataset of ten vehicles whose simulation code is not public. Neither simulates sonar. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique that \emph{accumulates and interpolates} ray returns onto the sample grid of the sensor in a single step, accounting for its effective bandwidth and sample rate. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
+\abstract{There is currently no open-source simulator of both SAR and sonar. \emph{RaySAR} simulates signals from ray-traced contributions but does not model a transmit waveform, and depends on outdated software such as POV-Ray and MATLAB, while \emph{CVDomes} is a fixed dataset of ten vehicles whose simulation code is not public. Neither simulates sonar, and open sonar simulators for underwater robotics, such as \emph{HoloOcean} and \emph{Stonefish}, do not simulate SAR. We present an \emph{open-source SAR and sonar simulator} implemented in \emph{PyTorch} with \emph{GPU acceleration} that renders three imaging modalities from a single ray-traced signal model: \emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary \texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth, transmit waveform, and material properties. We simulate multi-bounce ray tracing to model realistic reflectivity, scattering, and absorption. We introduce an efficient low-pass filtering technique that \emph{accumulates and interpolates} ray returns onto the sample grid of the sensor in a single step, accounting for its effective bandwidth and sample rate. Each return keeps the round-trip phase of its path, so the simulated signals are complex-valued and support \emph{coherent imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit waveforms} through the effective window of their matched filter, so pulse-compression waveforms such as LFM chirps and Barker codes are simulated from the same ray trace as an ideal band-limited pulse. The simulator further supports radar cross section modeling and imperfect sensor trajectories. We test our simulator on ShapeNet car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
 
 \keyword{SAR; spotlight SAR; side-scan sonar; forward-looking sonar; pulse compression; ray tracing; simulator}
 
@@ -119,78 +119,74 @@ Openly available simulated data of vehicles comes mainly from two sources: CVDom
 ray-tracing simulator of SAR signals and images. Neither covers sonar, and neither lets the user choose the
 transmit waveform.
 
-\subsection{Shooting and Bouncing Rays}
+\subsection{High-Frequency Electromagnetic Modeling}
 \label{sec:sbr}
 
-Ling, Chou, and Lee introduced SBR \cite{sbr} to compute the radar cross section (RCS) of
-arbitrarily shaped cavities, such as jet engine inlets, whose interior reflections are too
-numerous for closed-form solutions and too electrically large for full-wave solvers. The incident
-plane wave is represented by a dense grid of parallel rays shot into the opening of the cavity.
-Each ray is traced by geometrical optics as it bounces off the cavity walls, carrying its
-amplitude, phase, and polarization along its path until it leaves through the opening, and the
-scattered far field is then obtained by a physical-optics integration of the exiting ray fields
-over the opening. Since the ray grid only needs to be dense enough to sample the illuminated
-surface, the method scales to large, geometrically complex targets, and it became the core of
-high-frequency codes such as XPatch \cite{xpatch4} and the code behind CVDomes. Our ray tracer
-launches its rays the same way, as a grid of rays traced through multiple bounces. It differs in
-what each ray carries: rather than a polarized field integrated by physical optics frequency by
-frequency, each return keeps only its energy and total path length (Section
-\ref{sec:signal-simulation}), and the sampled signal at the sensor's bandwidth is formed by accumulating
-and interpolating these returns. This scalar formulation lets the same ray trace drive both radar and
-sonar.
+Shooting and bouncing rays (SBR) is a high-frequency technique for electrically large, complex
+targets \cite{sbr}. Rays representing the incident field are traced through successive
+reflections, while field amplitude, phase, and polarization are propagated along their paths.
+Combined with physical-optics integration, this provides estimates of scattered electromagnetic
+fields, including contributions from cavities and vehicle--ground interactions. XPatch employs
+related high-frequency techniques but is not publicly available as an open-source simulator
+\cite{xpatch4}.
 
-\subsection{CVDomes}
+Our approach retains ray launching and multiple reflections but replaces the electromagnetic field
+solution with material-dependent, scalar return weights and path lengths. Each return can carry
+propagation phase and contributes directly to a sampled complex range signal (Section
+\ref{sec:signal-simulation}). This simpler model is useful when the principal objective is to
+change sensor or scene parameters and study the resulting signal, rather than compute
+polarization-resolved electromagnetic scattering.
+
+\subsection{CVDomes: Electromagnetic Reference Data}
 \label{sec:cvdomes}
 
-CVDomes \cite{cvdomes,cvdomesreport} is a dataset of simulated signals rather than a public simulator: $369$~GB of simulated
-X-band phase histories of ten civilian vehicle facet models, from a Toyota Camry to a Toyota
-Tacoma pickup, distributed by the Air Force Research Laboratory as MATLAB files. It was computed
-with the same proprietary high-frequency code as the earlier Backhoe dataset \cite{backhoe}, which
-traces shooting and bouncing rays through up to four bounces at ten rays per wavelength to induce
-surface currents, and integrates those currents with physical optics into the monostatic far
-field. Each facet model was given an asphalt ground plane, since the double-bounce returns between
-the ground and the vehicle dominate measured signatures, and per-facet material labels: a perfect
-electric conductor for the body, a $0.25$-inch glass layer ($\epsilon_r = 5.9 - j0.15$) backed by
-air so that no rays enter the unmodeled interior, absorber for rubber and all interior fill, and an
-asphalt half-space ($\epsilon_r = 5.9 - j0.1$). The scattering is fully polarimetric (HH, HV, VV)
-over $360^\circ$ of azimuth and $30^\circ$--$60^\circ$ of elevation, with $512$ frequency samples
-spanning $5.35$~GHz about a center frequency of $9.6$~GHz, for a range resolution of about
-$2.8$~cm. To make this affordable, rays were traced once per $0.5^\circ \times 0.5^\circ$ sector of
-azimuth and elevation, and the fields across each sector were extrapolated from that single trace
-with a local point-scatterer approximation, giving a $0.0625^\circ$ angular step and a $14.3$~m
-unambiguous range. The extrapolation cut the run time about 75-fold, yet the dataset still took
-over $72{,}000$ CPU hours on a $2048$-processor cluster. CVDomes is imaged with the far-field
-backprojection code of the MATLAB SAR image formation toolbox \cite{gorham2010sar}, and because it
-stores the whole dome of look angles, it supports 2D spotlight and circular SAR images as well as
-multi-pass 3D reconstruction \cite{cvdomes}. Its limits are those of a fixed dataset: the ten
-vehicles, the band, and the far-field monostatic geometry cannot be changed, and since the
-electromagnetic code is not public, no new targets can be added. We reuse its Camry facet model
-and material labels in Section \ref{sec:per-triangle-materials}.
+CVDomes provides simulated monostatic X-band scattering data for ten civilian vehicle facet models
+\cite{cvdomes,cvdomesreport}. The full collection covers $360^\circ$ in azimuth and elevations from
+$30^\circ$ to $60^\circ$, with polarimetric responses. The distributed frequency histories contain
+$512$ samples spanning approximately $5.35$~GHz near $9.6$~GHz, corresponding to a nominal
+full-band range resolution of about $2.8$~cm. The full dataset is approximately $369$~GB. These
+phase histories support SAR image formation over multiple viewing angles \cite{gorham2010sar}.
 
-\subsection{RaySAR}
+CVDomes models vehicle--ground scattering using an asphalt ground plane and material descriptions
+for conducting body panels, glass, and absorbing components such as tires and interior regions
+\cite{cvdomesreport}. Multiple reflections between a vehicle and the ground are therefore present
+in its simulated response. This makes it a useful electromagnetic reference, although it is a
+fixed dataset: its released targets and acquisition grid cannot be freely replaced, and the
+underlying electromagnetic generator is not publicly distributed.
+
+Our simulator instead allows new mesh geometries, material assignments, waveform responses, and
+sensor parameters to be specified and simulated. This flexibility is an advantage for controlled
+algorithm experiments, not evidence of higher electromagnetic fidelity. We use CVDomes' Camry HH
+data as the reference in Section \ref{sec:comparative-analysis} and use its facet labels to inform
+the phenomenological material mapping in Section \ref{sec:per-triangle-materials}.
+
+\subsection{RaySAR: Geometric SAR Simulation}
 \label{sec:raysar}
 
-RaySAR \cite{raysar,auer2011thesis} is an open-source SAR simulator built on a modified version of
-the POV-Ray ray tracer, with MATLAB scripts for image formation. It was developed for interpreting
-high-resolution SAR images of complex urban scenes. The sensor is modeled as an orthographic camera
-with a parallel light source at the same position, approximating a far-field plane wave. POV-Ray
-traces rays through the scene up to a chosen number of bounces, and for every ray and bounce
-writes a \emph{contribution}: its azimuth, slant range, and elevation coordinates, an intensity from
-diffuse and specular reflection models, its bounce level, and a flag marking specular paths. The
-MATLAB scripts bin these contributions into azimuth-range resolution cells to form reflectivity
-maps, which can be separated by bounce level to show layover, foreshortening, shadowing, and
-multiple-bounce effects, while the elevation coordinate supports 3D analysis of the scatterers.
-RaySAR thus simulates the signal directly on the azimuth-range grid of the image, without a transmit
-waveform: the resolution of the sensor enters only through the size of the resolution cells. A Python port \cite{raysarpython} re-implements the image formation
-step to generate training data for automatic target recognition, while still relying on POV-Ray for
-the contributions. It places each contribution in its azimuth-range cell with a phase of $-4\pi
-r/\lambda$ at a fixed wavelength of $3.1$~cm, optionally perturbed at random, and sums the complex
-values. The finite bandwidth is not modeled; instead, a star-shaped sidelobe pattern is imitated by
-adding an inverse-square decay along the row and column of every pixel above a threshold, before
-the image is clipped in dB and quantized to 8 bits. Both versions therefore simulate the signal
-on the image grid without modeling a transmit waveform, whereas our simulator turns each ray's returns
-into a band-limited, sampled, complex received signal for a user-chosen waveform and forms the image
-from that signal.
+RaySAR uses POV-Ray-based geometric ray tracing to identify scattering contributions from
+three-dimensional scenes \cite{raysar,auer2011thesis}. Its output includes contribution positions,
+reflection strengths, and bounce orders, which can be processed into SAR-coordinate reflectivity
+maps. Separating reflection levels helps interpret layover, shadowing, and multipath; Python-based
+image processing has also been demonstrated \cite{raysarpython}. RaySAR is thus valuable for
+attributing SAR image features to geometric scattering paths.
+
+However, the standard RaySAR workflow does not directly generate complex, sampled received signals
+for a user-selected transmit waveform. Its saved contributions can be assigned a range response in
+post-processing, as we do for the comparison in Section \ref{sec:comparative-analysis}. Our
+framework integrates this step into the forward signal model: contributions are accumulated and
+interpolated directly at sensor sample positions through a selectable effective waveform response.
+This gives direct access to coherent range signals without first constructing a reflectivity map,
+and makes bandwidth and waveform sweeps possible without retracing unchanged geometry.
+
+\subsection{Sonar Simulators}
+\label{sec:sonar-sims}
+
+Open-source sonar simulators come from underwater robotics. HoloOcean \cite{holoocean_sonar_2022}
+simulates imaging sonar with a cluster-based multipath ray-tracing model, material-dependent
+returns, and probabilistic noise, and also provides side-scan, single-beam, and multibeam profiling
+sonars. Stonefish \cite{stonefish_2019} provides forward-looking and side-scan sonar in a
+marine-robotics simulator. Both render sonar images for robotic perception rather than band-limited
+complex signals for a chosen transmit waveform, and neither simulates SAR.
 
 \section{Problem Statement}
 \label{sec:problem}
@@ -574,7 +570,7 @@ Forward-looking sonar & Point-source fan, traced once & Stationary, steered beam
 
 \section{Experiments}
 \label{sec:experiments}
-We evaluate the simulator in the three imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales (Section \ref{sec:units}), then render a CVDomes \cite{cvdomes} car with constant and per-triangle materials (Section \ref{sec:per-triangle-materials}), and validate spotlight-mode SAR against point scatterers and a sphere (Section \ref{sec:validation}). We then show how the spatial bandwidth and the ray density together limit the signal in SAR and forward-looking sonar (Section \ref{sec:bw-ray-density}) and how a short wavelength raises the ray density that SAR needs (Section \ref{sec:wavelength-ray-density}), and measure the compute time on a GPU and a CPU (Section \ref{sec:compute-time}). For the sonars, we show how many azimuth rays side-scan sonar needs to model a wide beam (Section \ref{sec:ss-az-rays}) and how the ray density of a sonar fan changes across range (Section \ref{sec:sonar-range-density}). Finally, we compare transmit waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}). Further SAR images that vary the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every experiment images the car of Figure \ref{fig:main-fig}.a from the same pose, with the defaults of Appendix \ref{app:params}, and the sensor is placed on the bottom side of every image, so illumination always arrives from that direction.
+We evaluate the simulator in the three imaging modalities of Section \ref{sec:modalities-overview}. We first relate the units of the simulator to physical scales (Section \ref{sec:units}), then render a CVDomes \cite{cvdomes} car with constant and per-triangle materials (Section \ref{sec:per-triangle-materials}), validate spotlight-mode SAR against point scatterers and a sphere (Section \ref{sec:validation}), and compare a range profile of the CVDomes Camry with CVDomes and RaySAR (Section \ref{sec:comparative-analysis}). We then show how the spatial bandwidth and the ray density together limit the signal in SAR and forward-looking sonar (Section \ref{sec:bw-ray-density}) and how a short wavelength raises the ray density that SAR needs (Section \ref{sec:wavelength-ray-density}), and measure the compute time on a GPU and a CPU (Section \ref{sec:compute-time}). For the sonars, we show how many azimuth rays side-scan sonar needs to model a wide beam (Section \ref{sec:ss-az-rays}) and how the ray density of a sonar fan changes across range (Section \ref{sec:sonar-range-density}). Finally, we compare transmit waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}). Further SAR images that vary the aperture, the noise, and the sensor trajectory are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every experiment images the car of Figure \ref{fig:main-fig}.a from the same pose, with the defaults of Appendix \ref{app:params}, and the sensor is placed on the bottom side of every image, so illumination always arrives from that direction.
 
 \subsection{Units and Scale}
 \label{sec:units}
@@ -684,6 +680,65 @@ its sidelobes are those of the point scatterer, an X from the ends of the apertu
   \includegraphics[trim=0 0 0 0, clip, width=\textwidth]{figs/sar_stitched_sphere_size.png}
   \caption{SAR reconstruction of a sphere at decreasing scale ($256$ pulses, $\Delta a = 90^\circ$), shown in dB, with the scale factor labeled above each subplot.}
   \label{fig:sphere-size}
+\end{figure}
+
+\subsection{Comparison with CVDomes and RaySAR}
+\label{sec:comparative-analysis}
+
+We compare single-pulse range profiles of the CVDomes Camry from CVDomes (HH channel), RaySAR, and
+our simulator at azimuth $210.8125^\circ$ and elevation $32.1875^\circ$, a look on the CVDomes grid
+rather than our default pose. We keep the central $96$ of the $512$ CVDomes frequency samples, a
+bandwidth of $0.996$~GHz about $9.6$~GHz and a range resolution of $0.151$~m. RaySAR and our
+simulator trace the same car and ground mesh with $1024 \times 1024$ rays and up to two bounces, and
+ours uses the per-triangle materials of Section \ref{sec:per-triangle-materials}. Scaling the Camry
+to $4.8$~m, or $1\ell \approx 7.95$~m, this is $B_s \approx 52.8\,\ell^{-1}$ and
+$\lambda \approx 0.0039\ell$ ($3.12$~cm). All three profiles are Hamming-tapered: CVDomes on its
+frequency samples before an inverse FFT, RaySAR by a Hamming range response applied to its binned
+contributions, and ours through a Hamming-tapered effective window $w(z)$ (Section
+\ref{sec:waveforms}). Each magnitude profile is normalized to its peak, and the peaks are aligned.
+
+In Figure \ref{fig:camry-ground}, RaySAR has a broad main lobe on a background at about half its
+peak, while our profile follows the main return of CVDomes and its neighboring peaks, with a
+relative $L_2$ error to CVDomes of $0.80$ against $2.13$ for RaySAR, and a Pearson correlation of
+$0.65$ against $0.48$.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/camry_ground_comparison.png}
+  \caption{Range profiles of the CVDomes Camry with its ground, at a bandwidth of $0.996$~GHz.
+  (\textbf{a}) Magnitudes normalized to and aligned at their peaks, (\textbf{b}) Fourier magnitude
+  of each magnitude profile in (\textbf{a}), in dB.}
+  \label{fig:camry-ground}
+\end{figure}
+
+In Figure \ref{fig:camry-no-ground}, the ground is removed from both ray tracers but kept in
+CVDomes. RaySAR then agrees better, with an $L_2$ error of $0.59$ against $0.81$ for ours and a
+correlation of $0.78$ against $0.65$, but its profile here comes from an earlier, separately
+processed export, so we treat this case as exploratory.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figs/camry_vehicle_only_comparison.png}
+  \caption{Range profiles as in Figure \ref{fig:camry-ground}, with the ground removed from RaySAR
+  and our simulator but kept in CVDomes. The RaySAR profile is an earlier, separately processed
+  export. (\textbf{a}) Aligned, peak-normalized magnitudes, (\textbf{b}) Fourier magnitude of each
+  magnitude profile, in dB.}
+  \label{fig:camry-no-ground}
+\end{figure}
+
+Figure \ref{fig:camry-scr} compares the contrast of the main peak in the profiles with the ground.
+The ratio of the mean power within $0.45$~m of the peak to the mean power $0.9$ to $4.5$~m away is
+$14.4$~dB for CVDomes, $12.1$~dB for ours, and $5.5$~dB for RaySAR. Since the off-peak window also
+holds other returns of the car and its multipath, this is a proxy for the signal-to-clutter ratio
+(SCR), not a measurement of it.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figs/camry_scr_comparison.png}
+  \caption{Contrast of the main peak in the range profiles of Figure \ref{fig:camry-ground}: the mean
+  (solid) or peak (hatched) power within $0.45$~m of the peak, relative to the mean power $0.9$ to
+  $4.5$~m away.}
+  \label{fig:camry-scr}
 \end{figure}
 
 \subsection{Bandwidth and Ray Density}
@@ -944,8 +999,9 @@ energy takes only two forms, directional scattering $I$ and diffuse scattering $
 they do not perfectly model the pattern of energy scattered by real waves.
 
 \textbf{Validation.} The forward model is validated against point scatterers (Section \ref{sec:validation}) and the
-theoretical RCS of a flat plate (Section \ref{sec:rcs}), but its images are not
-compared against measured SAR or sonar data, or quantitatively against CVDomes. Its images should
+theoretical RCS of a flat plate (Section \ref{sec:rcs}), and compared against CVDomes only in a
+single range profile (Section \ref{sec:comparative-analysis}). Its images are not compared against
+measured SAR or sonar data, so they should
 therefore be read as reproducing the geometry of real sensors, including shadows and
 multipath, rather than their calibrated intensities.
 
