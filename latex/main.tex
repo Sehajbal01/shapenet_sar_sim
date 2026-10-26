@@ -712,16 +712,18 @@ $0.65$ against $0.48$.
 \end{figure}
 
 In Figure \ref{fig:camry-no-ground}, the ground is removed from both ray tracers but kept in
-CVDomes. RaySAR then agrees better, with an $L_2$ error of $0.59$ against $0.81$ for ours and a
-correlation of $0.78$ against $0.65$, but its profile here comes from an earlier, separately
-processed export, so we treat this case as exploratory.
+CVDomes, and RaySAR traces the same car mesh with the same processing as in Figure
+\ref{fig:camry-ground}. RaySAR then has a single broad lobe, with an $L_2$ error of $0.99$ against
+$0.81$ for ours, so our error is lower with and without the ground, while its correlation of $0.68$
+is slightly above our $0.65$. Since CVDomes keeps its ground, this case does not isolate the
+scattering of the ground.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{figs/camry_vehicle_only_comparison.png}
   \caption{Range profiles as in Figure \ref{fig:camry-ground}, with the ground removed from RaySAR
-  and our simulator but kept in CVDomes. The RaySAR profile is an earlier, separately processed
-  export. (\textbf{a}) Aligned, peak-normalized magnitudes, (\textbf{b}) Fourier magnitude of each
+  and our simulator but kept in CVDomes. (\textbf{a}) Aligned, peak-normalized magnitudes,
+  (\textbf{b}) Fourier magnitude of each
   magnitude profile, in dB.}
   \label{fig:camry-no-ground}
 \end{figure}
