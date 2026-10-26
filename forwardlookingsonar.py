@@ -82,7 +82,7 @@ def forward_looking_sonar_image(
         num_pings (int): pings across that span, i.e. columns of the image, left to right
         num_range_values (int): rows of the image, far range in the top row
         ray_fov_az/ray_fov_el (float): azimuth and elevation extent of the ray fan, in degrees
-        azimuth_beam_width_deg (float): two-way FWHM of the beam each ping steers, in degrees
+        azimuth_beam_width_deg (float): one-way FWHM of the beam each ping steers, in degrees
         num_ray_width/num_ray_height (int): rays across the fan in azimuth and elevation
         image_range_swath (float): one-way range the rows span, from sensor_distance -
             image_range_swath/2 in the bottom row to sensor_distance + image_range_swath/2 in the
