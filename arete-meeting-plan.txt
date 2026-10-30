@@ -1,0 +1,4 @@
+- give update
+- how the physics based stuff works
+- at the end, we'll briefly the gaussian splatting idea
+
