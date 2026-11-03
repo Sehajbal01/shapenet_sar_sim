@@ -1,0 +1,111 @@
+Grammar and typo fixes for the paper (latex/main.tex), found 2026-10-30. Clear errors first.
+
+Line numbers are from commit 28b0c7b and will drift as edits land, so search for the quoted text instead. Source lines are hard-wrapped, so a quote marked (spans lines) is broken across two or three lines in the file. Change only the wording named in each item.
+
+CLEAR ERRORS
+
+DONE 1. L86: "proprietary to their respective developer" -> "developers".
+
+DONE 2. L90: "RaySAY" -> "RaySAR".
+
+DONE 3. L150-151: "so one step both interpolates each return into a digital signal" (spans lines). "both" needs a second verb -> "so one step both accumulates and interpolates the returns into a digital signal".
+
+DONE 4. L152: "\textbf{Three imaging modalities.} from one simulator: spotlight-mode SAR ..." starts lowercase after the full stop, unlike the other two bullets. E.g. "\textbf{Three imaging modalities.} One simulator renders spotlight-mode SAR \cite{spotlightmodesar}, side-scan sonar (SSS), and forward-looking sonar (FLS)."
+
+DONE 5. L234: "into the forward signal model. contributions are accumulated" starts lowercase -> "into the forward signal model: contributions are accumulated".
+
+DONE 6. L298: "The sinc function acheives an ideal band limited signal, however this does not capture" -> "The sinc function achieves an ideal band-limited signal; however, this does not capture". Same paragraph: "in section \ref{sec:waveforms}" -> "in Section \ref{sec:waveforms}".
+
+DONE 7. L304: "Without one, we use only two materials": "one" has no antecedent (the .mp file is not introduced until L317). E.g. "Without a per-triangle material file (Section \ref{sec:per-triangle-materials}), we use only two materials".
+
+DONE 8. L337: "the total amount of energy diffuse scattered is $D$" -> "diffusely scattered".
+
+DONE 9. L348-353: "Using the half angle trigonometry identity," [eq] "and we can express $\cos\theta$ using dot product" [eq] has no main clause. -> "We use the half-angle identity," [eq] "and express $\cos\theta$ as a dot product," [eq].
+
+DONE 10. L358: "which is the directional vector from the point of contact of the ray and where the radar is." -> "the unit vector from the ray's point of contact toward the radar."
+
+DONE 11. L488: "construtive and deconstructive interference" -> "constructive and destructive interference".
+
+DONE 12. L510: "on both transmit and receive \ref{app:sonar-beam-width}." prints as a bare "C". Needs "(Appendix \ref{app:sonar-beam-width})". The beam pattern itself is defined in (\ref{eq:beam-pattern}) in Appendix A, so that may be the intended reference. Ask the user which one.
+
+DONE 13. L745-746: "Scaling the Camry to $4.8$~m, or $1\ell \approx 7.95$~m, this is $B_s \approx 52.8\,\ell^{-1}$" (spans lines) is a dangling modifier -> "With the Camry scaled to $4.8$~m ($1\ell \approx 7.95$~m), this corresponds to $B_s \approx 52.8\,\ell^{-1}$".
+
+DONE 14. L963-964: "The code is the same on both devices, only the PyTorch device changes." (spans lines) is a comma splice -> "...both devices; only the PyTorch device changes."
+
+DONE 15. L1229-1230: "so they should therefore be read" (spans lines) says the same thing twice -> drop "therefore".
+
+DONE 16. L1374: "vs range and azimuth, sometimes reffered to" -> "versus range and azimuth, sometimes referred to".
+
+MINOR AND STYLE
+
+DONE 17. L29 (title): "in PyTorch Via Accumulation" -> "via".
+
+DONE 18. L49 (abstract): "fixed dataset of ten vehicles which also runs on" -> "ten vehicles, which also runs on".
+
+DONE 19. L85: "Most powerful simulators, such as XPatch" -> "The most powerful simulators".
+
+DONE 20. L204 (Fig. main-fig caption): "the default simulator parameters in (Table \ref{tab:params})." -> "in Table \ref{tab:params}."
+
+DONE 21. L218: "Each return can carry propagation phase and contributes directly" is not parallel -> "Each return carries propagation phase and contributes directly".
+
+DONE 22. L248: "\subsection{Accumulating scatters from rays}" is in sentence case; the other titles use title case -> "Accumulating Scatters from Rays".
+
+DONE 23. L252: "for a given azimuth $a$ and elevation $e$ angle." -> "for a given azimuth angle $a$ and elevation angle $e$."
+
+DONE 24. L264: "the total distance that ray traveled" -> "the total distance the ray traveled".
+
+DONE 25. L274: "with sufficiently low bandwidth and sample rate that we do not see" -> "with a bandwidth and sample rate low enough that we do not see".
+
+DONE 26. L276: "are $B_t$ and $F_t$ respectively." -> "are $B_t$ and $F_t$, respectively."
+
+DONE 27. L290: "Then with the sifting property $s(z_o)$ is reduced to" -> "Then, by the sifting property, $s(z_o)$ reduces to".
+
+DONE 28. Sentences that start with an equation number or a symbol. Prefix them or reword:
+    L296 "(\ref{eq:accum-interp}) allows for complex returns" -> "Equation (\ref{eq:accum-interp}) allows for complex returns".
+    L358 "$\vec{u}_r$ and other directional vectors are expanded as" -> "The reflected direction $\vec{u}_r$ and the other directional vectors are expanded as".
+    L1477 "$|s_i|$ is evaluated between its samples" -> "The magnitude $|s_i|$ is evaluated between its samples".
+
+DONE 29. L406-407: "we substitute $\cos(\theta/2)$ to give" (spans lines) doesn't say what replaces it -> "we substitute the half-angle identity for $\cos(\theta/2)$ to give".
+
+DONE 30. L427: "from our scatters model" -> "from our scatter model", and "match-filter the echoes" -> "matched-filter the echoes". L438: "match-filtered digital signal" -> "matched-filtered digital signal".
+
+DONE 31. L432: "such as an LFM chirp or Barker-13." -> "such as an LFM chirp or a Barker-13 code."
+
+DONE 32. L454: "The LFM Chirp effective window" and "an extremely long LFM Chirp" -> "LFM chirp" (lowercase, as everywhere else). Same sentence: "we utilized" -> "we used".
+
+DONE 33. L476: "The RCS of a target is the power" uses RCS before it is spelled out in the body -> "The radar cross section (RCS) of a target is the power".
+
+DONE 34. L488: "$0.25^\circ$ spaced polar grid" -> "$0.25^\circ$-spaced polar grid", and "$2^\circ$ spaced grid" -> "$2^\circ$-spaced grid". Also "where the center to the outside is $e=90^\circ$ to $e=45^\circ$" -> "with $e$ running from $90^\circ$ at the center to $45^\circ$ at the edge".
+
+DONE 35. "Figure \ref{fig:main-fig}.a" at L500, L558 and L1566-1567 prints as "Figure 2.a"; the rest of the paper writes "Figure 6a" -> "Figure \ref{fig:main-fig}a".
+
+DONE 36. L740: "a bandwidth of $0.996$~GHz about $9.6$~GHz" -> "centered at $9.6$~GHz".
+
+DONE 37. L827: "A pulse that is wide against the range spacing" -> "wide relative to the range spacing".
+
+DONE 38. L956-958: "the smallest and the largest ShapeNet \cite{shapenet} car mesh" (spans lines) -> "car meshes".
+
+DONE 39. L1098-1099: "side-scan sonar (bottom row), which replaces the ideal sinc" (spans lines): it's unclear what "which" refers to. End the sentence after "(bottom row)" and start the next with "Each waveform replaces the ideal sinc ...".
+
+DONE 40. L1123: "below the mainlobe" -> "below the main lobe" (as written at L756).
+
+DONE 41. L1193-1194: "and these discontinuities become visible" (spans lines): "these discontinuities" refers to nothing earlier -> "and the gaps between them become visible".
+
+DONE 42. L1212: "require more rays than the bandwidth alone," -> "require more rays than the bandwidth alone requires,".
+
+DONE 43. L1510: "Where a forward-looking sonar sweeps its beam" -> "Whereas a forward-looking sonar sweeps its beam".
+
+DONE 44. L1650-1651: "becomes progressively blurred as the pulses no longer" (spans lines) uses a second "as" in the sentence -> "becomes progressively blurred because the pulses no longer".
+
+DONE 45. L1866-1868: "so it returns a dim, nearly uniform clutter" (spans lines): clutter is uncountable -> "so it returns dim, nearly uniform clutter".
+
+DONE 46. Add a comma after these introductory phrases:
+    L454 "In the spatial domain (Figure \ref{fig:effective-windows}a) the Gaussian" -> "...a), the Gaussian".
+    L1104 "Within each row the ray trace" -> "Within each row, the ray trace".
+    L1242 "From a single ray-traced signal model it renders" -> "...model, it renders".
+    L1442-1443 "For a first-bounce return this product" -> "For a first-bounce return, this product".
+    L1574 "In Figure \ref{fig:az-spread} we showcase" -> "In Figure \ref{fig:az-spread}, we showcase".
+    L1576-1577 "At a $360^\circ$ spread the entire car" -> "At a $360^\circ$ spread, the entire car".
+    L1604-1605 "In real SAR scenarios SNR decreases as range to the target increases." -> "In real SAR scenarios, SNR decreases as the range to the target increases."
+
+DONE 47. The serial (Oxford) comma is used inconsistently. The paper mostly uses it, but it's missing at e.g. L567 "the wavelength $\lambda$ and the range axis", L1701-1702 "forward-looking sonar and side-scan sonar", and L1936 "the ShapeNet \cite{shapenet} car meshes and the CVDomes". Add it.

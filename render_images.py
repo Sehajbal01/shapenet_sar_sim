@@ -302,7 +302,8 @@ def render_random_image(
         pose_num = None,
         azimuth_deg = None,
         elevation_deg = None,
-        debug_gif = False, 
+        sensor_distance = None,
+        debug_gif = False,
         num_pulse = 120,
         azimuth_spread = 180,
         spatial_fs = 64,
@@ -354,6 +355,8 @@ def render_random_image(
         pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
         azimuth_deg, elevation_deg (float): instead of pose_num, pick the object's pose nearest
             this look direction. Both or neither, and not together with pose_num
+        sensor_distance (float): with azimuth_deg/elevation_deg, render from exactly that look at this
+            distance instead of the nearest pose; the rgb is still the nearest pose's
         remaining arguments: as in sar_render_image
     """
 
@@ -366,6 +369,8 @@ def render_random_image(
         raise ValueError('give both azimuth_deg and elevation_deg, or neither')
     if azimuth_deg is not None and pose_num is not None:
         raise ValueError('give pose_num or azimuth_deg/elevation_deg, not both')
+    if sensor_distance is not None and azimuth_deg is None:
+        raise ValueError('sensor_distance needs azimuth_deg/elevation_deg')
 
     # left None, both are drawn at random in this order, so a caller that seeds np.random still
     # gets the pick it used to
@@ -394,6 +399,8 @@ def render_random_image(
     mesh_path = os.path.join(models_dir, obj_id, 'models', 'model_normalized.obj')
     rgb  = np.array(PIL.Image.open(rgb_path))[...,:3] # (H, W, 3)
     pose = np.loadtxt(pose_path).reshape(1,4,4).astype(np.float32)  # (4, 4)
+    if sensor_distance is not None:
+        pose = generate_pose_mat(azimuth_deg, elevation_deg, sensor_distance).reshape(1,4,4).numpy()
 
     # print the center azimuth and elevation for the selected pose
     pose_info = extract_pose_info(torch.tensor(pose))

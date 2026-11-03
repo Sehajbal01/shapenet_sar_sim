@@ -13,7 +13,8 @@ import torch
 from matplotlib import pyplot as plt
 
 from config import CONFIG, SHAPENET_CARS_DIR, srn_split_dir
-from render_images import multi_param_sar_experiment, sar_render_image
+from convert_cvdomes import MODELS_DIR as CVDOMES_MODELS_DIR, cvdomes_ground_raids
+from render_images import multi_param_sar_experiment, pose_az_el, sar_render_image
 from utils import extract_pose_info, generate_pose_mat
 
 
@@ -181,20 +182,67 @@ def _sar_experiments():
         custom_title_strings=['Scale: 1','Scale: 1/2','Scale: 1/4','Scale: 1/8','Scale: 1/16'],
     )
 
+    # CVDomes ground range resolution sweep, one figure per car, at exactly 45 deg elevation where
+    # B_s = 1/(ground res * cos(el)). The cars are scaled to 1 l = 5 m (tab:units), about ShapeNet
+    # size, so the baseline's ray grid, image plane and region radius frame them as is.
+    cvdomes_el = 45
+    meters_per_l = 5.0
+    cvdomes_unit_m = 4.8 / 12.08  # the Camry .obj is 12.08 units long, 4.8 m as in sec:comparative-analysis
+    ground_res_m = [0.1, 0.3048, 0.6096]
+    ground_res_labels = ['10 cm', '1 ft', '2 ft']
+    ground_res_l = [r / meters_per_l for r in ground_res_m]
+    ground_res_bw = [1 / (r * np.cos(np.deg2rad(cvdomes_el))) for r in ground_res_l]
+    # the native versions put one pixel per ground resolution cell. CBP's pixel centers are a
+    # linspace, so n pixels span n-1 cells; n keeps about the baseline's image plane
+    native_px = [round(SAR_PAPER_BASELINE['image_plane_width'] / r) + 1 for r in ground_res_l]
+    native_plane = [(n - 1) * r for n, r in zip(native_px, ground_res_l)]
+    base_az, _ = pose_az_el(SAR_PAPER_BASELINE['obj_id'], SAR_PAPER_BASELINE['pose_num'])
+    cvdomes_ground_res = []
+    for car in ('Camry_06212012', 'Tacoma_07092012'):
+        car_name = car.split('_')[0]
+        bw_vary = {'spatial_bw': ground_res_bw, 'spatial_fs': [2 * bw for bw in ground_res_bw]}
+        overrides = {'override_obj_path': os.path.join(CVDOMES_MODELS_DIR, car + '.obj'),
+                     'mesh_scale': cvdomes_unit_m / meters_per_l,
+                     'object_rotate_xyz': (90.0, 0.0, 90.0),  # as render_cvdomes.py
+                     'ground_raids': cvdomes_ground_raids(),  # the car's own .mp loads with the .obj
+                     'pose_num': None,
+                     'azimuth_deg': base_az,
+                     'elevation_deg': cvdomes_el,
+                     'sensor_distance': 1.3,  # the srn pose distance
+                     'num_bounce': 3,
+                    }
+        cvdomes_ground_res.append(dict(
+            name='cvdomes_ground_res_%s' % car_name.lower(),
+            vary=bw_vary,
+            overrides=overrides,
+            custom_title_strings=['%s, ground res: %s, BW: %.1f' % (car_name, label, bw)
+                                  for label, bw in zip(ground_res_labels, ground_res_bw)],
+        ))
+        cvdomes_ground_res.append(dict(
+            name='cvdomes_ground_res_native_%s' % car_name.lower(),
+            vary={**bw_vary,
+                  'image_width': native_px, 'image_height': native_px,
+                  'image_plane_width': native_plane, 'image_plane_height': native_plane},
+            overrides=overrides,
+            custom_title_strings=['%s, ground res: %s, %d x %d px' % (car_name, label, n, n)
+                                  for label, n in zip(ground_res_labels, native_px)],
+        ))
+
     return [
-        az_spread,
-        num_pulse,
+        # az_spread,
+        # num_pulse,
         # n_ray,
         # fsbw,
         # fsbw_stripmap,
-        snrdb,
+        # snrdb,
         # noise_model,
         # wavelength,
-        trajectory_type,
+        # trajectory_type,
         # az_spread_linear_stripmap,
-        trajectory_noise_var,
+        # trajectory_noise_var,
         # waveform,
-        sphere,
+        # sphere,
+        *cvdomes_ground_res,
     ]
 
 
