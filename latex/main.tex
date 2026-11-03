@@ -26,13 +26,13 @@
 \DeclareMathOperator{\sinc}{sinc}
 
 %=================================================================
-\Title{Open-Source SAR and Sonar Simulator in PyTorch Via Accumulation and
+\Title{Open-Source SAR and Sonar Simulator in PyTorch via Accumulation and
 Interpolation of Ray Returns}
 
-\Author{Alex Berian *, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac and
+\Author{Alex Berian *, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac, and
 Abhijit Mahalanobis}
 
-\AuthorNames{Alex Berian, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac and
+\AuthorNames{Alex Berian, Sehajdeep Singh Bal, JhihYang Wu, Daniel Brignac, and
 Abhijit Mahalanobis}
 
 \address[1]{%
@@ -46,7 +46,7 @@ jhihyangwu@arizona.edu (J.W.); dbrignac@arizona.edu (D.B.); amahalan@arizona.edu
 \abstract{There is currently no open-source simulator of both SAR and sonar.
 \emph{RaySAR} simulates signals from ray-traced contributions but does not model
 a transmit waveform, and depends on outdated software such as POV-Ray and
-MATLAB. \emph{CVDomes} is a fixed dataset of ten vehicles which also runs on
+MATLAB. \emph{CVDomes} is a fixed dataset of ten vehicles, which also runs on
 MATLAB. Neither simulates sonar, and open sonar simulators for underwater
 robotics, such as \emph{HoloOcean} and \emph{Stonefish}, do not simulate SAR. We
 present an \emph{open-source SAR and sonar simulator} implemented in
@@ -82,12 +82,12 @@ By providing controlled, repeatable environments, simulators allow researchers
 to test imaging techniques, evaluate performance under different conditions, and
 benchmark novel methods without requiring extensive field experiments.
 
-Most powerful simulators, such as XPatch \cite{xpatch4}, are either classified
-in some manner or proprietary to their respective developer. The openly
+The most powerful simulators, such as XPatch \cite{xpatch4}, are either classified
+in some manner or proprietary to their respective developers. The openly
 available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed
 dataset of ten vehicles, RaySAR \cite{raysar} simulates signals from ray-traced
 contributions but does not model a transmit waveform and depends on outdated
-POV-Ray and MATLAB software, and neither simulates sonar. RaySAY, XPatch and the
+POV-Ray and MATLAB software, and neither simulates sonar. RaySAR, XPatch, and the
 simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays
 (SBR) method \cite{sbr}, which launches a dense grid of rays at the target and
 traces their reflections, and our ray tracer follows the same ray-launching
@@ -147,9 +147,9 @@ images are formed by coherent integration. Our main contributions are:
     rate of the sensor and preserves the carrier phase of every return for
     coherent imaging. Unlike standard approaches, which filter a signal
     already sampled, it evaluates the band-limited response
-    directly from irregularly spaced ray returns, so one step both interpolates
-    each return into a digital signal.
-    \item \textbf{Three imaging modalities.} from one simulator: spotlight-mode
+    directly from irregularly spaced ray returns, so one step both accumulates and
+    interpolates the returns into a digital signal.
+    \item \textbf{Three imaging modalities.} One simulator renders spotlight-mode
     SAR \cite{spotlightmodesar}, side-scan sonar (SSS), and forward-looking
     sonar (FLS). Every quantity in the simulator is expressed in spatial units,
     so radar and sonar share the same ray tracer, material model, and
@@ -201,7 +201,7 @@ single pulse.
     \hfill
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
     {figs/sar_overview_signal.png}}
-    \caption{Example of the simulator for SAR. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image normalized to its peak, (\textbf{c}) range to the first hit of each ray, (\textbf{d}) returned energy $E_k$ of each ray's first bounce, (\textbf{e}) energy-range scatter of the returns of all bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns. This example is generated with the default simulator parameters in (Table \ref{tab:params}).  }
+    \caption{Example of the simulator for SAR. (\textbf{a}) RGB image of the ShapeNet \cite{shapenet} car model, (\textbf{b}) spotlight-mode SAR image normalized to its peak, (\textbf{c}) range to the first hit of each ray, (\textbf{d}) returned energy $E_k$ of each ray's first bounce, (\textbf{e}) energy-range scatter of the returns of all bounces, (\textbf{f}) signal magnitude after accumulating and interpolating the returns. This example is generated with the default simulator parameters in Table \ref{tab:params}.  }
     \label{fig:main-fig}
 \end{figure}
 
@@ -215,7 +215,7 @@ Most high-fidelity radar signature codes build on the shooting-and-bouncing-rays
 
 Shooting and bouncing rays (SBR) is a high-frequency technique for electrically large, complex targets \cite{sbr}. Rays representing the incident field are traced through successive reflections, while field amplitude, phase, and polarization are propagated along their paths.  Combined with physical-optics integration, this provides estimates of scattered electromagnetic fields, including contributions from cavities and vehicle--ground interactions.  XPatch employs related high-frequency techniques but is not publicly available as an open-source simulator \cite{xpatch4}.
 
-Our approach retains ray launching and multiple reflections but replaces the electromagnetic field solution with material-dependent, scalar return weights and path lengths. Each return can carry propagation phase and contributes directly to a sampled complex range signal (Section \ref{sec:signal-simulation}).
+Our approach retains ray launching and multiple reflections but replaces the electromagnetic field solution with material-dependent, scalar return weights and path lengths. Each return carries propagation phase and contributes directly to a sampled complex range signal (Section \ref{sec:signal-simulation}).
 
 \subsection{CVDomes: Electromagnetic Reference Data}
 \label{sec:cvdomes}
@@ -231,7 +231,7 @@ Our simulator instead allows new mesh geometries, material assignments, waveform
 
 RaySAR uses POV-Ray-based geometric ray tracing to identify scattering contributions from three-dimensional scenes \cite{raysar,auer2011thesis}. Its output includes contribution positions, reflection strengths, and bounce orders, which can be processed into SAR-coordinate reflectivity maps. Separating reflection levels helps interpret layover, shadowing, and multipath. Python-based image processing for RaySAR has also been demonstrated \cite{raysarpython}. RaySAR is thus valuable for attributing SAR image features to geometric scattering paths.
 
-However, the standard RaySAR workflow does not directly generate complex, sampled received signals for a user-selected transmit waveform. Its saved contributions can be assigned a range response in post-processing, as we do for the comparison in Section \ref{sec:comparative-analysis}. Our framework integrates this step into the forward signal model. contributions are accumulated and interpolated directly at sensor sample positions through a selectable effective waveform response.
+However, the standard RaySAR workflow does not directly generate complex, sampled received signals for a user-selected transmit waveform. Its saved contributions can be assigned a range response in post-processing, as we do for the comparison in Section \ref{sec:comparative-analysis}. Our framework integrates this step into the forward signal model: contributions are accumulated and interpolated directly at sensor sample positions through a selectable effective waveform response.
 
 \subsection{Sonar Simulators}
 \label{sec:sonar-sims}
@@ -245,11 +245,11 @@ A \texttt{.obj} file is a collection of $V$ vertices in 3D space and $F$ triangl
 \section{Method}
 \label{sec:method}
 
-\subsection{Accumulating scatters from rays}
+\subsection{Accumulating Scatters from Rays}
 \label{sec:signal-simulation}
 
 
-The general process for simulating signals is shown in Figure \ref{fig:sig-sim}. For SAR, we cast a grid of $R_h \times R_w$ parallel rays that originate on a grid of size $W_g \times H_g$. The center of the grid intersects a line from the origin for a given azimuth $a$ and elevation $e$ angle.  Azimuth $a$ is defined as the angle from the $x$ (forward) to the $y$ (left) axis, and elevation $e$ is the angle from the $x$-$y$ plane to the $z$ (up) axis. The ray grid is orthogonal to this line defined by the azimuth/elevation. This set of rays can be viewed as a simulated wavefront. The sonars replace it with a fan of rays from a point source (Appendix \ref{sec:modalities}). There are a total of $N$ rays.
+The general process for simulating signals is shown in Figure \ref{fig:sig-sim}. For SAR, we cast a grid of $R_h \times R_w$ parallel rays that originate on a grid of size $W_g \times H_g$. The center of the grid intersects a line from the origin for a given azimuth angle $a$ and elevation angle $e$.  Azimuth $a$ is defined as the angle from the $x$ (forward) to the $y$ (left) axis, and elevation $e$ is the angle from the $x$-$y$ plane to the $z$ (up) axis. The ray grid is orthogonal to this line defined by the azimuth/elevation. This set of rays can be viewed as a simulated wavefront. The sonars replace it with a fan of rays from a point source (Appendix \ref{sec:modalities}). There are a total of $N$ rays.
 
 When a ray hits a triangle of the mesh, the material of that triangle (Section \ref{sec:material-properties}) sets the energy $E_r$ returned toward the sensor (\ref{eq:returned-energy}) and the energy $E_{out}$ reflected into the next path of the ray (\ref{eq:reflected-energy}), both proportional to the energy $E_{in}$ arriving at the surface. The energy of the first path of each ray is set to unity, and $E_{out}$ of each bounce is $E_{in}$ of the next. Every modality divides its returns by the number of transmitted rays $N$, so the sensor transmits a total energy of 1 (Section \ref{sec:units}). This is illustrated in Figure \ref{fig:terminology}. If the next path of a ray hits a location that is out of the line of sight, it is not considered for returned energy $E_r$. If a ray has no intersections, it is also not considered. The number of bounces is set by \texttt{num\_bounce} (Tables \ref{tab:params}, \ref{tab:fls-params}, and \ref{tab:sss-params}), and each ray contributes at most one return per bounce.
 
@@ -261,7 +261,7 @@ When a ray hits a triangle of the mesh, the material of that triangle (Section \
   \label{fig:terminology}
 \end{figure}
 
-Ray tracing the full grid therefore yields a set of $N$ energy-range pairs $(E_k,z_k)$. Each pair describes one return. The \emph{return weight} $E_k$ of the $k^{th}$ return is its returned energy (\ref{eq:returned-energy}) divided by $N$. The range $z_k$ is the total distance that ray traveled from the ray grid plane and back to it. Launching the rays follows standard SBR practice \cite{sbr}. Our contributions are the returned energy equation (\ref{eq:returned-energy}), which has both directional and diffuse components (Section \ref{sec:material-properties}), and how the resulting returns are turned into a sampled signal, described next. We treat the returned energy from ray tracing as a continuous spatial signal made up of Dirac delta functions.
+Ray tracing the full grid therefore yields a set of $N$ energy-range pairs $(E_k,z_k)$. Each pair describes one return. The \emph{return weight} $E_k$ of the $k^{th}$ return is its returned energy (\ref{eq:returned-energy}) divided by $N$. The range $z_k$ is the total distance the ray traveled from the ray grid plane and back to it. Launching the rays follows standard SBR practice \cite{sbr}. Our contributions are the returned energy equation (\ref{eq:returned-energy}), which has both directional and diffuse components (Section \ref{sec:material-properties}), and how the resulting returns are turned into a sampled signal, described next. We treat the returned energy from ray tracing as a continuous spatial signal made up of Dirac delta functions.
 \begin{equation}
     g(z) = \sum_{k=1}^{N}E_k\delta(z-z_k)
     .
@@ -271,9 +271,9 @@ This set of energy-range pairs is called the energy-range scatter plot. The Four
 \begin{equation}
     G(Z) = \sum_{k=1}^{N}E_ke^{- j 2 \pi z_k Z}
 \end{equation}
-which has infinite bandwidth, meaning it is impossible to sample without aliasing. We want to interpolate and sum $g(z)$ with sufficiently low bandwidth and sample rate that we do not see the jagged effects of the Dirac delta functions.
+which has infinite bandwidth, meaning it is impossible to sample without aliasing. We want to interpolate and sum $g(z)$ with a bandwidth and sample rate low enough that we do not see the jagged effects of the Dirac delta functions.
 
-A radar system typically uses pulse-compression techniques to improve range resolution. In short, the bandwidth of the received signal is approximately the bandwidth of the radar pulse used. The temporal bandwidth and sample rate of the received signal are $B_t$ and $F_t$ respectively. They are related to the \emph{spatial bandwidth} and \emph{spatial sample rate} as $B_s = 2B_t/c$ and $F_s = 2F_t/c$, where $c$ is the propagation speed, $3\times10^8$~m/s for radar and about $1500$~m/s for sound in water. The corresponding spatial sample spacing is $T_s = 1/F_s$.
+A radar system typically uses pulse-compression techniques to improve range resolution. In short, the bandwidth of the received signal is approximately the bandwidth of the radar pulse used. The temporal bandwidth and sample rate of the received signal are $B_t$ and $F_t$, respectively. They are related to the \emph{spatial bandwidth} and \emph{spatial sample rate} as $B_s = 2B_t/c$ and $F_s = 2F_t/c$, where $c$ is the propagation speed, $3\times10^8$~m/s for radar and about $1500$~m/s for sound in water. The corresponding spatial sample spacing is $T_s = 1/F_s$.
 
 We propose to simultaneously interpolate and sum the received set of scatters in (\ref{eq:returned-scatters}) using a sinc pulse train given by
 \begin{equation}
@@ -287,21 +287,21 @@ where $\sinc(x) = \sin(\pi x)/\pi x$. The simulated digital signal evaluated at 
     \bigg(z-\frac{z_k}{2} \bigg) dz
     .
 \end{equation}
-We divide the scatter's range $z_k$ by $2$ because of the two-way travel, which aligns the samples with their position in space. Then with the sifting property $s(z_o)$ is reduced to
+We divide the scatter's range $z_k$ by $2$ because of the two-way travel, which aligns the samples with their position in space. Then, by the sifting property, $s(z_o)$ reduces to
 \begin{equation}
     s(z_o) = \sum_{k=1}^{N}E_k\sinc\Bigg(B_s\bigg(z_o-\frac{z_k}{2}\bigg)\Bigg)
     .
     \label{eq:accum-interp}
 \end{equation}
-The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc function acts as both a low-pass interpolation filter and a summation over nearby samples in the energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumulation and interpolation} of the returns. It differs from standard interpolation because it sums together multiple returns in addition to interpolating them. Standard interpolation resamples a signal already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates and accumulates them in a single step.  (\ref{eq:accum-interp}) allows for complex returns, so the simulated signals preserve phase for coherent imaging.
+The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc function acts as both a low-pass interpolation filter and a summation over nearby samples in the energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumulation and interpolation} of the returns. It differs from standard interpolation because it sums together multiple returns in addition to interpolating them. Standard interpolation resamples a signal already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates and accumulates them in a single step.  Equation (\ref{eq:accum-interp}) allows for complex returns, so the simulated signals preserve phase for coherent imaging.
 
-The sinc function acheives an ideal band limited signal, however this does not capture the effects of different waveforms used in practice. We address this limitation in section \ref{sec:waveforms}.
+The sinc function achieves an ideal band-limited signal; however, this does not capture the effects of different waveforms used in practice. We address this limitation in Section \ref{sec:waveforms}.
 
 
 \subsection{Material Properties and Returned Energy}
 \label{sec:material-properties}
 
-When a ray makes contact with a surface, a fraction of its energy is reflected into the next path of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as $R,A,S$. Scattering is the only component that returns energy to the receiver. Without one, we use only two materials, one for the object and one for the ground, whose values are listed in Table \ref{tab:materials} of Appendix \ref{app:materials}.
+When a ray makes contact with a surface, a fraction of its energy is reflected into the next path of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as $R,A,S$. Scattering is the only component that returns energy to the receiver. Without a per-triangle material file (Section \ref{sec:per-triangle-materials}), we use only two materials, one for the object and one for the ground, whose values are listed in Table \ref{tab:materials} of Appendix \ref{app:materials}.
 
 The three fractions of a surface add up to 1, so that a surface never returns more energy than it receives:
 \begin{equation}
@@ -334,7 +334,7 @@ where $H$ denotes the hemisphere of directions from the surface.
     \oiint\limits_{H} 1 d \Omega
 \end{equation}
 
-Now we can accurately ensure that the total amount of energy diffuse scattered is $D$ and the total amount of energy directionally scattered is $I$.
+Now we can accurately ensure that the total amount of energy diffusely scattered is $D$ and the total amount of energy directionally scattered is $I$.
 \begin{equation}
     \label{eq:directional-int}
     I = m_I \oiint\limits_{H} \cos({\theta/2})^\alpha d \Omega
@@ -345,17 +345,17 @@ Now we can accurately ensure that the total amount of energy diffuse scattered i
     .
 \end{equation}
 
-Using the half angle trigonometry identity,
+We use the half-angle identity,
 \begin{equation}
     \cos\frac{\theta}{2} = \sqrt{\frac{1+\cos \theta}{2}}
     ,
 \end{equation}
-and we can express $\cos\theta$ using dot product
+and express $\cos\theta$ as a dot product,
 \begin{equation}
     \cos\theta = \vec{u}_{l}\cdot \vec{u}_{r}
     ,
 \end{equation}
-where $\vec{u}_l$ is the line-of-sight vector which is the directional vector from the point of contact of the ray and where the radar is. $\vec{u}_r$ and other directional vectors are expanded as 
+where $\vec{u}_l$ is the line-of-sight vector, the unit vector from the ray's point of contact toward the radar. The reflected direction $\vec{u}_r$ and the other directional vectors are expanded as 
 \begin{equation}
     \vec{u}_r = 
         \begin{bmatrix}
@@ -403,7 +403,7 @@ which yields our final expression for returned energy as
     \cos({\theta/2})^\alpha}{f_{\alpha,poly}(\vec{u}_{r} \cdot \vec{n})} +
     \frac{D}{2\pi}\Bigg)
 \end{equation}
-The $\theta / 2$ in the numerator of (\ref{eq:almost}) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the $\theta / 2$ in (\ref{eq:big-int}) refers to the angle between the reflected ray direction and all possible line-of-sight vectors that are integrated over. Again, to avoid trigonometric computations for each ray, we substitute
+The $\theta / 2$ in the numerator of (\ref{eq:almost}) refers to the angle between the direction back to the radar and the direction of the reflected ray, whereas the $\theta / 2$ in (\ref{eq:big-int}) refers to the angle between the reflected ray direction and all possible line-of-sight vectors that are integrated over. Again, to avoid trigonometric computations for each ray, we substitute the half-angle identity for
 $\cos(\theta/2)$ to give
 \begin{equation}
     \label{eq:returned-energy}
@@ -424,18 +424,18 @@ where $E_{out}$ is the energy carried into the next path of the ray after the bo
 \subsection{Arbitrary Transmit Waveforms}
 \label{sec:waveforms}
 
-The accumulation and interpolation in (\ref{eq:accum-interp}) simulates an ideal band-limited pulse. Real radar and sonar systems instead transmit pulse-compression waveforms and match-filter the echoes. We therefore generalize it to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatters model in (\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
+The accumulation and interpolation in (\ref{eq:accum-interp}) simulates an ideal band-limited pulse. Real radar and sonar systems instead transmit pulse-compression waveforms and matched-filter the echoes. We therefore generalize it to an arbitrary transmit waveform. We can express a received continuous signal $r(z)$ from our scatter model in (\ref{eq:returned-scatters}) with an arbitrary transmitted waveform $x(z)$ as
 \begin{equation}
     r(z) = x(z) * g(z)
     ,
 \end{equation}
-where $*$ is convolution. It is common in practical radar systems for the transmitted signal $x(z)$ to be a pulse-compression waveform such as an LFM chirp or Barker-13. To compute the recovered signal we use the matched filter, which is the time reverse and complex conjugate of
+where $*$ is convolution. It is common in practical radar systems for the transmitted signal $x(z)$ to be a pulse-compression waveform such as an LFM chirp or a Barker-13 code. To compute the recovered signal we use the matched filter, which is the time reverse and complex conjugate of
 $x(z)$,
 \begin{equation}
     h(z) = x^*(-z)
     .
 \end{equation}
-The received and recovered match-filtered digital signal $s_{mf}(z_o)$ evaluated at the range $z_o $ is then given by 
+The received and recovered matched-filtered digital signal $s_{mf}(z_o)$ evaluated at the range $z_o $ is then given by 
 \begin{equation}
     s_{mf}(z_o) = h(z)*r(z) |_{z=z_o}
 \end{equation}
@@ -451,7 +451,7 @@ The received and recovered match-filtered digital signal $s_{mf}(z_o)$ evaluated
 \end{equation}
 where $w(z) = h(z) * x(z)$ is the effective windowing function, and $|_{z=z_o}$ means to evaluate the expression at $z=z_o$. Although $w(z)*g(z)$ has the form of conventional matched filtering, it is never computed by convolving a sampled received signal. Since $g(z)$ is a sum of off-grid delta functions, the matched-filter output is evaluated in closed form at each sample $z_o$, so the same sum performs both the interpolation and the summation of the returns. One may view the ideal band-limited digital signal in (\ref{eq:accum-interp}) as the case $w(z)=\sinc(B_s z)$.
 
-Each transmit waveform therefore replaces the ideal sinc of (\ref{eq:accum-interp}) with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the spatial domain (Figure \ref{fig:effective-windows}a) the Gaussian pulse has no sidelobes, but it is costly in the frequency domain (Figure \ref{fig:effective-windows}b): although the full width at half maximum of its power spectrum matches the targeted band $\pm B_s/2$, much of its energy lies outside the spatial bandwidth. The sinc, LFM chirp, and Barker-13 windows keep their spectra largely within $\pm B_s/2$, but pay for it with sidelobes in the spatial domain. The LFM Chirp effective window and the sinc are nearly identical because we utilized an extremely long LFM Chirp, which may not be practical in some scenarios.
+Each transmit waveform therefore replaces the ideal sinc of (\ref{eq:accum-interp}) with a different effective window $w(z)$. Figure \ref{fig:effective-windows} compares the effective windows produced by a sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 code, all designed for the same spatial bandwidth $B_s$. In the spatial domain (Figure \ref{fig:effective-windows}a), the Gaussian pulse has no sidelobes, but it is costly in the frequency domain (Figure \ref{fig:effective-windows}b): although the full width at half maximum of its power spectrum matches the targeted band $\pm B_s/2$, much of its energy lies outside the spatial bandwidth. The sinc, LFM chirp, and Barker-13 windows keep their spectra largely within $\pm B_s/2$, but pay for it with sidelobes in the spatial domain. The LFM chirp effective window and the sinc are nearly identical because we used an extremely long LFM chirp, which may not be practical in some scenarios.
 
 Because the returns are accumulated and interpolated the same way for any $w(z)$, our simulator can substitute any of these effective windows to emulate the range response of a real radar's or sonar's pulse-compression waveform.
 
@@ -473,7 +473,7 @@ Because the returns are accumulated and interpolated the same way for any $w(z)$
 \subsection{Radar Cross Section}
 \label{sec:rcs}
 
-The RCS of a target is the power it scatters back toward the sensor, as a function of look direction, expressed as an equivalent area independent of range. It is the standard measure of how visible a target is to a radar.
+The radar cross section (RCS) of a target is the power it scatters back toward the sensor, as a function of look direction, expressed as an equivalent area independent of range. It is the standard measure of how visible a target is to a radar.
 
 We compute it from one ray trace per look direction, without forming a sampled range signal. The ray grid of Figure \ref{fig:sig-sim} is aimed at the origin from azimuth $a$ and elevation $e$, and its returns
 are summed coherently,
@@ -485,7 +485,7 @@ are summed coherently,
 \end{equation}
 where $E_k$ and $z_k$ are the return weights and two-way ranges of the $N$ returns traced at $(a,e)$. Since $E_k$ is a fraction of the transmitted energy (Section \ref{sec:units}), (\ref{eq:rcs}) is a relative RCS in arbitrary units. Note that in order for the RCS calculation to be correct, the ray grid must be large enough to cover the entirety of the object.
 
-Figure \ref{fig:rcs}a shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\lambda = 0.05$ on a $0.25^\circ$ spaced polar grid, where the center to the outside is $e=90^\circ$ to $e=45^\circ$ and the azimuth angle $a$ is shown $360^\circ$ around. Figure \ref{fig:rcs}b shows the RCS for the car of Figure \ref{fig:main-fig} but with an elevation extent of $e=90^\circ$ to $e=0^\circ$. Figure \ref{fig:rcs}b is simulated without the ground at the default $\lambda$ on a $2^\circ$ spaced grid. The plate returns a lattice of lobes around its normal due to construtive and deconstructive interference of return phases. The car is strongest where there are large flat surfaces facing the sensor: the top and the sides where the car doors are. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns against the theoretical RCS of the plate, which measured plates follow near normal incidence \cite{ross1966}: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls fall where the theoretical RCS puts them.
+Figure \ref{fig:rcs}a shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\lambda = 0.05$ on a $0.25^\circ$-spaced polar grid, with $e$ running from $90^\circ$ at the center to $45^\circ$ at the edge, and the azimuth angle $a$ shown $360^\circ$ around. Figure \ref{fig:rcs}b shows the RCS for the car of Figure \ref{fig:main-fig} but with an elevation extent of $e=90^\circ$ to $e=0^\circ$. Figure \ref{fig:rcs}b is simulated without the ground at the default $\lambda$ on a $2^\circ$-spaced grid. The plate returns a lattice of lobes around its normal due to constructive and destructive interference of return phases. The car is strongest where there are large flat surfaces facing the sensor: the top and the sides where the car doors are. Figure \ref{fig:rcs}c validates the phase of the ray-traced returns against the theoretical RCS of the plate, which measured plates follow near normal incidence \cite{ross1966}: at both $\lambda = 0.05$ and $0.025$ the lobes and nulls fall where the theoretical RCS puts them.
 
 \begin{figure}[H]
   \centering
@@ -497,7 +497,7 @@ Figure \ref{fig:rcs}a shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\la
     \hfill
     \subfloat[\centering]{\includegraphics[trim=767bp 0 0 20bp, clip,
     height=0.25\textwidth]{figs/sar_validation.png}}
-  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate at $\lambda = 0.05$ for $e = 45$--$90^\circ$ and (\textbf{b}) the car of Figure \ref{fig:main-fig}.a without the ground at the default $\lambda$, with the azimuth $a$ as the angle and $90^\circ - e$ as the radius, so the zenith is at the center.  (\textbf{c}) The plate at $a = 0^\circ$ and $e = 80$--$90^\circ$, simulated (solid) and theoretical RCS (dotted), each normalized to its peak.}
+  \caption{RCS (\ref{eq:rcs}) in dB. (\textbf{a}) A $1 \times 1$ flat plate at $\lambda = 0.05$ for $e = 45$--$90^\circ$ and (\textbf{b}) the car of Figure \ref{fig:main-fig}a without the ground at the default $\lambda$, with the azimuth $a$ as the angle and $90^\circ - e$ as the radius, so the zenith is at the center.  (\textbf{c}) The plate at $a = 0^\circ$ and $e = 80$--$90^\circ$, simulated (solid) and theoretical RCS (dotted), each normalized to its peak.}
   \label{fig:rcs}
 \end{figure}
 
@@ -507,7 +507,7 @@ Figure \ref{fig:rcs}a shows (\ref{eq:rcs}) for a $1 \times 1$ flat plate at $\la
 \textbf{Spotlight-mode SAR} casts the parallel ray grid of Figure
 \ref{fig:sig-sim} from each position of a circular or linear trajectory, aimed at the scene origin, and forms the image by convolution backprojection \cite{spotlightmodesar}. When a wavelength is given, it demodulates each pulse and integrates the complex-valued samples coherently.
 
-\textbf{Side-scan sonar} replaces the planar wavefront with a point source. Each ping casts a fan of rays from its position on a straight track (linear trajectory), and every return is weighted by the beam pattern of the sensor on both transmit and receive \ref{app:sonar-beam-width}. We attenuate the returns by absorption in the water. The beam is never steered, so the scene drifts across it as the platform passes, and the image stacks the range profiles of the pings along the track.
+\textbf{Side-scan sonar} replaces the planar wavefront with a point source. Each ping casts a fan of rays from its position on a straight track (linear trajectory), and every return is weighted by the beam pattern of the sensor on both transmit and receive (\ref{eq:beam-pattern}). We attenuate the returns by absorption in the water. The beam is never steered, so the scene drifts across it as the platform passes, and the image stacks the range profiles of the pings along the track.
 
 \textbf{Forward-looking sonar} casts the same point-source fan, with the same attenuation and the beam pattern on both transmit and receive, but transmits every ping from a single position and steers the beam to a different azimuth for each, so the image stacks the range profiles in azimuth.  Since the sensor does not move, the beam is applied after ray tracing, and all $P$ pings share a single ray trace.
 
@@ -555,7 +555,7 @@ waveforms in SAR and side-scan sonar (Section \ref{sec:waveform-experiment}).
 Further SAR images that vary the aperture, the noise, and the sensor trajectory
 are given in Appendix \ref{app:sar-examples}, and sweeps of the sonar beam width
 in Appendix \ref{app:sonar-beam-width}. Unless stated otherwise, every
-experiment images the car of Figure \ref{fig:main-fig}.a from the same pose,
+experiment images the car of Figure \ref{fig:main-fig}a from the same pose,
 with the defaults of Appendix \ref{app:params}, and the sensor is placed on the
 bottom side of every image, so illumination always arrives from that direction.
 
@@ -564,7 +564,7 @@ bottom side of every image, so illumination always arrives from that direction.
 
 Every length in the simulator, including the mesh, the ray grid, the sensor
 distance, the
-wavelength $\lambda$ and the range axis, is expressed in one arbitrary unit
+wavelength $\lambda$, and the range axis, is expressed in one arbitrary unit
 $\ell$, and $B_s$ and
 $F_s$ are in cycles per $\ell$. The ShapeNet meshes are normalized so that a car
 is about
@@ -621,7 +621,7 @@ their phases, but squares their relative amplitudes, which doubles the dynamic
 range of the images
 in dB. The sonars apply a Gaussian azimuth beam pattern, but it is normalized to
 1 on boresight, so
-no absolute antenna gain, transmit power or receiver noise figure is modeled,
+no absolute antenna gain, transmit power, or receiver noise figure is modeled,
 and signal values are
 relative to the transmitted energy rather than calibrated in watts.
 
@@ -737,13 +737,13 @@ our simulator at azimuth $210.8125^\circ$ and elevation $32.1875^\circ$, a look
 on the CVDomes grid
 rather than our default pose. We keep the central $96$ of the $512$ CVDomes
 frequency samples, a
-bandwidth of $0.996$~GHz about $9.6$~GHz and a range resolution of $0.151$~m.
+bandwidth of $0.996$~GHz centered at $9.6$~GHz and a range resolution of $0.151$~m.
 RaySAR and our
 simulator trace the same car and ground mesh with $1024 \times 1024$ rays and up
 to two bounces, and
 ours uses the per-triangle materials of Section
-\ref{sec:per-triangle-materials}. Scaling the Camry
-to $4.8$~m, or $1\ell \approx 7.95$~m, this is $B_s \approx 52.8\,\ell^{-1}$ and
+\ref{sec:per-triangle-materials}. With the Camry scaled
+to $4.8$~m ($1\ell \approx 7.95$~m), this corresponds to $B_s \approx 52.8\,\ell^{-1}$ and
 $\lambda \approx 0.0039\ell$ ($3.12$~cm). All three profiles are
 Hamming-tapered: CVDomes on its
 frequency samples before an inverse FFT, RaySAR by a Hamming range response
@@ -824,7 +824,7 @@ The returned signal (\ref{eq:returned-scatters}) is a sum of delta functions,
 one per ray return,
 and accumulating and interpolating the returns low-pass filters it with a pulse
 whose width is
-inversely proportional to $B_s$. A pulse that is wide against the range spacing
+inversely proportional to $B_s$. A pulse that is wide relative to the range spacing
 of the returns gives
 a smooth estimate of the continuous response, while a narrow one resolves the
 individual returns,
@@ -955,13 +955,13 @@ Table \ref{tab:compute-time} reports the time to render one spotlight-mode SAR
 image on a GPU and
 on a CPU, for two mesh sizes and three ray grids. We use the smallest and the
 largest ShapeNet
-\cite{shapenet} car mesh in the SRN Cars \cite{srn} training split, with
+\cite{shapenet} car meshes in the SRN Cars \cite{srn} training split, with
 $12{,}762$ and $1{,}323{,}584$ triangles, each placed on a
 $20{,}000$-triangle ground plane. All other parameters are the defaults of Table
 \ref{tab:params},
 except for $P = 30$ pulses and the ray grid $R_w = R_h \in \{32, 64, 128\}$. The
 code is the same on
-both devices, only the PyTorch device changes. The GPU is one NVIDIA L40S, and
+both devices; only the PyTorch device changes. The GPU is one NVIDIA L40S, and
 the CPU is an AMD EPYC
 7763 with PyTorch running $128$ threads. Each time is the wall-clock time from
 the trajectory to the
@@ -1096,12 +1096,12 @@ seafloor, so there are no returns at ranges shorter than its height.
 
 In Figure \ref{fig:waveform}, we vary the transmit waveform of spotlight-mode
 SAR (top row) and
-side-scan sonar (bottom row), which replaces the ideal sinc of
+side-scan sonar (bottom row). Each waveform replaces the ideal sinc of
 (\ref{eq:accum-interp}) with the effective
 window $w(z)$ of the corresponding pulse-compression matched filter as described
 in Section
 \ref{sec:waveforms} and illustrated in Figure \ref{fig:effective-windows}.
-Within each row the ray
+Within each row, the ray
 trace is identical across the panels, and only the effective window changes. We
 compare an ideal
 sinc, a Gaussian pulse, an LFM chirp, and a Barker-13 phase code, all designed
@@ -1120,7 +1120,7 @@ In SAR, the images differ little between the waveforms, because the linear scale
 makes it
 harder to see the sidelobes of the waveform. The peak sidelobes of the effective
 windows in Figure \ref{fig:effective-windows}a
-lie at least $13$~dB below the mainlobe, and the Gaussian pulse has none.
+lie at least $13$~dB below the main lobe, and the Gaussian pulse has none.
 Although these
 sidelobes are small, they still repeat the strongest lines of the car as faint
 parallel copies
@@ -1190,8 +1190,8 @@ continuous
 surface, taken only where the rays hit it. When the bandwidth is too high
 relative to the density of
 the rays cast, the pulse becomes narrower than the spacing between neighboring
-returns, and these
-discontinuities become visible in the signal as artifacts from oversampling the
+returns, and the gaps
+between them become visible in the signal as artifacts from oversampling the
 scatters (Sections
 \ref{sec:bw-ray-density} and \ref{sec:sonar-range-density}). Simulating
 high-bandwidth signals
@@ -1209,7 +1209,7 @@ surface returns energy that depends on the ray grid rather than on the scene
 (Section
 \ref{sec:wavelength-ray-density}). The step is longest at grazing looks, so
 short wavelengths at
-grazing angles require more rays than the bandwidth alone, at the same cost in
+grazing angles require more rays than the bandwidth alone requires, at the same cost in
 ray tracing time.
 
 \textbf{Materials.} The material properties $(R,A,I,D,S)$ and the exponent
@@ -1227,7 +1227,7 @@ CVDomes only in a
 single range profile (Section \ref{sec:comparative-analysis}). Its images are
 not compared against
 measured SAR or sonar data, so they should
-therefore be read as reproducing the geometry of real sensors, including shadows
+be read as reproducing the geometry of real sensors, including shadows
 and
 multipath, rather than their calibrated intensities.
 
@@ -1239,7 +1239,7 @@ in PyTorch that supports arbitrary 3D \texttt{.obj} models, multi-bounce ray
 tracing, and
 configurable sensor parameters such as wavelength, bandwidth, sample rate,
 transmit waveform, and
-material properties. From a single ray-traced signal model it renders three
+material properties. From a single ray-traced signal model, it renders three
 imaging modalities:
 spotlight-mode SAR, side-scan sonar, and forward-looking sonar. It addresses the
 limitations of existing open tools: \emph{RaySAR} relies on outdated software
@@ -1371,7 +1371,7 @@ where $w(z)$ is the effective window of the transmit waveform (Section
 A forward-looking sonar image is formed from $P$ pings, the sonar term for
 pulses, all transmitted
 from a single position with the beam steered to a different azimuth for each.
-The image is a plot of received energy vs range and azimuth, sometimes reffered
+The image is a plot of received energy versus range and azimuth, sometimes referred
 to as a range-angle image. The sensor sits at
 $\vec{v}$, given by an azimuth $a$ and elevation $e$ as in Section
 \ref{sec:problem}, and its
@@ -1440,7 +1440,7 @@ half maximum $\beta$,
     \label{eq:beam-pattern}
 \end{equation}
 and weight the $k^{th}$ return by $b(\phi^{tx}_k)\,b(\phi^{rx}_k)$. For a
-first-bounce return this
+first-bounce return, this
 product is a Gaussian with full width at half maximum $\beta/\sqrt{2}$, the
 two-way beam width. The pattern
 peaks at $1$ rather than integrating to $1$, so a return on boresight keeps its
@@ -1474,7 +1474,7 @@ in the
 bottom row to $z_{far}$ in the top row, and one column per ping, with $\phi_i$
 increasing from
 left to right. The pixel at range $z_o$ and azimuth $\phi_i$ is $|s_i(z_o)|$.
-$|s_i|$ is evaluated between its samples by linear interpolation (after the
+The magnitude $|s_i|$ is evaluated between its samples by linear interpolation (after the
 signal
 is calculated), and every signal is sampled over a range swath that covers 
 $[z_{near},z_{far}]$. A time-varying gain, a receiver ramp
@@ -1507,14 +1507,14 @@ from
 \end{equation}
 where the $P$ offsets $\xi_i$ are spaced uniformly over $[-L/2,L/2]$ for a track
 of length $L$.
-Where a forward-looking sonar sweeps its beam across the target from one
+Whereas a forward-looking sonar sweeps its beam across the target from one
 position, a side-scan
 sonar holds its beam fixed, and the target drifts across the beam as the
 platform passes.
 
 Each ping casts its own fan (\ref{eq:ray-fan}) from $\vec{v}_i$, and every fan
 shares the axes
-$\vec{u}_f$, $\vec{u}_h$ and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan
+$\vec{u}_f$, $\vec{u}_h$, and $\vec{u}_v = \vec{u}_h \times \vec{u}_f$. The fan
 spans $\Theta_w =
 3\beta$ in azimuth, since the one-way beam has fallen to about $0.002$ at its
 edges, and
@@ -1564,17 +1564,17 @@ derivation.
 \section{SAR Image Examples}
 \label{app:sar-examples}
 This appendix shows spotlight-mode SAR images of the car of Figure
-\ref{fig:main-fig}.a as single parameters
+\ref{fig:main-fig}a as single parameters
 are varied from the defaults of Table \ref{tab:params}: the aperture, the noise,
 and the sensor
 trajectory.
 
 \subsection{Aperture and Noise}
 
-In Figure \ref{fig:az-spread} we showcase our simulation when the range of
+In Figure \ref{fig:az-spread}, we showcase our simulation when the range of
 azimuth angles (azimuth spread) is varied for the spotlight-mode SAR algorithm.
 With little azimuth spread, there is not much detail in the SAR image. At a
-$360^\circ$ spread the entire car is surrounded by the aperture, and a second
+$360^\circ$ spread, the entire car is surrounded by the aperture, and a second
 set of lines appears within the outline of the car due to the second bounce of
 the rays.
         
@@ -1602,7 +1602,7 @@ and more distinct structural features of the target.
 
 In Figure \ref{fig:snr}, we demonstrate how varying the signal-to-noise ratio
 (SNR) in decibels (dB) influences the quality of the simulated SAR image. In
-real SAR scenarios SNR decreases as range to the target increases. At low SNR
+real SAR scenarios, SNR decreases as the range to the target increases. At low SNR
 values (around 0 dB), the image is dominated by noise, obscuring most structural
 details. As the SNR increases toward 22 dB, the object becomes clearly resolved,
 with well-defined features. SNR is calculated as an average over all signals
@@ -1648,7 +1648,7 @@ variance (turbulence) $\sigma^2$ to the perceived sensor position while the true
 trajectory used for signal simulation is kept noise-free. This models the case
 where the reconstruction algorithm has an imprecise estimate of the sensor pose.
 As the noise variance increases, the reconstructed image becomes progressively
-blurred as the pulses no longer coherently integrate at the correct locations.
+blurred because the pulses no longer coherently integrate at the correct locations.
 
 \begin{figure}[H]
   \centering
@@ -1698,8 +1698,8 @@ the beam.
 
 \section{Default Parameters}
 \label{app:params}
-Tables \ref{tab:params}, \ref{tab:fls-params} and \ref{tab:sss-params} list the
-default parameters of spotlight-mode SAR, forward-looking sonar and side-scan
+Tables \ref{tab:params}, \ref{tab:fls-params}, and \ref{tab:sss-params} list the
+default parameters of spotlight-mode SAR, forward-looking sonar, and side-scan
 sonar. All three baselines image the same SRN Cars \cite{srn} car,
 \texttt{obj\_id} 100715345ee54d7ae38b52b4ee9d36a3, at the pose of the SRN Cars
 view given by \texttt{pose\_num}, with $a$ and $e$ read off that pose.
@@ -1855,7 +1855,7 @@ once for the ground
 \texttt{.mp} file (Section
 \ref{sec:per-triangle-materials}), and the configured values need not satisfy
 $R+A+S=1$ and $I+D=1$.
-Before ray tracing, the simulator divides $R$, $A$ and $S$ of each triangle by
+Before ray tracing, the simulator divides $R$, $A$, and $S$ of each triangle by
 their sum, and $I$
 and $D$ by theirs, so the configured values act as relative weights. Table
 \ref{tab:materials}
@@ -1864,7 +1864,7 @@ incident energy,
 almost entirely in the directional lobe, so it returns strong glints near the
 mirror direction and
 little elsewhere. The ground scatters weakly and mostly diffusely, so it returns
-a dim, nearly
+dim, nearly
 uniform clutter that does not mask the car.
 \begin{table}[H]
 \centering
@@ -1931,9 +1931,9 @@ installed from a clone with \texttt{pip install -e ".[experiments]"}.
 The experimental figures and tables are produced by the scripts in its
 \texttt{experiments/} folder, each run from that folder with no arguments.
 The scripts read their defaults from \texttt{experiments/config.json} (Appendix
-\ref{app:params}), whose \texttt{srn\_cars\_dir}, \texttt{shapenet\_cars\_dir}
+\ref{app:params}), whose \texttt{srn\_cars\_dir}, \texttt{shapenet\_cars\_dir},
 and \texttt{cvdomes\_dir} point to the SRN Cars dataset \cite{srn}, the ShapeNet
-\cite{shapenet} car meshes and the CVDomes \cite{cvdomes} models, and write to
+\cite{shapenet} car meshes, and the CVDomes \cite{cvdomes} models, and write to
 \texttt{experiments/figures/}:
 \begin{itemize}
   \item Figure \ref{fig:modality-comparison}: \texttt{modality\_comparison.py}
