@@ -286,6 +286,7 @@ def render_side_scan_image(
         device = 'cuda',
 
         override_obj_path = None,
+        material_file = None,
         sensor_distance = None,
         elevation_angle_deg = None,
 
@@ -355,6 +356,7 @@ def render_side_scan_image(
         pose_num (str): pose/rgb file stem for that object; a random one is drawn when None
         suffix (str): name for the saved files, defaults to '<pose_num>_<obj_id>'
         override_obj_path (str): render this .obj instead of the selected object's mesh
+        material_file (str): per-triangle .mp for load_mesh; None uses the mesh's sibling .mp if any
         sensor_distance (float): overrides the pose's sensor range from the origin, keeping its
             azimuth and elevation. The sensor position is normalized then scaled to this distance;
             None keeps the pose file's own distance
@@ -464,6 +466,7 @@ def render_side_scan_image(
                                                     level_with_ground = level_with_ground,
                                                     x_flip = object_x_flip,
                                                     rotate_xyz = object_rotate_xyz,
+                                                    material_file = material_file,
                                                 )
 
     torch.cuda.empty_cache()

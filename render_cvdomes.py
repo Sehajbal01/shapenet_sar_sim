@@ -2,14 +2,17 @@
 Render a CVDomes car with each of the two .mp files convert_cvdomes.py writes next to the .obj --
 one constant PEC material, and the per-triangle CVDomes materials -- and write the paper's 2x2
 comparison as four untitled panels (the subfloats of fig:materials): first-bounce energy of the
-center pulse on top, SAR image below, plus a titled stitch of all four in figures/.
+center pulse on top, SAR image below, plus a titled stitch of all four in figures/. The same two
+meshes also go through config.json's side scan baseline, for a third row of two panels.
 '''
 import os
 import shutil
 import numpy as np
 from matplotlib import pyplot as plt
 
+from config import CONFIG
 from render_images import sar_render_image
+from sidescansonar import render_side_scan_image
 from signal_simulation import load_mesh
 from signal_visualization import signal_gif
 from convert_cvdomes import MODELS_DIR, PEC_RAIDS, cvdomes_ground_raids
@@ -41,6 +44,15 @@ MESH_KWARGS = dict(
     ground_raids        = cvdomes_ground_raids(),
     x_flip              = False,
     rotate_xyz          = (90.0, 0.0, 90.0),
+)
+
+# config.json's side scan baseline (pose, seafloor, display) on the same car mesh; the sibling
+# per-triangle .mp replaces obj_raids
+SSS_KWARGS = dict(
+    CONFIG['side_scan_sonar_baseline'],
+    mesh_scale          = MESH_KWARGS['scale'],
+    object_x_flip       = MESH_KWARGS['x_flip'],
+    object_rotate_xyz   = MESH_KWARGS['rotate_xyz'],
 )
 
 GENERIC_KWARGS = dict(
@@ -93,6 +105,28 @@ def render(preloaded_mesh, pose, base):
     return energy, np.abs(np.squeeze(sar_image.detach().cpu().numpy()))
 
 
+def render_sss(obj_path, name):
+    amplitudes = []
+    for suffix, title in MATERIALS.items():
+        mp_path = os.path.splitext(obj_path)[0] + suffix + '.mp'
+        images, _, _ = render_side_scan_image(override_obj_path=obj_path, material_file=mp_path,
+                                              suffix=f'cvdomes_{name}_{title}_sss', **SSS_KWARGS)
+        amplitudes.append(images[0].detach().cpu().numpy())
+
+    # one dB scale referenced to the shared peak, as the SAR row
+    print('per-triangle re constant: side scan peak %.1f dB, side scan energy %.1f dB' % (
+        20*np.log10(amplitudes[1].max() / amplitudes[0].max()),
+        10*np.log10((amplitudes[1]**2).sum() / (amplitudes[0]**2).sum())))
+    db_floor = SSS_KWARGS['db_floor']
+    peak = max(a.max() for a in amplitudes)
+    panels = [db_compress(a, peak, db_floor) for a in amplitudes]
+    style = dict(vmin=db_floor, vmax=0, cbar_label='dB re shared peak', cbar_tick_fmt='%.0f dB')
+    stitch_panels(panels, [f'{t}, sss' for t in MATERIALS.values()],
+                  os.path.join(FIGURES_DIR, f'cvdomes_{name}_materials_sss.png'), ncols=2, **style)
+    for panel, title in zip(panels, MATERIALS.values()):
+        stitch_panels([panel], [''], os.path.join(PAPER_FIG_DIR, f'cvdomes_materials_{title}_sss.png'), **style)
+
+
 def main():
     os.makedirs(FIGURES_DIR, exist_ok=True)
     obj_path = os.path.join(MODELS_DIR, OBJ_NAME)
@@ -127,6 +161,8 @@ def main():
     for i, key in enumerate(keys):
         stitch_panels([panels[i]], [''], os.path.join(PAPER_FIG_DIR, f'cvdomes_materials_{key}.png'),
                       **{k: v[i] for k, v in style.items()})
+
+    render_sss(obj_path, name)
 
 
 if __name__ == '__main__':

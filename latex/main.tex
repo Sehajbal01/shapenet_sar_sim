@@ -645,31 +645,39 @@ is the same asphalt
 in both renders, so only the materials of the car differ between them. The
 windows, tires, and
 trim go dark in the first-bounce energy, and the SAR peak drops by $5.0$~dB.
+Both \texttt{.mp} files also apply to sonar: we image both meshes with
+side-scan sonar at the default parameters of Table \ref{tab:sss-params}, on the
+default seafloor rather than the asphalt, and the side-scan peak drops by
+$2.2$~dB.
 
 \begin{figure}[H]
   \centering
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
     {figs/cvdomes_materials_constant_energy.png}}
-    \hspace{0.05\textwidth}
-    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
-    {figs/cvdomes_materials_per-triangle_energy.png}}\\
+    \hspace{0.02\textwidth}
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
     {figs/cvdomes_materials_constant_sar.png}}
-    \hspace{0.05\textwidth}
+    \hspace{0.02\textwidth}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
+    {figs/cvdomes_materials_constant_sss.png}}\\
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
+    {figs/cvdomes_materials_per-triangle_energy.png}}
+    \hspace{0.02\textwidth}
     \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
     {figs/cvdomes_materials_per-triangle_sar.png}}
-    \caption{CVDomes Camry with a constant material and with per-triangle
-    CVDomes materials, on the
-    same asphalt ground.
-    (\textbf{a}) First-bounce energy of the center pulse with a constant
-    material, (\textbf{b})
-    first-bounce energy of the center pulse with per-triangle materials,
-    (\textbf{c}) SAR image with
-    a constant material, (\textbf{d}) SAR image with per-triangle materials.
-    Panels (\textbf{a},\textbf{b})
-    share one scale, normalized to their common peak, and panels
-    (\textbf{c},\textbf{d}) share one dB
-    scale referenced to their common peak.}
+    \hspace{0.02\textwidth}
+    \subfloat[\centering]{\includegraphics[width=0.3\textwidth]%
+    {figs/cvdomes_materials_per-triangle_sss.png}}
+    \caption{CVDomes Camry with a constant material (top row) and with
+    per-triangle CVDomes materials (bottom row), on the same asphalt ground for
+    SAR and the same seafloor for side-scan sonar.
+    (\textbf{a},\textbf{d}) First-bounce energy of the center pulse,
+    (\textbf{b},\textbf{e}) SAR image, (\textbf{c},\textbf{f}) side-scan
+    sonar image at the default side-scan parameters (Table
+    \ref{tab:sss-params}). Panels (\textbf{a},\textbf{d}) share one scale,
+    normalized to their common peak, and panels (\textbf{b},\textbf{e}) and
+    (\textbf{c},\textbf{f}) each share one dB scale referenced to their common
+    peak.}
   \label{fig:materials}
 \end{figure}
 
