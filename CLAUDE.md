@@ -1,4 +1,4 @@
-check GPU availability before running any code.
+check GPU availability before running any code that uses GPU.
 always ask before committing. whenever committing, also push.
 keep commit messages very brief, tell me what they are
 when edits are made to the latex paper, also compile it (run pdflatex main.tex twice), except for grammar/typo-only edits, which don't need a recompile.
