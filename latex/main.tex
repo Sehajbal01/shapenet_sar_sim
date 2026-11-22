@@ -43,29 +43,28 @@ jhihyangwu@arizona.edu (J.W.); dbrignac@arizona.edu (D.B.); amahalan@arizona.edu
 
 \corres{Correspondence: berian@arizona.edu}
 
-\abstract{There is currently no open-source simulator of both SAR and sonar.
-\emph{RaySAR} simulates signals from ray-traced contributions but does not model
-a transmit waveform, and depends on outdated software such as POV-Ray and
-MATLAB. \emph{CVDomes} is a fixed dataset of ten vehicles, which also runs on
-MATLAB. Neither simulates sonar, and open sonar simulators for underwater
-robotics, such as \emph{HoloOcean} and \emph{Stonefish}, do not simulate SAR. We
-present an \emph{open-source SAR and sonar simulator} implemented in
-\emph{PyTorch} with \emph{GPU acceleration} that renders three imaging
-modalities from a single ray-traced signal model: \emph{spotlight-mode SAR},
-\emph{side-scan sonar}, and \emph{forward-looking sonar}. It supports arbitrary
-\texttt{.obj} 3D models, with configurable wavelength, sample rate, bandwidth,
-transmit waveform, and material properties. We simulate multi-bounce ray tracing
-to model realistic reflectivity, scattering, and absorption. We introduce an
-efficient low-pass filtering technique that \emph{accumulates and interpolates}
-ray returns into a digital signal in a single step, accounting for its effective
-bandwidth, sample rate, and waveform. Each return keeps the round-trip phase of
-its path, so the simulated signals are complex-valued and support \emph{coherent
-imaging}. This accumulation and interpolation accepts \emph{arbitrary transmit
-waveforms} through the effective window of their matched filter, so
-pulse-compression waveforms such as LFM chirps and Barker codes are simulated
-from the same ray trace. The simulator further supports radar cross section
-modeling and imperfect sensor trajectories. We test our simulator on ShapeNet
-car models with spotlight-mode SAR, side-scan sonar, and forward-looking sonar.}
+\abstract{Simulated SAR and sonar data are needed to develop and benchmark
+imaging and recognition algorithms and to train learning-based methods, because
+real measurements are expensive to collect, hard to control, and often
+restricted. SAR and sonar share the same physics and mathematics: both transmit
+a pulse, record its echoes over range, compress them with a matched filter, and
+form an image from many echoes, differing mainly in propagation speed,
+wavelength, and medium attenuation. One ray tracer and signal model can
+therefore serve both, so waveforms, materials, and validation carry over and
+the same scene renders consistently in every modality. Yet no open-source
+simulator covers both: \emph{RaySAR}, which models no transmit waveform, and
+the fixed \emph{CVDomes} dataset do not simulate sonar, and \emph{HoloOcean}
+and \emph{Stonefish} do not simulate SAR. We present an
+\emph{open-source}, GPU-accelerated \emph{PyTorch} simulator that renders
+\emph{spotlight-mode SAR}, \emph{side-scan sonar}, and \emph{forward-looking
+sonar} from arbitrary \texttt{.obj} models, with configurable wavelength,
+bandwidth, sample rate, and materials. Multi-bounce ray
+returns are \emph{accumulated and interpolated} into a band-limited,
+complex-valued signal in a single step, keeping each path's phase for
+\emph{coherent imaging}. \emph{Arbitrary transmit waveforms}, such as LFM chirps
+and Barker codes, enter through the effective window of their matched filter.
+The simulator also models radar cross section and imperfect sensor
+trajectories, and is demonstrated on ShapeNet cars.}
 
 \keyword{SAR; spotlight SAR; side-scan sonar; forward-looking sonar; pulse
 compression; ray tracing; simulator}
