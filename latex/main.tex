@@ -79,18 +79,36 @@ SAR and sonar simulators are crucial for developing and validating radar and
 sonar algorithms when real-world data is unavailable or not feasible to process.
 By providing controlled, repeatable environments, simulators allow researchers
 to test imaging techniques, evaluate performance under different conditions, and
-benchmark novel methods without requiring extensive field experiments.
+benchmark novel methods without requiring extensive field experiments
+\cite{sample,drozdowicz2021open,cerqueira2017sonar}.
 
-The most powerful simulators, such as XPatch \cite{xpatch4}, are either classified
-in some manner or proprietary to their respective developers. The openly
-available alternatives lack flexibility: CVDomes \cite{cvdomes} is a fixed
-dataset of ten vehicles, RaySAR \cite{raysar} simulates signals from ray-traced
-contributions but does not model a transmit waveform and depends on outdated
-POV-Ray and MATLAB software, and neither simulates sonar. RaySAR, XPatch, and the
-simulation behind CVDomes compute scattering with the shooting-and-bouncing-rays
-(SBR) method \cite{sbr}, which launches a dense grid of rays at the target and
-traces their reflections, and our ray tracer follows the same ray-launching
-approach.
+High-fidelity simulators such as XPatch \cite{xpatch4} are not openly
+available, and each open alternative serves a narrow purpose. CVDomes
+\cite{cvdomes} is a fixed dataset of ten vehicles at fixed views and sensor
+parameters. RaySAR \cite{raysar} traces the scattering paths in a scene but does
+not produce sampled signals for a chosen transmit waveform, and it depends on
+outdated POV-Ray software. HoloOcean \cite{holoocean_sonar_2022} and
+Stonefish \cite{stonefish_2019} simulate sonar for underwater robotics, but not
+SAR. None of them lets a researcher take any target, choose the sensor, and
+obtain the complex signals that sensor would record. Our simulator does, and
+this enables research that existing open tools do not support. Because the
+wavelength, bandwidth, sample rate, transmit waveform, materials, beam width,
+aperture, noise, and trajectory errors can each be changed on the same scene,
+the effect of each parameter on an imaging \cite{spotlightmodesar}, autofocus
+\cite{wahl1994pga}, or recognition \cite{chen2016target} algorithm can be
+isolated and measured. Because the output is the complex,
+phase-preserving signal of every pulse, image formation, pulse compression, and
+waveform design \cite{levanon2004radar} can be developed on the signals themselves, with the geometry
+and the returns that formed them known exactly. Because one scene renders in
+SAR, side-scan sonar, and forward-looking sonar, an algorithm can be compared
+across modalities on identical targets, alongside optical images of the same
+models (Figure \ref{fig:modality-comparison}). And because the simulator runs on
+the GPU in PyTorch \cite{pytorch} and accepts any \texttt{.obj} mesh, it can render large,
+labeled datasets from libraries of thousands of models, such as ShapeNet
+\cite{shapenet}, directly into learning pipelines. Like XPatch, RaySAR, and the
+simulation behind CVDomes, which compute scattering with the
+shooting-and-bouncing-rays (SBR) method \cite{sbr}, our ray tracer launches a
+dense grid of rays at the target and traces their reflections.
 
 Figure \ref{fig:sig-sim} gives an overview of how our simulator produces a
 received signal. Rays
@@ -138,7 +156,8 @@ images are formed by coherent integration. Our main contributions are:
     the simulation through the effective window of its matched filter, so an
     ideal sinc, a Gaussian pulse, an LFM chirp, a Barker-13 code, or any other
     sampled waveform is simulated from the same ray trace, with the range
-    sidelobes of the corresponding pulse-compression system. To the best of our
+    sidelobes of the corresponding pulse-compression system
+    \cite{levanon2004radar}. To the best of our
     knowledge, ours is the only publicly available SAR or sonar simulator that
     supports arbitrary transmit waveforms.
     \item \textbf{Simultaneous accumulation and interpolation of ray returns.} 
@@ -149,15 +168,16 @@ images are formed by coherent integration. Our main contributions are:
     directly from irregularly spaced ray returns, so one step both accumulates and
     interpolates the returns into a digital signal.
     \item \textbf{Three imaging modalities.} One simulator renders spotlight-mode
-    SAR \cite{spotlightmodesar}, side-scan sonar (SSS), and forward-looking
-    sonar (FLS). Every quantity in the simulator is expressed in spatial units,
+    SAR \cite{spotlightmodesar}, side-scan sonar (SSS) \cite{blondel2009sidescan},
+    and forward-looking sonar (FLS) \cite{hurtos2015fls}. Every quantity in the simulator is expressed in spatial units,
     so radar and sonar share the same ray tracer, material model, and
     accumulation and interpolation of returns, and differ only in how rays are
     launched, how returns are weighted by the beam and the medium, and how the
     signals are formed into an image.
 \end{itemize}
 Figure \ref{fig:modality-comparison} highlights this flexibility, rendering a
-spotlight-mode SAR image by convolution backprojection (CBP), an SSS image, and
+spotlight-mode SAR image by convolution backprojection (CBP)
+\cite{desai1992cbp}, an SSS image, and
 an FLS image of four different ShapeNet car models with the same simulator.
 
 Figure \ref{fig:main-fig} showcases examples of what our simulator produces for
