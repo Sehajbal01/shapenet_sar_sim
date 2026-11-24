@@ -313,7 +313,7 @@ We divide the scatter's range $z_k$ by $2$ because of the two-way travel, which 
     .
     \label{eq:accum-interp}
 \end{equation}
-The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc function acts as both a low-pass interpolation filter and a summation over nearby samples in the energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumulation and interpolation} of the returns. It differs from standard interpolation because it sums together multiple returns in addition to interpolating them. Standard interpolation resamples a signal already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates and accumulates them in a single step.  Equation (\ref{eq:accum-interp}) allows for complex returns, so the simulated signals preserve phase for coherent imaging.
+This is illustrated in figure \ref{fig:sig-sim}. The $n^{th}$ sample of the resulting digital signal corresponds to the range $z=nT_s$. The sinc function acts as both a low-pass interpolation filter and a summation over nearby samples in the energy-range scatter, so we refer to (\ref{eq:accum-interp}) as the \emph{accumulation and interpolation} of the returns. \emph{It differs from standard interpolation because it sums together multiple returns in addition to interpolating them}. Standard interpolation resamples a signal already given on a uniform grid, whereas here the inputs are $N$ returns at arbitrary continuous ranges $z_k/2$, often many per sample spacing, and (\ref{eq:accum-interp}) interpolates and accumulates them in a single step.  Equation (\ref{eq:accum-interp}) allows for complex returns, so the simulated signals preserve phase for coherent imaging.
 
 The sinc function achieves an ideal band-limited signal; however, this does not capture the effects of different waveforms used in practice. We address this limitation in Section \ref{sec:waveforms}.
 
@@ -321,7 +321,7 @@ The sinc function achieves an ideal band-limited signal; however, this does not 
 \subsection{Material Properties and Returned Energy}
 \label{sec:material-properties}
 
-When a ray makes contact with a surface, a fraction of its energy is reflected into the next path of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as $R,A,S$. Scattering is the only component that returns energy to the receiver. Without a per-triangle material file (Section \ref{sec:per-triangle-materials}), we use only two materials, one for the object and one for the ground, whose values are listed in Table \ref{tab:materials} of Appendix \ref{app:materials}.
+When a ray makes contact with a surface, a fraction of its energy is reflected into the next path of the ray, a fraction is absorbed, and a fraction is scattered. We model these three fractions as $R$ ,$A$, and $S$ respectively. Scattering is the only component that returns energy to the receiver. Without a per-triangle material file (Section \ref{sec:per-triangle-materials}), we use only two materials, one for the object and one for the ground, whose values are listed in Appendix Table \ref{tab:materials}.
 
 The three fractions of a surface add up to 1, so that a surface never returns more energy than it receives:
 \begin{equation}
@@ -414,9 +414,9 @@ With the integrals computed, the multipliers are given by
 \end{equation}
 \begin{equation}
     m_I = \frac{I}{f_{\alpha,poly}(\vec{u}_{r} \cdot \vec{n})}
-    ,
+    .
 \end{equation}
-which yields our final expression for returned energy as 
+We can now express returned energy as 
 \begin{equation}
     \label{eq:almost}
     E_r = E_{in} S \Bigg(\frac{I
@@ -430,7 +430,9 @@ $\cos(\theta/2)$ to give
     E_r = E_{in} S \Bigg(\frac{I \sqrt{\frac{1+\vec{u}_r \cdot
     \vec{u}_l}{2}}^\alpha}{f_{\alpha,poly}(\vec{u}_{r} \cdot \vec{n})} +
     \frac{D}{2\pi}\Bigg)
+    ,
 \end{equation}
+which is our final expression for returned energy that is used in the simulator code.
 
 The energy reflected into the next path of the ray after bouncing is given by
 \begin{equation}
@@ -655,7 +657,7 @@ relative to the transmitted energy rather than calibrated in watts.
 \subsection{Per-Triangle Materials}
 \label{sec:per-triangle-materials}
 
-In Figure \ref{fig:materials}, we render the CVDomes \cite{cvdomes} Camry with
+In Figure \ref{fig:materials}, we render the Camry model from CVDomes \cite{cvdomes} with
 two \texttt{.mp} files. The first
 gives every triangle of the car the same perfect-conductor material,
 $(R,A,I,D,S) = (0.8, 0, 0.9,
